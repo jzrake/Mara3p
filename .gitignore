@@ -1,0 +1,6 @@
+*.o
+*.d
+*.h5
+*.mp4
+Makefile.in
+mara
