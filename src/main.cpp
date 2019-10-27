@@ -28,9 +28,11 @@
 
 
 #define DO_UNIT_TESTS
+#include "binary_serialize.hpp"
 #include "bqo_tree.hpp"
 #include "bsp_tree.hpp"
 #include "dimensional.hpp"
+#include "hdf5.hpp"
 #include "linked_list.hpp"
 #include "ndarray.hpp"
 #include "numeric_array.hpp"
@@ -47,12 +49,11 @@
 int main()
 {
     start_unit_tests();
-
-    // require_throws(1 + 2);
-
+    test_binary_serialize();
     test_bqo_tree();
     test_bsp_tree();
     test_dimensional();
+    test_hdf5();
     test_linked_list();
     test_ndarray();
     test_numeric_array();
@@ -61,6 +62,5 @@ int main()
     test_rational();
     test_sequence();
     report_test_results();
-
     return 0;
 }

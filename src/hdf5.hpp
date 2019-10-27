@@ -1,35 +1,5 @@
-/**
- ==============================================================================
- Copyright 2019, Jonathan Zrake
-
- Permission is hereby granted, free of charge, to any person obtaining a copy of
- this software and associated documentation files (the "Software"), to deal in
- the Software without restriction, including without limitation the rights to
- use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
- of the Software, and to permit persons to whom the Software is furnished to do
- so, subject to the following conditions:
-
- The above copyright notice and this permission notice shall be included in all
- copies or substantial portions of the Software.
-
- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
- AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- SOFTWARE.
- 
- ==============================================================================
-*/
-
-
-
-
-#pragma once
-#include <stdexcept>
+#include <optional>
 #include <string>
-#include <tuple>
 #include <vector>
 #include <hdf5.h>
 
@@ -37,48 +7,11 @@
 
 
 //=============================================================================
-#define h5_compound_type_member(type, name) {#name, offsetof(type, name), h5::make_datatype_for(type().name)}
+namespace h5 {
 
+namespace detail {
 
-
-
-//=============================================================================
-namespace h5
-{
-    template <class GroupType, class DatasetType>
-    class Location;
-    class PropertyList;
-    class Link;
-    class File;
-    class Group;
-    class Dataset;
-    class Datatype;
-    class Dataspace;
-    struct hyperslab_t;
-
-    enum class Intent { rdwr, rdonly, swmr_write, swmr_read };
-    enum class Object { file, group, dataset };
-
-    template<typename T> struct hdf5_type_info {};
-    template<typename T> static auto make_datatype_for(const T&);
-    template<typename T> static auto make_dataspace_for(const T&);
-    template<typename T> static auto convert_to_writable(const T&);
-    template<typename T> static auto prepare(const Datatype&, const Dataspace&);
-    template<typename T> static auto get_address(T&);
-    template<typename T> static auto get_address(const T&);
-
-    namespace detail
-    {
-        static inline herr_t get_last_error(unsigned, const H5E_error2_t*, void*);
-        template<typename T> static T check(T);
-    }
-}
-
-
-
-
-//=============================================================================
-herr_t h5::detail::get_last_error(unsigned n, const H5E_error2_t *err, void *data)
+inline herr_t get_last_error(unsigned n, const H5E_error2_t *err, void *data)
 {
     if (n == 0)
     {
@@ -87,8 +20,7 @@ herr_t h5::detail::get_last_error(unsigned n, const H5E_error2_t *err, void *dat
     return 0;
 }
 
-template<typename T>
-T h5::detail::check(T result)
+inline hid_t check(hid_t result)
 {
     if (result < 0)
     {
@@ -103,94 +35,301 @@ T h5::detail::check(T result)
     return result;
 }
 
-
-
-
-// ============================================================================
-struct h5::hyperslab_t
-{
-    void check_valid(hsize_t rank) const
-    {
-        if (start.size() != rank ||
-            skips.size() != rank ||
-            count.size() != rank ||
-            block.size() != rank)
-        {
-            throw std::invalid_argument("inconsistent selection sizes");
-        }
-    }
-
-    std::vector<hsize_t> start;
-    std::vector<hsize_t> count;
-    std::vector<hsize_t> skips;
-    std::vector<hsize_t> block;
-};
+}
 
 
 
 
 //=============================================================================
-class h5::PropertyList final
+class Identifier
 {
 public:
-    static PropertyList dataset_create() { return H5Pcreate(H5P_DATASET_CREATE); }
 
-    ~PropertyList() { close(); }
-    PropertyList(const PropertyList& other) : id(H5Pcopy(other.id)) {}
-    PropertyList(PropertyList&& other)
+
+
+
+    /**
+     * @brief      This class describes one of the HDF5 identifier types.
+     */
+    enum class Type
     {
+        Dataset,
+        Dataspace,
+        Datatype,
+        File,
+        Group,
+    };
+
+
+
+
+    Identifier() {}
+    Identifier(const Identifier& other) = delete;
+    Identifier(Identifier&& other) : id(other.id)
+    {
+        other.id.reset();
+    }
+    ~Identifier() { close(); }
+
+
+
+
+    /**
+     * @brief      Move-assignment operator for an identifier.
+     *
+     * @param      other  The identifier to be moved from
+     *
+     * @return     This identifier after the assignment
+     */
+    Identifier& operator=(Identifier&& other)
+    {
+        close();
         id = other.id;
-        other.id = -1;
+        other.id.reset();
+        return *this; 
     }
 
+
+
+
+    /**
+     * @brief      Close this identifier, decrementing its reference count
+     *             within the HDF5 library.
+     */
     void close()
     {
-        if (id != -1)
+        if (id.has_value())
         {
-            H5Pclose(id);
+            switch (id.value().second)
+            {
+                case Type::Dataset:    H5Dclose(id.value().first); break;
+                case Type::Dataspace:  H5Sclose(id.value().first); break;
+                case Type::Datatype:   H5Tclose(id.value().first); break;
+                case Type::File:       H5Fclose(id.value().first); break;
+                case Type::Group:      H5Gclose(id.value().first); break;
+            }
+            id.reset();
         }
     }
 
-    PropertyList& set_chunk(std::vector<hsize_t> dims) const
+
+
+
+    /**
+     * @brief      Determine whether this identifier is open.
+     *
+     * @return     True if open, False otherwise.
+     */
+    bool is_open() const
     {
-        auto hdims = std::vector<hsize_t>(dims.begin(), dims.end());
-        detail::check(H5Pset_chunk(id, int(hdims.size()), &hdims[0]));
-        return *this;
+        return id.has_value();
     }
 
-    template<typename... Args>
-    PropertyList& set_chunk(Args... args) const
-    {
-        return set_chunk(std::vector<hsize_t>{hsize_t(args)...});
-    }
 
-    bool operator==(const PropertyList& other) const
-    {
-        return detail::check(H5Pequal(id, other.id));
-    }
 
 private:
+
+
+
+    /**
+     * @brief      Get the untyped HDF5 identifier, if this is open. Otherwise
+     *             throws an error.
+     *
+     * @return     The HDF5 id.
+     */
+    operator hid_t() const
+    {
+        if (! is_open())
+        {
+            throw std::invalid_argument("h5::Identifier (id is not open)");
+        }
+        return id.value().first;
+    }
+
+
+
+
     //=========================================================================
     friend class Dataset;
-    friend class Link;
+    friend class Dataspace;
+    friend class Datatype;
+    friend class File;
+    friend class Group;
 
-    PropertyList(hid_t id) : id(id) {}
-    hid_t id = -1;
+    Identifier(hid_t id, Type type) : id(std::pair(detail::check(id), type)) {}
+    static auto dataset  (hid_t id) { return Identifier(id, Type::Dataset); }
+    static auto dataspace(hid_t id) { return Identifier(id, Type::Dataspace); }
+    static auto datatype (hid_t id) { return Identifier(id, Type::Datatype); }
+    static auto file     (hid_t id) { return Identifier(id, Type::File); }
+    static auto group    (hid_t id) { return Identifier(id, Type::Group); }
+
+    std::optional<std::pair<hid_t, Type>> id;
 };
 
 
 
 
 //=============================================================================
-class h5::Datatype final
+class Dataspace
 {
 public:
 
+
+
+
+    /**
+     * @brief      Return a new scalar dataspace
+     *
+     * @return     A new dataspace
+     */
+    static Dataspace scalar()
+    {
+        return Identifier::dataspace(H5Screate(H5S_SCALAR));
+    }
+
+
+
+
+    /**
+     * @brief      Return a new, non-resizable, n-dimensional dataspace from a
+     *             container.
+     *
+     * @param[in]  dims       The dimensions
+     *
+     * @tparam     Container  The container type
+     *
+     * @return     A new dataspace
+     */
+    template<typename Container>
+    static Dataspace simple(Container dims)
+    {
+        auto hdims = std::vector<hsize_t>(dims.begin(), dims.end());
+        return Identifier::dataspace(H5Screate_simple(hdims.size(), &hdims[0], nullptr));
+    }
+
+
+
+
+    /**
+     * @brief      Return a new, resizable, scalar dataspace with the given
+     *             maximum size
+     *
+     * @param[in]  dims       The dimensions
+     * @param[in]  max_dims   The maximum dimensions
+     *
+     * @tparam     Container  The container type
+     *
+     * @return     A new dataspace
+     */
+    template<typename Container>
+    static Dataspace simple(Container dims, Container max_dims)
+    {
+        if (dims.size() != max_dims.size())
+        {
+            throw std::invalid_argument("h5::Dataspace::simple (dims and max dims sizes do not agree)");
+        }
+        auto hdims = std::vector<hsize_t>(dims.begin(), dims.end());
+        auto max_hdims = std::vector<hsize_t>(max_dims.begin(), max_dims.end());
+        return Identifier::dataspace(H5Screate_simple(hdims.size(), &hdims[0], &max_hdims[0]));
+    }
+
+
+
+
+    /**
+     * @brief      Return a new dataspace with unlimited size on all axes, and
+     *             the given initial sizes.
+     *
+     * @param[in]  initial_sizes  The initial sizes for the dataspace
+     *
+     * @tparam     Args           The argument types
+     *
+     * @return     A new dataspace
+     */
+    template<typename... Args>
+    static Dataspace unlimited(Args... initial_sizes)
+    {
+        auto initial = std::vector<hsize_t> {hsize_t(initial_sizes)...};
+        auto maximum = std::vector<hsize_t>(sizeof...(Args), H5S_UNLIMITED);
+        return simple(initial, maximum);
+    }
+
+
+
+
+    Dataspace() {}
+    Dataspace(Identifier&& id) : id(std::move(id)) {}
+
+
+    bool operator==(const Dataspace& other) const { return   detail::check(H5Sextent_equal(id, other.id)); }
+    bool operator!=(const Dataspace& other) const { return ! detail::check(H5Sextent_equal(id, other.id)); }
+
+
+
+
+    /**
+     * @brief      Return the rank of this dataspace
+     *
+     * @return     The rank
+     */
+    std::size_t rank() const
+    {
+        return detail::check(H5Sget_simple_extent_ndims(id));
+    }
+
+
+
+
+    /**
+     * @brief      Return the number of points in this dataspace
+     *
+     * @return     The number of points
+     */
+    std::size_t size() const
+    {
+        return detail::check(H5Sget_simple_extent_npoints(id));
+    }
+
+
+
+
+    /**
+     * @brief      Return the extent (shape) of this dataspace
+     *
+     * @return     The dataspace extent
+     */
+    std::vector<std::size_t> extent() const
+    {
+        auto ext = std::vector<hsize_t>(rank());
+        detail::check(H5Sget_simple_extent_dims(id, &ext[0], nullptr));
+        return std::vector<std::size_t>(ext.begin(), ext.end());
+    }
+
+
+
+
+private:
+    friend class Dataset;
+    friend class Group;
+    Identifier id;
+};
+
+
+
+
+//=============================================================================
+class Datatype
+{
+public:
+
+
     //=========================================================================
-    static Datatype native_double()             { return H5Tcopy(H5T_NATIVE_DOUBLE); }
-    static Datatype native_int()                { return H5Tcopy(H5T_NATIVE_INT); }
-    static Datatype native_ulong()              { return H5Tcopy(H5T_NATIVE_ULONG); }
-    static Datatype c_s1()                      { return H5Tcopy(H5T_C_S1); }
+    static Datatype native_double() { return Identifier(H5Tcopy(H5T_NATIVE_DOUBLE), Identifier::Type::Datatype); }
+    static Datatype native_float()  { return Identifier(H5Tcopy(H5T_NATIVE_FLOAT),  Identifier::Type::Datatype); }
+    static Datatype native_int()    { return Identifier(H5Tcopy(H5T_NATIVE_INT),    Identifier::Type::Datatype); }
+    static Datatype native_long()   { return Identifier(H5Tcopy(H5T_NATIVE_LONG),   Identifier::Type::Datatype); }
+    static Datatype native_ulong()  { return Identifier(H5Tcopy(H5T_NATIVE_ULONG),  Identifier::Type::Datatype); }
+    static Datatype c_s1()          { return Identifier(H5Tcopy(H5T_C_S1),          Identifier::Type::Datatype); }
 
 
     //=========================================================================
@@ -200,799 +339,621 @@ public:
         static_assert(std::is_standard_layout<StructureType>::value,
             "can only make compound HDF5 types from standard layout structs");
 
-        auto h5_type = H5Tcreate(H5T_COMPOUND, sizeof(StructureType));
+        auto h5_type = detail::check(H5Tcreate(H5T_COMPOUND, sizeof(StructureType)));
 
-        for (auto member : members)
+        for (const auto& member : members)
         {
-            H5Tinsert(h5_type, std::get<0>(member), std::get<1>(member), std::get<2>(member).id);
+            detail::check(H5Tinsert(h5_type, std::get<0>(member), std::get<1>(member), std::get<2>(member).id));
         }
-        return h5_type;
+        return Identifier::datatype(h5_type);
     }
 
 
-    //=========================================================================
-    ~Datatype() { close(); }
     Datatype() {}
-    Datatype(const Datatype& other) : id(H5Tcopy(other.id)) {}
-    Datatype(Datatype&& other)
-    {
-        id = other.id;
-        other.id = -1;
-    }
+    Datatype(Identifier&& id) : id(std::move(id)) {}
 
-    void close()
-    {
-        if (id != -1)
-        {
-            H5Tclose(id);
-        }
-    }
 
-    Datatype& operator=(const Datatype& other)
-    {
-        close();
-        id = detail::check(H5Tcopy(other.id));
-        return *this;
-    }
+    bool operator==(const Datatype& other) const { return   detail::check(H5Tequal(id, other.id)); }
+    bool operator!=(const Datatype& other) const { return ! detail::check(H5Tequal(id, other.id)); }
 
-    bool operator==(const Datatype& other) const
-    {
-        return detail::check(H5Tequal(id, other.id));
-    }
-
-    bool operator!=(const Datatype& other) const
-    {
-        return ! operator==(other);
-    }
 
     std::size_t size() const
     {
         return detail::check(H5Tget_size(id));
     }
 
+    Datatype copy() const
+    {
+        return Identifier::datatype(H5Tcopy(id));
+    }
+
     Datatype with_size(std::size_t size) const
     {
-        Datatype other = *this;
-        H5Tset_size(other.id, size);
-        return other;
+        auto result = copy();
+        detail::check(H5Tset_size(result.id, size));
+        return result;
     }
 
     Datatype as_array(std::size_t size) const
     {
-        hsize_t dims = size;
-        return detail::check(H5Tarray_create(id, 1, &dims));
+        auto dims = hsize_t(size);
+        return Identifier::datatype(H5Tarray_create(id, 1, &dims));
     }
 
-private:
-    //=========================================================================
-    friend class Link;
-    friend class Dataset;
 
-    Datatype(hid_t id) : id(id) {}
-    hid_t id = -1;
+private:
+    friend class Dataset;
+    friend class Group;
+    Identifier id;
 };
 
 
 
 
 //=============================================================================
-class h5::Dataspace
+class Dataset
+{
+public:
+    Dataset() {}
+    Dataset(Identifier&& id) : id(std::move(id)) {}
+
+    Dataspace get_space() const
+    {
+        return Identifier::dataspace(H5Dget_space(id));
+    }
+
+    Datatype get_type() const
+    {
+        return Identifier::datatype(H5Dget_type(id));
+    }
+
+    void write(const Datatype& type, const Dataspace& mspace, const Dataspace& fspace, const void* data) const
+    {
+        detail::check(H5Dwrite(id, type.id, mspace.id, fspace.id, H5P_DEFAULT, data));
+    }
+
+    void read(const Datatype& type, const Dataspace& mspace, const Dataspace& fspace, void* data) const
+    {
+        detail::check(H5Dread(id, type.id, mspace.id, fspace.id, H5P_DEFAULT, data));
+    }
+
+private:
+    Identifier id;
+};
+
+
+
+
+//=============================================================================
+class Group
 {
 public:
 
-    //=========================================================================
-    static Dataspace scalar()
-    {
-        return detail::check(H5Screate(H5S_SCALAR));
-    }
 
-    template<typename Container>
-    static Dataspace simple(Container dims)
-    {
-        auto hdims = std::vector<hsize_t>(dims.begin(), dims.end());
-        return detail::check(H5Screate_simple(int(hdims.size()), &hdims[0], nullptr));
-    }
 
-    template<typename Container>
-    static Dataspace simple(Container dims, Container max_dims)
-    {
-        if (dims.size() != max_dims.size())
-        {
-            throw std::invalid_argument("dims and max dims sizes do not agree");
-        }
-        auto hdims = std::vector<hsize_t>(dims.begin(), dims.end());
-        auto max_hdims = std::vector<hsize_t>(max_dims.begin(), max_dims.end());
-        return detail::check(H5Screate_simple(int(hdims.size()), &hdims[0], &max_hdims[0]));
-    }
 
-    template<typename... Args>
-    static Dataspace unlimited(Args... initial_sizes)
-    {
-        auto initial = std::vector<hsize_t> {hsize_t(initial_sizes)...};
-        auto maximum = std::vector<hsize_t>(sizeof...(initial_sizes), H5S_UNLIMITED);
-        return simple(initial, maximum);
-    }
-
-    //=========================================================================
-    Dataspace() : id (detail::check(H5Screate(H5S_NULL))) {}
-    Dataspace(const Dataspace& other) : id(detail::check(H5Scopy(other.id))) {}
-    Dataspace(std::initializer_list<std::size_t> dims) : Dataspace(dims.size() == 0 ? scalar() : simple(std::vector<size_t>(dims))) {}
-    ~Dataspace() { close(); }
-
-    Dataspace& operator=(const Dataspace& other)
-    {
-        close();
-        id = detail::check(H5Scopy(other.id));
-        return *this;
-    }
-
-    bool operator==(const Dataspace& other) const
-    {
-        return detail::check(H5Sextent_equal(id, other.id));
-    }
-
-    bool operator!=(const Dataspace& other) const
-    {
-        return ! operator==(other);
-    }
-
-    void close()
-    {
-        if (id != -1)
-        {
-            detail::check(H5Sclose(id));
-        }
-    }
-
-    std::size_t rank() const
-    {
-        return detail::check(H5Sget_simple_extent_ndims(id));
-    }
-
-    std::size_t size() const
-    {
-        return detail::check(H5Sget_simple_extent_npoints(id));
-    }
-
-    std::vector<std::size_t> extent() const
-    {
-        auto ext = std::vector<hsize_t>(rank());
-        detail::check(H5Sget_simple_extent_dims(id, &ext[0], nullptr));
-        return std::vector<std::size_t>(ext.begin(), ext.end());
-    }
-
-    std::size_t selection_size() const
-    {
-        return detail::check(H5Sget_select_npoints(id));
-    }
-
-    std::vector<std::size_t> selection_lower() const
-    {
-        auto lower = std::vector<hsize_t>(rank());
-        auto upper = std::vector<hsize_t>(rank());
-        detail::check(H5Sget_select_bounds(id, &lower[0], &upper[0]));
-        return std::vector<std::size_t>(lower.begin(), lower.end());
-    }
-
-    std::vector<std::size_t> selection_upper() const
-    {
-        auto lower = std::vector<hsize_t>(rank());
-        auto upper = std::vector<hsize_t>(rank());
-        detail::check(H5Sget_select_bounds(id, &lower[0], &upper[0]));
-        return std::vector<std::size_t>(upper.begin(), upper.end());
-    }
-
-    const Dataspace& select_all() const
-    {
-        detail::check(H5Sselect_all(id));
-        return *this;
-    }
-
-    const Dataspace& select_none() const
-    {
-        detail::check(H5Sselect_none(id));
-        return *this;
-    }
-
-    const Dataspace& select(const hyperslab_t& selection) const
-    {
-        selection.check_valid(rank());
-        detail::check(H5Sselect_hyperslab(id, H5S_SELECT_SET,
-            selection.start.data(),
-            selection.skips.data(),
-            selection.count.data(),
-            selection.block.data()));
-        return *this;
-    }
-
-private:
-    //=========================================================================
-    friend class Link;
-    friend class Dataset;
-
-    Dataspace(hid_t id) : id(id) {}
-    hid_t id = -1;
-};
+    Group() {}
+    Group(Identifier&& id) : id(std::move(id)) {}
 
 
 
 
-//=============================================================================
-template<>
-struct h5::hdf5_type_info<char>
-{
-    using native_type = char;
-    static auto make_datatype_for(const native_type&) { return Datatype::c_s1(); }
-    static auto make_dataspace_for(const native_type&) { return Dataspace::scalar(); }
-    static auto convert_to_writable(const native_type& value) { return value; }
-    static auto prepare(const Datatype&, const Dataspace&) { return native_type(); }
-    static auto finalize(native_type&& value) { return std::move(value); }
-    static auto get_address(native_type& value) { return &value; }
-    static auto get_address(const native_type& value) { return &value; }
-};
-
-template<>
-struct h5::hdf5_type_info<int>
-{
-    using native_type = int;
-    static auto make_datatype_for(const native_type&) { return Datatype::native_int(); }
-    static auto make_dataspace_for(const native_type&) { return Dataspace::scalar(); }
-    static auto convert_to_writable(const native_type& value) { return value; }
-    static auto prepare(const Datatype&, const Dataspace&) { return native_type(); }
-    static auto finalize(native_type&& value) { return std::move(value); }
-    static auto get_address(native_type& value) { return &value; }
-    static auto get_address(const native_type& value) { return &value; }
-};
-
-template<>
-struct h5::hdf5_type_info<unsigned long>
-{
-    using native_type = unsigned long;
-    static auto make_datatype_for(const native_type&) { return Datatype::native_ulong(); }
-    static auto make_dataspace_for(const native_type&) { return Dataspace::scalar(); }
-    static auto convert_to_writable(const native_type& value) { return value; }
-    static auto prepare(const Datatype&, const Dataspace&) { return native_type(); }
-    static auto finalize(native_type&& value) { return std::move(value); }
-    static auto get_address(native_type& value) { return &value; }
-    static auto get_address(const native_type& value) { return &value; }
-};
-
-template<>
-struct h5::hdf5_type_info<double>
-{
-    using native_type = double;
-    static auto make_datatype_for(const native_type&) { return Datatype::native_double(); }
-    static auto make_dataspace_for(const native_type&) { return Dataspace::scalar(); }
-    static auto convert_to_writable(const native_type& value) { return value; }
-    static auto prepare(const Datatype&, const Dataspace&) { return native_type(); }
-    static auto finalize(native_type&& value) { return std::move(value); }
-    static auto get_address(native_type& value) { return &value; }
-    static auto get_address(const native_type& value) { return &value; }
-};
-
-template<>
-struct h5::hdf5_type_info<std::string>
-{
-    using native_type = std::string;
-    static auto make_datatype_for(const native_type& value) { return Datatype::c_s1().with_size(std::max(std::size_t(1), value.size())); }
-    static auto make_dataspace_for(const native_type&) { return Dataspace::scalar(); }
-    static auto convert_to_writable(const native_type& value) { return value; }
-    static auto prepare(const Datatype& type, const Dataspace&) { return native_type(type.size(), 0); }
-    static auto finalize(native_type&& value) { return std::move(value); }
-    static auto get_address(native_type& value) { return value.data(); }
-    static auto get_address(const native_type& value) { return value.data(); }
-};
-
-template<typename ValueType>
-struct h5::hdf5_type_info<std::vector<ValueType>>
-{
-    using native_type = std::vector<ValueType>;
-    static auto make_datatype_for(const native_type&) { return h5::make_datatype_for(ValueType()); }
-    static auto make_dataspace_for(const native_type& value) { return Dataspace{value.size()}; }
-    static auto convert_to_writable(const native_type& value) { return value; }
-    static auto prepare(const Datatype&, const Dataspace& space) { return native_type(space.size()); }
-    static auto finalize(native_type&& value) { return std::move(value); }
-    static auto get_address(native_type& value) { return value.data(); }
-    static auto get_address(const native_type& value) { return value.data(); }
-};
-
-
-
-
-//=============================================================================
-template<typename T> auto h5::make_datatype_for(const T& v)                  { return hdf5_type_info<T>::make_datatype_for(v); }
-template<typename T> auto h5::make_dataspace_for(const T& v)                 { return hdf5_type_info<T>::make_dataspace_for(v); }
-template<typename T> auto h5::convert_to_writable(const T& v)                { return hdf5_type_info<T>::convert_to_writable(v); }
-template<typename T> auto h5::prepare(const Datatype& t, const Dataspace& s) { return hdf5_type_info<T>::prepare(t, s); }
-template<typename T> auto h5::get_address(T& v)                              { return hdf5_type_info<T>::get_address(v); }
-template<typename T> auto h5::get_address(const T& v)                        { return hdf5_type_info<T>::get_address(v); }
-
-
-
-
-//=============================================================================
-class h5::Link
-{
-private:
-
-    //=========================================================================
-    ~Link() { /*require(id == -1);*/ } // link must be closed before going out of scope
-    Link() {}
-    Link(hid_t id) : id(id) {}
-    Link(Link&& other)
-    {
-        id = other.id;
-        other.id = -1;
-    }
-    Link(const Link& other) = delete;
-
-    Link& operator=(Link&& other)
-    {
-        id = other.id;
-        other.id = -1;
-        return *this;
-    }
-
-    void close(Object object)
-    {
-        if (id != -1)
-        {
-            switch (object)
-            {
-                case Object::file   : H5Fclose(id); break;
-                case Object::group  : H5Gclose(id); break;
-                case Object::dataset: H5Dclose(id); break;
-            }
-            id = -1;
-        }
-    }
-
-    std::size_t size() const
-    {
-        auto op = [] (auto, auto, auto, auto) { return 0; };
-        auto idx = hsize_t(0);
-        H5Literate(id, H5_INDEX_NAME, H5_ITER_INC, &idx, op, nullptr);
-        return idx;
-    }
-
-    bool contains(const std::string& name, Object object) const
+    /**
+     * @brief      Return true if this group has a subgroup with the given name
+     *
+     * @param[in]  name  The name of the group
+     *
+     * @return     True or false
+     */
+    bool contains_group(std::string name) const
     {
         if (H5Lexists(id, name.data(), H5P_DEFAULT))
         {
             H5O_info_t info;
             H5Oget_info_by_name(id, name.data(), &info, H5P_DEFAULT);
-
-            switch (object)
-            {
-                case Object::file   : return false;
-                case Object::group  : return info.type == H5O_TYPE_GROUP;
-                case Object::dataset: return info.type == H5O_TYPE_DATASET;
-            }
+            return info.type == H5O_TYPE_GROUP;
         }
         return false;
     }
 
-    Link open_group(const std::string& name) const
+
+
+
+    /**
+     * @brief      Return true if this group has a dataset with the given name
+     *
+     * @param[in]  name  The name of the dataset
+     *
+     * @return     True or false
+     */
+    bool contains_dataset(std::string name) const
     {
-        return detail::check(H5Gopen(id, name.data(),
-            H5P_DEFAULT));
-    }
-
-    Link create_group(const std::string& name) const
-    {
-        return detail::check(H5Gcreate(id, name.data(), H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT));
-    }
-
-    Link open_dataset(const std::string& name) const
-    {
-        return detail::check(H5Dopen(id, name.data(), H5P_DEFAULT));
-    }
-
-    Link create_dataset(const std::string& name,
-                        const Datatype& type,
-                        const Dataspace& space,
-                        const PropertyList& creation_plist=PropertyList::dataset_create()) const
-    {
-        return detail::check(H5Dcreate(
-            id,
-            name.data(),
-            type.id,
-            space.id,
-            H5P_DEFAULT,
-            creation_plist.id,
-            H5P_DEFAULT));
-    }
-
-    //=========================================================================
-    class iterator
-    {
-    public:
-
-        using value_type = std::string;
-        using iterator_category = std::forward_iterator_tag;
-
-        //=====================================================================
-        iterator(hid_t id, hsize_t idx) : id(id), idx(idx) {}
-        iterator& operator++() { ++idx; return *this; }
-        iterator operator++(int) { auto ret = *this; this->operator++(); return ret; }
-        bool operator==(iterator other) const { return id == other.id && idx == other.idx; }
-        bool operator!=(iterator other) const { return id != other.id || idx != other.idx; }
-        std::string operator*() const
+        if (H5Lexists(id, name.data(), H5P_DEFAULT))
         {
-            static char name[1024];
-
-            if (H5Lget_name_by_idx(id, ".",
-                H5_INDEX_NAME, H5_ITER_NATIVE, idx, name, 1024, H5P_DEFAULT) > 1024)
-            {
-                throw std::overflow_error("object names longer than 1024 are not supported");
-            }
-            return name;
+            H5O_info_t info;
+            detail::check(H5Oget_info_by_name(id, name.data(), &info, H5P_DEFAULT));
+            return info.type == H5O_TYPE_DATASET;
         }
-
-    private:
-        //=====================================================================
-        hid_t id = -1;
-        hsize_t idx = 0;
-    };
-
-    iterator begin() const
-    {
-        return iterator(id, 0);
+        return false;
     }
 
-    iterator end() const
+
+
+
+    /**
+     * @brief      Create a group with the given name. Throws an exception if
+     *             the group already exists.
+     *
+     * @param[in]  group_name  The group name to open
+     *
+     * @return     The group
+     */
+    Group create_group(std::string group_name) const
     {
-        return iterator(id, size());
+        return Identifier::group(H5Gcreate(id, group_name.data(), H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT));
     }
 
-    //=========================================================================
-    template <class GroupType, class DatasetType>
-    friend class Location;
-    friend class File;
-    friend class Group;
-    friend class Dataset;
-
-    hid_t id = -1;
-};
 
 
 
-
-//=============================================================================
-class h5::Dataset final
-{
-public:
-
-    //=========================================================================
-    ~Dataset() { close(); }
-    Dataset() {}
-    Dataset(Dataset&& other) : link(std::move(other.link)) {}
-    Dataset(const Dataset&) = delete;
-    Dataset& operator=(Dataset&& other)
+    /**
+     * @brief      Open a group with the given name. Throws an exception if the
+     *             group does not exist.
+     *
+     * @param[in]  group_name  The group name to open
+     *
+     * @return     The group
+     */
+    Group open_group(std::string group_name) const
     {
-        link = std::move(other.link);
-        return *this;
-    }
-    void close() { link.close(Object::dataset); }
-
-    Dataspace get_space() const
-    {
-        return detail::check(H5Dget_space(link.id));
+        return Identifier::group(H5Gopen(id, group_name.data(), H5P_DEFAULT));
     }
 
-    Datatype get_type() const
+
+
+
+    /**
+     * @brief      Open or create a group with the given name.
+     *
+     * @param[in]  group_name  The group name to open or create
+     *
+     * @return     The group
+     */
+    Group require_group(std::string group_name) const
     {
-        return detail::check(H5Dget_type(link.id));
+        return contains_group(group_name) ? open_group(group_name) : create_group(group_name);
     }
 
-    template<typename T>
-    void write(const T& value) const
+
+
+
+    /**
+     * @brief      Creates a dataset.
+     *
+     * @param[in]  name   The name
+     * @param[in]  type   The type
+     * @param[in]  space  The space
+     *
+     * @return     { description_of_the_return_value }
+     */
+    Dataset create_dataset(std::string name, const Datatype& type, const Dataspace& space) const
     {
-        write(value, get_space());
+        return Identifier::dataset(H5Dcreate(id, name.data(), type.id, space.id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT));
     }
 
-    template<typename T>
-    void write(const T& value, const Dataspace& fspace) const
+
+
+
+    /**
+     * @brief      Opens a dataset.
+     *
+     * @param[in]  name  The name
+     *
+     * @return     { description_of_the_return_value }
+     */
+    Dataset open_dataset(std::string name) const
     {
-        auto writable = convert_to_writable(value);
-        auto data = get_address(writable);
-        auto type = make_datatype_for(writable);
-        auto mspace = make_dataspace_for(writable);
-        check_compatible(type);
-        detail::check(H5Dwrite(link.id, type.id, mspace.id, fspace.id, H5P_DEFAULT, data));
+        return Identifier::dataset(H5Dopen(id, name.data(), H5P_DEFAULT));
     }
 
-    template<typename T>
-    T read() const
-    {
-        return read<T>(get_space());
-    }
 
-    template<typename T>
-    T read(const Dataspace& fspace) const
-    {
-        auto value = prepare<T>(get_type(), fspace);
-        auto data = get_address(value);
-        auto type = make_datatype_for(value);
-        auto mspace = make_dataspace_for(value);
-        check_compatible(type);
-        detail::check(H5Dread(link.id, type.id, mspace.id, fspace.id, H5P_DEFAULT, data));
-        return hdf5_type_info<T>::finalize(std::move(value));
-    }
 
-    template<typename T>
-    void read(T& value, const Dataspace& fspace) const
-    {
-        value = read<T>(fspace);
-    }
 
-    template<typename T>
-    void read(T& value) const
+    /**
+     * @brief      { function_description }
+     *
+     * @param[in]  name   The name
+     * @param[in]  type   The type
+     * @param[in]  space  The space
+     *
+     * @return     { description_of_the_return_value }
+     */
+    Dataset require_dataset(std::string name, const Datatype& type, const Dataspace& space) const
     {
-        value = read<T>();
-    }
-
-    PropertyList get_creation_plist() const
-    {
-        return detail::check(H5Dget_create_plist(link.id));
-    }
-
-    Dataset& set_extent(const std::vector<hsize_t>& hdims) const
-    {
-        if (get_space().rank() != hdims.size())
+        if (contains_dataset(name))
         {
-            throw std::invalid_argument("new and old extents have different ranks");
-        }
-        detail::check(H5Dset_extent(link.id, &hdims[0]));
-        return *this;
-    }
-
-    template<typename... Args>
-    Dataset& set_extent(Args... args) const
-    {
-        return set_extent(std::vector<hsize_t>{hsize_t(args)...});
-    }
-
-private:
-    //=========================================================================
-    Datatype check_compatible(const Datatype& type) const
-    {
-        if (type != get_type())
-        {
-            throw std::invalid_argument("source and target have different data types");
-        }
-        return type;
-    }
-
-    //=========================================================================
-    template <class GroupType, class DatasetType>
-    friend class Location;
-
-    Dataset(Link link) : link(std::move(link)) {}
-    Link link;
-};
-
-
-
-
-//=============================================================================
-template <class GroupType, class DatasetType>
-class h5::Location
-{
-public:
-
-    //=========================================================================
-    Location() {}
-    Location(const Group&) = delete;
-    Location(Location&& other) : link(std::move(other.link)) {}
-    Location& operator=(Location&& other)
-    {
-        link = std::move(other.link);
-        return *this;
-    }
-
-    bool is_open() const
-    {
-        return link.id != -1;
-    }
-
-    std::size_t size() const
-    {
-        return link.size();
-    }
-
-    Link::iterator begin() const
-    {
-        return link.begin();
-    }
-
-    Link::iterator end() const
-    {
-        return link.end();
-    }
-
-    GroupType operator[](const std::string& name) const
-    {
-        return require_group(name);
-    }
-
-    GroupType open_group(const std::string& name) const
-    {
-        return link.open_group(name);
-    }
-
-    GroupType require_group(const std::string& name) const
-    {
-        if (name == "/")
-        {
-            return open_group(name);
-        }
-        if (link.contains(name, Object::group))
-        {
-            return open_group(name);
-        }
-        return link.create_group(name);
-    }
-
-    DatasetType open_dataset(const std::string& name) const
-    {
-        return link.open_dataset(name);
-    }
-
-    DatasetType require_dataset(const std::string& name,
-                                const Datatype& type,
-                                const Dataspace& space,
-                                const PropertyList& creation_plist=PropertyList::dataset_create()) const
-    {
-        if (link.contains(name, Object::dataset))
-        {
-            auto dset = open_dataset(name);
-
-            if (dset.get_type() == type &&
-                dset.get_space() == space &&
-                dset.get_creation_plist() == PropertyList::dataset_create())
+            if (auto dset = open_dataset(name); dset.get_type() == type && dset.get_space() == space)
             {
                 return dset;
             }
-            throw std::invalid_argument(
-                "data set with different type or space already exists");
+            throw std::invalid_argument("h5::Group::require_dataset (incompatible dataset already exists)");
         }
-        return link.create_dataset(name, type, space, creation_plist);
+        return create_dataset(name, type, space);
     }
 
-    template<typename T>
-    DatasetType require_dataset(const std::string& name, const Dataspace& space={}) const
-    {
-        return require_dataset(name, hdf5_type_info<T>::make_datatype_for(T()), space);
-    }
-
-    template<typename T>
-    void write(const std::string& name, const T& value) const
-    {
-        auto writable = convert_to_writable(value);
-        auto type  = make_datatype_for(writable);
-        auto space = make_dataspace_for(writable);
-        require_dataset(name, type, space).write(writable);
-    }
-
-    template<typename T>
-    T read(const std::string& name) const
-    {
-        return open_dataset(name).template read<T>();
-    }
-
-    template<typename T>
-    void read(const std::string& name, T& value) const
-    {
-        value = read<T>(name);
-    }
-
-protected:
-    //=========================================================================
-    Location(Link&& link) : link(std::move(link)) {}
-    Link link;
-};
 
 
-
-
-//=============================================================================
-class h5::Group final : public Location<Group, Dataset>
-{
-public:
-
-    //=========================================================================
-    ~Group() { close(); }
-    Group() {}
-    Group(const Group&) = delete;
-    Group(Group&& other) : Location(std::move(other.link)) {}
-    Group& operator=(Group&& other)
-    {
-        link = std::move(other.link);
-        return *this;
-    }
-    void close() { link.close(Object::group); }
 
 private:
-    //=========================================================================
-    template <class GroupType, class DatasetType> friend class h5::Location;
-    Group(Link link) : Location(std::move(link)) {}
+    Identifier id;
 };
 
 
 
 
 //=============================================================================
-class h5::File final : public Location<Group, Dataset>
+class File
 {
 public:
 
-    //=========================================================================
-    static bool exists(const std::string& filename)
-    {
-        return H5Fis_hdf5(filename.data()) > 0;
-    }
 
-    //=========================================================================
-    ~File() { close(); }
+
+
+    /**
+     * @brief      This class describes an HDF5 access mode.
+     */
+    enum class Access
+    {
+        Read,
+        ReadWrite,
+        Truncate,
+    };
+
+
+
+
     File() {}
-    File(const File&) = delete;
-    File(File&& other) : Location(std::move(other.link)) {}
-    File(std::string filename, std::string mode="r")
+    File(std::string filename, Access access)
     {
-        if (mode == "r")
+        switch (access)
         {
-            link.id = detail::check(H5Fopen(filename.data(), H5F_ACC_RDONLY, H5P_DEFAULT));
-        }
-        else if (mode == "r+")
-        {
-            link.id = detail::check(H5Fopen(filename.data(), H5F_ACC_RDWR, H5P_DEFAULT));
-        }
-        else if (mode == "w")
-        {
-            link.id = detail::check(H5Fcreate(filename.data(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT));
-        }
-        else
-        {
-            throw std::invalid_argument("File mode must be r, r+, or w");
+            case Access::Read:      id = Identifier::file(H5Fopen  (filename.data(), H5F_ACC_RDONLY, H5P_DEFAULT)); break;
+            case Access::ReadWrite: id = Identifier::file(H5Fopen  (filename.data(), H5F_ACC_RDWR,   H5P_DEFAULT)); break;
+            case Access::Truncate:  id = Identifier::file(H5Fcreate(filename.data(), H5F_ACC_TRUNC,  H5P_DEFAULT, H5P_DEFAULT)); break;
         }
     }
-    void close() { link.close(Object::file); }
 
-    File& operator=(File&& other)
+
+
+
+    /**
+     * @brief      Close the file handle.
+     */
+    void close()
     {
-        link = std::move(other.link);
-        return *this;
+        id = {};
     }
 
-    operator Group()
+
+
+
+    /**
+     * @brief      Convert this file to its root group.
+     */
+    operator Group() const
     {
-        return open_group("/");
+        return Identifier::group(H5Gopen(id, "/", H5P_DEFAULT));
     }
 
-    Intent intent() const
-    {
-        unsigned intent;
-        detail::check(H5Fget_intent(link.id, &intent));
 
-        if (intent == H5F_ACC_RDWR)       return Intent::rdwr;
-        if (intent == H5F_ACC_RDONLY)     return Intent::rdonly;
 
-        throw;
-    }
-
-    std::string filename() const
-    {
-        char result[2048];
-
-        if (H5Fget_name(link.id, result, 2048) > 2048)
-        {
-            throw std::invalid_argument("the HDF5 filename is too long");
-        }
-        return result;
-    }
 
 private:
-    //=========================================================================
-    File(Link link) : Location(std::move(link)) {}
+    Identifier id;
 };
+
+} // namespace h5
+
+
+
+
+//=============================================================================
+namespace h5 {
+
+
+
+
+/**
+ * @brief      Unspecified conversion-to-serializable class. You should
+ *             specialize this struct for a type T if T must be converted to
+ *             another type to be serialized. You must create a typedef called
+ *             'type' to represent the converted-to type U in your
+ *             specialization (obviously T must be a different type than U). You
+ *             must also create an overload of the call operator taking a T and
+ *             returning a U.
+ *
+ * @tparam     T     The data type to convert from
+ */
+template<typename T>
+struct conversion_to_serializable_t
+{
+    using type = T;
+    auto operator()(T value) const { return value; }
+};
+
+
+
+
+/**
+ * @brief      Unspecified conversion-from-serializable class. You should
+ *             specialize this struct for a type T if T is fetched from the
+ *             deserializer as a type U other than T. You must create a typedef
+ *             'type' to represent U, and overload the call operator to take a U
+ *             and return a T.
+ *
+ * @tparam     T     The data type to convert to
+ */
+template<typename T>
+struct conversion_from_serializable_t
+{
+    using type = T;
+    auto operator()(T value) const { return value; }
+};
+
+
+
+
+/**
+ * @brief      Unspecified struct to write the size of a dynamically sized
+ *             container type T. The call operator must be overloaded with the
+ *             same signature as below, but where a description of the item size
+ *             (or shape) is described to the Serializer instance using the same
+ *             types of calls as in the type_descriptor_t's call operator. If
+ *             this struct is specialized then you also need to specialize
+ *             container_shape_setter_t to vend out the size or shape information
+ *             that was described here.
+ *
+ * @tparam     T     The container type
+ */
+template<typename T>
+struct container_shape_descriptor_t
+{
+    template<typename Serializer>
+    void operator()(Serializer&, const T&) const {}
+};
+
+
+
+
+/**
+ * @brief      Unspecified struct to create an instance of a dynamically sized
+ *             container type T. The call operator must be overloaded to vend
+ *             from the Serializer instance the size or shape described in the
+ *             specialization of container_shape_descriptor_t<T>, and then
+ *             resize the input container appropriately.
+ *
+ * @tparam     T     The container type
+ */
+template<typename T>
+struct container_shape_setter_t
+{
+    template<typename Serializer>
+    void operator()(Serializer&, T&) const {}
+};
+
+
+
+
+//=============================================================================
+template<typename T> struct hdf5_container_address
+{
+    const void* operator()(const T& value) { return &value; }
+    void* operator()(T& value) { return &value; }
+};
+
+template<typename T> struct hdf5_datatype_creation
+{
+};
+
+template<typename T> struct hdf5_dataspace_creation
+{
+    Dataspace operator()(const T&) { return Dataspace::scalar(); }
+};
+
+template<typename T> struct hdf5_container_creation
+{
+    T operator()(const Dataset&) { return T(); }
+};
+
+
+
+
+//=============================================================================
+template<typename T>
+Datatype make_datatype_for(const T& value)
+{
+    return hdf5_datatype_creation<T>()(value);
+}
+
+template<typename T>
+Dataspace make_dataspace_for(const T& value)
+{
+    return hdf5_dataspace_creation<T>()(value);
+}
+
+template<typename T>
+const void* container_address_of(const T& value)
+{
+    return hdf5_container_address<T>()(value);
+}
+
+template<typename T>
+void* container_address_of(T& value)
+{
+    return hdf5_container_address<T>()(value);
+}
+
+template<typename T>
+T create_container_for(const Dataset& dataset)
+{
+    return hdf5_container_creation<T>()(dataset);
+}
+
+
+
+
+//=============================================================================
+template<> struct hdf5_datatype_creation<double>        { Datatype operator()(const double&)        { return Datatype::native_double(); } };
+template<> struct hdf5_datatype_creation<float>         { Datatype operator()(const float&)         { return Datatype::native_float(); } };
+template<> struct hdf5_datatype_creation<int>           { Datatype operator()(const int&)           { return Datatype::native_int(); } };
+template<> struct hdf5_datatype_creation<long>          { Datatype operator()(const long&)          { return Datatype::native_long(); } };
+template<> struct hdf5_datatype_creation<unsigned long> { Datatype operator()(const unsigned long&) { return Datatype::native_ulong(); } };
+
+
+
+
+//=============================================================================
+template<> struct hdf5_datatype_creation<std::string>
+{
+    Datatype operator()(const std::string& v)
+    {
+        return Datatype::c_s1().with_size(std::max(std::size_t(1), v.size()));
+    }
+};
+
+template<> struct hdf5_container_address<std::string>
+{
+    const void* operator()(const std::string& value) { return value.data(); }
+    void* operator()(std::string& value) { return value.data(); }
+};
+
+template<> struct hdf5_container_creation<std::string>
+{
+    std::string operator()(const Dataset& dset) { return std::string(dset.get_type().size(), 0); }
+};
+
+
+
+
+//=============================================================================
+template<typename T>
+struct hdf5_dataspace_creation<std::vector<T>>
+{
+    auto operator()(const std::vector<T>& value) const
+    {
+        return Dataspace::simple(std::vector{value.size()});
+    }
+};
+
+template<typename T>
+struct hdf5_datatype_creation<std::vector<T>>
+{
+    auto operator()(const std::vector<T>& value) const
+    {
+        return make_datatype_for<T>({});
+    }
+};
+
+template<typename T> struct hdf5_container_address<std::vector<T>>
+{
+    const void* operator()(const std::vector<T>& value) { return value.data(); }
+    void* operator()(std::vector<T>& value) { return value.data(); }
+};
+
+template<typename T> struct hdf5_container_creation<std::vector<T>>
+{
+    std::vector<T> operator()(const Dataset& dset)
+    {
+        return std::vector<T>(dset.get_space().size());
+    }
+};
+
+
+
+
+//=============================================================================
+template<typename T>
+void write(const Dataset& dset, const T& value)
+{
+    auto type = make_datatype_for(value);
+    auto mspc = make_dataspace_for(value);
+    auto data = container_address_of(value);
+    dset.write(type, mspc, mspc, data);
+}
+
+template<typename T>
+void write(const Group& group, std::string name, const T& value)
+{
+    auto type = make_datatype_for(value);
+    auto mspc = make_dataspace_for(value);
+    write(group.require_dataset(name, type, mspc), value);
+}
+
+template<typename T>
+void read(const Dataset& dset, T& value)
+{
+    value = create_container_for<T>(dset);
+    auto type = make_datatype_for(value);
+    auto fspc = dset.get_space();
+    auto data = container_address_of(value);
+    dset.read(type, fspc, fspc, data);
+}
+
+template<typename T>
+void read(const Group& group, std::string name, T& value)
+{
+    read(group.open_dataset(name), value);
+}
+
+template<typename T>
+T read(const Dataset& dset)
+{
+    auto value = T();
+    read(dset, value);
+    return value;
+}
+
+template<typename T>
+T read(const Group& group, std::string name)
+{
+    return read<T>(group.open_dataset(name));
+}
+
+} // namespace h5
+
+
+
+
+//=============================================================================
+#ifdef DO_UNIT_TESTS
+#include "unit_test.hpp"
+
+
+
+
+//=============================================================================
+void test_hdf5()
+{
+    auto test_read_write = [] (auto value)
+    {
+        {
+            auto file = h5::File("test.h5", h5::File::Access::Truncate);
+            h5::write(file, "value", value);
+        }
+        {
+            auto file = h5::File("test.h5", h5::File::Access::Read);
+            require(h5::read<decltype(value)>(file, "value") == value);
+        }
+    };
+
+    test_read_write(10.0);
+    test_read_write(10.0f);
+    test_read_write(10);
+    test_read_write(10l);
+    test_read_write(10ul);
+    test_read_write(std::string("ten"));
+    test_read_write(std::vector{1, 2, 3});
+    test_read_write(std::vector{1.1, 2.2, 3.3});
+}
+
+#endif // DO_UNIT_TESTS

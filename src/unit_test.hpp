@@ -77,7 +77,7 @@ do { \
     } \
     catch (...) { \
         ++NumPassed; \
-        std::cout << '\033' << Green     << "Test passed ... " << #expr << " [threw]" << std::endl; \
+        std::cout << '\033' << Green     << "Test passed ... [" << __FILE__ << "] " << #expr << " [threw]" << std::endl; \
     } \
 } while (false)
 
