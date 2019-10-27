@@ -115,7 +115,7 @@ template<typename T> auto operator-(optional_t<T> a) { return map(a, std::negate
 
 //=============================================================================
 #ifdef DO_UNIT_TESTS
-#include "unit_test.hpp"
+#include "core_unit_test.hpp"
 
 
 

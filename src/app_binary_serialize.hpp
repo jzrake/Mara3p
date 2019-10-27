@@ -368,7 +368,7 @@ T loads(const std::vector<char>& buffer)
 #ifdef DO_UNIT_TESTS
 #include <vector>
 #include <string>
-#include "unit_test.hpp"
+#include "core_unit_test.hpp"
 
 
 

@@ -28,7 +28,7 @@
 
 #pragma once
 #include <cmath>
-#include "rational.hpp"
+#include "core_rational.hpp"
 
 
 
@@ -221,7 +221,7 @@ auto pow(quantity_t<N1, N2, N3, D1, D2, D3> a, static_rational_t<N, D> p={})
 
 //=============================================================================
 #ifdef DO_UNIT_TESTS
-#include "unit_test.hpp"
+#include "core_unit_test.hpp"
 
 
 

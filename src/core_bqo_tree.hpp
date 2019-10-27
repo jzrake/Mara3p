@@ -27,8 +27,8 @@
 
 
 #pragma once
-#include "numeric_array.hpp"
-#include "bsp_tree.hpp"
+#include "core_numeric_array.hpp"
+#include "core_bsp_tree.hpp"
 
 
 
@@ -394,7 +394,7 @@ bool contains(const bsp_tree::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, 
 
 //=============================================================================
 #ifdef DO_UNIT_TESTS
-#include "unit_test.hpp"
+#include "core_unit_test.hpp"
 
 
 

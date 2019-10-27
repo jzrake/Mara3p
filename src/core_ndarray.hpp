@@ -793,7 +793,7 @@ template<typename A, uint R, typename F> auto operator|(const array_t<A, R>& a, 
 
 //=============================================================================
 #ifdef DO_UNIT_TESTS
-#include "unit_test.hpp"
+#include "core_unit_test.hpp"
 
 
 

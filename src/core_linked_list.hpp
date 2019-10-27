@@ -558,8 +558,8 @@ auto obtain(const singly_linked_t<ValueType>& a, const singly_linked_t<ValueType
 //=============================================================================
 #ifdef DO_UNIT_TESTS
 #include <vector>
-#include "unit_test.hpp"
-#include "sequence.hpp"
+#include "core_sequence.hpp"
+#include "core_unit_test.hpp"
 
 
 

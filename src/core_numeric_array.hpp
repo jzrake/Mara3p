@@ -219,7 +219,7 @@ template<typename T, typename U, std::size_t S> auto operator!=(array_t<T, S> a,
 
 //=============================================================================
 #ifdef DO_UNIT_TESTS
-#include "unit_test.hpp"
+#include "core_unit_test.hpp"
 
 
 

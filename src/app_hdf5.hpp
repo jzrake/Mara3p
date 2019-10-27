@@ -926,7 +926,7 @@ T read(const Group& group, std::string name)
 
 //=============================================================================
 #ifdef DO_UNIT_TESTS
-#include "unit_test.hpp"
+#include "core_unit_test.hpp"
 
 
 

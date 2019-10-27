@@ -983,7 +983,7 @@ inline auto repeat(unsigned long c) { return [c] (auto s) { return repeat(s, c);
 #ifdef DO_UNIT_TESTS
 #include <vector>
 #include <string>
-#include "unit_test.hpp"
+#include "core_unit_test.hpp"
 
 
 

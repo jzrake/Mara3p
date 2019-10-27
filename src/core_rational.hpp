@@ -148,7 +148,7 @@ auto operator/(static_number_t<N1, D1> a, static_number_t<N2, D2> b)
 
 //=============================================================================
 #ifdef DO_UNIT_TESTS
-#include "unit_test.hpp"
+#include "core_unit_test.hpp"
 
 
 

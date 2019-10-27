@@ -30,7 +30,7 @@
 #include <memory>
 #include <variant>
 #include <array>
-#include "numeric_array.hpp"
+#include "core_numeric_array.hpp"
 
 
 
@@ -476,7 +476,7 @@ std::size_t size(tree_t<ValueType, ChildrenType, Ratio> tree)
 
 //=============================================================================
 #ifdef DO_UNIT_TESTS
-#include "unit_test.hpp"
+#include "core_unit_test.hpp"
 
 
 
