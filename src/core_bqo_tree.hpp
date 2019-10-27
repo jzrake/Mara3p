@@ -33,8 +33,8 @@
 
 
 
-// bqo := binary tree, quad-tree, oct-tree
-namespace bqo_tree {
+//=============================================================================
+namespace bqo_tree { // bqo := binary tree, quad-tree, oct-tree
 
 
 

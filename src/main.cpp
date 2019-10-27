@@ -28,8 +28,10 @@
 
 
 #define DO_UNIT_TESTS
-#include "app_hdf5.hpp"
+#include "app_config.hpp"
 #include "app_binary_serialize.hpp"
+#include "app_hdf5.hpp"
+#include "app_hdf5_variant.hpp"
 #include "core_bqo_tree.hpp"
 #include "core_bsp_tree.hpp"
 #include "core_dimensional.hpp"
@@ -49,11 +51,12 @@
 int main()
 {
     start_unit_tests();
+
+    // core
     test_binary_serialize();
     test_bqo_tree();
     test_bsp_tree();
     test_dimensional();
-    test_hdf5();
     test_linked_list();
     test_ndarray();
     test_numeric_array();
@@ -61,6 +64,11 @@ int main()
     test_numeric_tuple();
     test_rational();
     test_sequence();
+
+    // app
+    test_hdf5();
+    test_hdf5_variant();
+
     report_test_results();
     return 0;
 }

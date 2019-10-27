@@ -1,3 +1,32 @@
+/**
+ ==============================================================================
+ Copyright 2019, Jonathan Zrake
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy of
+ this software and associated documentation files (the "Software"), to deal in
+ the Software without restriction, including without limitation the rights to
+ use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+ of the Software, and to permit persons to whom the Software is furnished to do
+ so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+
+ ==============================================================================
+*/
+
+
+
+
+#pragma once
 #include <optional>
 #include <string>
 #include <vector>
@@ -362,9 +391,31 @@ public:
         return detail::check(H5Tget_size(id));
     }
 
+    bool is_variable_string() const
+    {
+        return detail::check(H5Tis_variable_str(id));
+    }
+
+    auto get_class() const
+    {
+        return detail::check(H5Tget_class(id));
+    }
+
     Datatype copy() const
     {
         return Identifier::datatype(H5Tcopy(id));
+    }
+
+    Datatype get_native_type() const
+    {
+        return Identifier::datatype(H5Tget_native_type(id, H5T_DIR_ASCEND));
+    }
+
+    Datatype with_variable_size() const
+    {
+        auto result = copy();
+        detail::check(H5Tset_size(result.id, H5T_VARIABLE));
+        return result;        
     }
 
     Datatype with_size(std::size_t size) const
@@ -379,7 +430,6 @@ public:
         auto dims = hsize_t(size);
         return Identifier::datatype(H5Tarray_create(id, 1, &dims));
     }
-
 
 private:
     friend class Dataset;
@@ -829,7 +879,10 @@ template<> struct hdf5_container_address<std::string>
 
 template<> struct hdf5_container_creation<std::string>
 {
-    std::string operator()(const Dataset& dset) { return std::string(dset.get_type().size(), 0); }
+    std::string operator()(const Dataset& dset)
+    {
+        return std::string(dset.get_type().size(), 0);
+    }
 };
 
 
