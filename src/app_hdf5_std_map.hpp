@@ -1,4 +1,3 @@
-
 /**
  ==============================================================================
  Copyright 2019, Jonathan Zrake
@@ -27,52 +26,55 @@
 
 
 
-#define DO_UNIT_TESTS
-#include "app_config.hpp"
-#include "app_binary_serialize.hpp"
+#pragma once
+#include <map>
+#include <string>
 #include "app_hdf5.hpp"
-#include "app_hdf5_ndarray.hpp"
-#include "app_hdf5_std_map.hpp"
-#include "app_hdf5_std_variant.hpp"
-#include "core_bqo_tree.hpp"
-#include "core_bsp_tree.hpp"
-#include "core_dimensional.hpp"
-#include "core_linked_list.hpp"
-#include "core_ndarray.hpp"
-#include "core_numeric_array.hpp"
-#include "core_numeric_optional.hpp"
-#include "core_numeric_tuple.hpp"
-#include "core_rational.hpp"
-#include "core_sequence.hpp"
+
+
+
+
+//=============================================================================
+namespace h5 {
+
+
+
+
+//=============================================================================
+template<typename T>
+struct hdf5_is_key_value_container<std::map<std::string, T>> : std::true_type
+{
+};
+
+} // namespace h5
+
+
+
+
+//=============================================================================
+#ifdef DO_UNIT_TESTS
 #include "core_unit_test.hpp"
 
 
 
 
 //=============================================================================
-int main()
+void test_hdf5_std_map()
 {
-    start_unit_tests();
+    auto test_read_write = [] (auto value)
+    {
+        {
+            auto file = h5::File("test.h5", h5::File::Access::Truncate);
+            h5::write(file, "value", value);
+        }
+        {
+            auto file = h5::File("test.h5", h5::File::Access::Read);
+            require(h5::read<decltype(value)>(file, "value") == value);
+        }
+    };
 
-    // core
-    test_binary_serialize();
-    test_bqo_tree();
-    test_bsp_tree();
-    test_dimensional();
-    test_linked_list();
-    test_ndarray();
-    test_numeric_array();
-    test_numeric_optional();
-    test_numeric_tuple();
-    test_rational();
-    test_sequence();
-
-    // app
-    test_hdf5();
-    test_hdf5_ndarray();
-    test_hdf5_std_variant();
-    test_hdf5_std_map();
-
-    report_test_results();
-    return 0;
+    test_read_write(std::map<std::string, int>{{"one", 1}, {"two", 2}, {"three", 3}});
+    test_read_write(std::map<std::string, int>{{"one", 1.1}, {"two", 2.2}, {"three", 3.3}});
 }
+
+#endif // DO_UNIT_TESTS

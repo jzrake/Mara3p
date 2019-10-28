@@ -232,7 +232,7 @@ public:
     template<typename Container>
     static Dataspace simple(Container dims)
     {
-        auto hdims = std::vector<hsize_t>(dims.begin(), dims.end());
+        auto hdims = std::vector<hsize_t>(begin(dims), end(dims));
         return Identifier::dataspace(H5Screate_simple(hdims.size(), &hdims[0], nullptr));
     }
 
@@ -257,8 +257,8 @@ public:
         {
             throw std::invalid_argument("h5::Dataspace::simple (dims and max dims sizes do not agree)");
         }
-        auto hdims = std::vector<hsize_t>(dims.begin(), dims.end());
-        auto max_hdims = std::vector<hsize_t>(max_dims.begin(), max_dims.end());
+        auto hdims = std::vector<hsize_t>(begin(dims), end(dims));
+        auto max_hdims = std::vector<hsize_t>(begin(max_dims), end(max_dims));
         return Identifier::dataspace(H5Screate_simple(hdims.size(), &hdims[0], &max_hdims[0]));
     }
 
@@ -578,13 +578,14 @@ public:
 
 
     /**
-     * @brief      Creates a dataset.
+     * @brief      Creates a dataset. Throws an exception if a dataset with the
+     *             given name already exists.
      *
-     * @param[in]  name   The name
-     * @param[in]  type   The type
-     * @param[in]  space  The space
+     * @param[in]  name   The name of the new dataset
+     * @param[in]  type   The type of the new dataset
+     * @param[in]  space  The shape of the new dataset
      *
-     * @return     { description_of_the_return_value }
+     * @return     A dataset
      */
     Dataset create_dataset(std::string name, const Datatype& type, const Dataspace& space) const
     {
@@ -595,11 +596,11 @@ public:
 
 
     /**
-     * @brief      Opens a dataset.
+     * @brief      Opens a dataset that already exists.
      *
-     * @param[in]  name  The name
+     * @param[in]  name  The name of the dataset
      *
-     * @return     { description_of_the_return_value }
+     * @return     A dataset
      */
     Dataset open_dataset(std::string name) const
     {
@@ -610,13 +611,15 @@ public:
 
 
     /**
-     * @brief      { function_description }
+     * @brief      Either open or create a dataset with the given name, type,
+     *             and shape. Throws an exception if an incompatible dataset
+     *             with that name already exists.
      *
-     * @param[in]  name   The name
-     * @param[in]  type   The type
-     * @param[in]  space  The space
+     * @param[in]  name   The name of the dataset to open or create
+     * @param[in]  type   The type of the dataset
+     * @param[in]  space  The shape of the dataset
      *
-     * @return     { description_of_the_return_value }
+     * @return     A dataset
      */
     Dataset require_dataset(std::string name, const Datatype& type, const Dataspace& space) const
     {
@@ -630,6 +633,60 @@ public:
         }
         return create_dataset(name, type, space);
     }
+
+
+
+
+    //=========================================================================
+    class iterator
+    {
+    public:
+
+        using value_type = std::string;
+        using iterator_category = std::forward_iterator_tag;
+
+        //=====================================================================
+        iterator(hid_t id, hsize_t idx) : id(id), idx(idx) {}
+        iterator& operator++() { ++idx; return *this; }
+        iterator operator++(int) { auto ret = *this; this->operator++(); return ret; }
+        bool operator==(iterator other) const { return id == other.id && idx == other.idx; }
+        bool operator!=(iterator other) const { return id != other.id || idx != other.idx; }
+        std::string operator*() const
+        {
+            static char name[1024];
+
+            if (H5Lget_name_by_idx(id, ".",
+                H5_INDEX_NAME, H5_ITER_NATIVE, idx, name, 1024, H5P_DEFAULT) > 1024)
+            {
+                throw std::overflow_error("object names longer than 1024 are not supported");
+            }
+            return name;
+        }
+
+    private:
+        //=====================================================================
+        hid_t id = -1;
+        hsize_t idx = 0;
+    };
+
+
+
+
+    /**
+     * @brief      Return the number of items in this group.
+     *
+     * @return     The number
+     */
+    std::size_t size() const
+    {
+        auto op = [] (auto, auto, auto, auto) { return 0; };
+        auto idx = hsize_t(0);
+        H5Literate(id, H5_INDEX_NAME, H5_ITER_INC, &idx, op, nullptr);
+        return idx;
+    }
+
+    iterator begin() const { return iterator(id, 0); }
+    iterator end()   const { return iterator(id, size()); }
 
 
 
@@ -713,106 +770,40 @@ namespace h5 {
 
 
 
-/**
- * @brief      Unspecified conversion-to-serializable class. You should
- *             specialize this struct for a type T if T must be converted to
- *             another type to be serialized. You must create a typedef called
- *             'type' to represent the converted-to type U in your
- *             specialization (obviously T must be a different type than U). You
- *             must also create an overload of the call operator taking a T and
- *             returning a U.
- *
- * @tparam     T     The data type to convert from
- */
-template<typename T>
-struct conversion_to_serializable_t
-{
-    using type = T;
-    auto operator()(T value) const { return value; }
-};
-
-
-
-
-/**
- * @brief      Unspecified conversion-from-serializable class. You should
- *             specialize this struct for a type T if T is fetched from the
- *             deserializer as a type U other than T. You must create a typedef
- *             'type' to represent U, and overload the call operator to take a U
- *             and return a T.
- *
- * @tparam     T     The data type to convert to
- */
-template<typename T>
-struct conversion_from_serializable_t
-{
-    using type = T;
-    auto operator()(T value) const { return value; }
-};
-
-
-
-
-/**
- * @brief      Unspecified struct to write the size of a dynamically sized
- *             container type T. The call operator must be overloaded with the
- *             same signature as below, but where a description of the item size
- *             (or shape) is described to the Serializer instance using the same
- *             types of calls as in the type_descriptor_t's call operator. If
- *             this struct is specialized then you also need to specialize
- *             container_shape_setter_t to vend out the size or shape information
- *             that was described here.
- *
- * @tparam     T     The container type
- */
-template<typename T>
-struct container_shape_descriptor_t
-{
-    template<typename Serializer>
-    void operator()(Serializer&, const T&) const {}
-};
-
-
-
-
-/**
- * @brief      Unspecified struct to create an instance of a dynamically sized
- *             container type T. The call operator must be overloaded to vend
- *             from the Serializer instance the size or shape described in the
- *             specialization of container_shape_descriptor_t<T>, and then
- *             resize the input container appropriately.
- *
- * @tparam     T     The container type
- */
-template<typename T>
-struct container_shape_setter_t
-{
-    template<typename Serializer>
-    void operator()(Serializer&, T&) const {}
-};
-
-
-
-
 //=============================================================================
-template<typename T> struct hdf5_container_address
+template<typename T>
+struct hdf5_container_address
 {
-    const void* operator()(const T& value) { return &value; }
-    void* operator()(T& value) { return &value; }
+    const void* operator()(const T& value) const { return &value; }
+    void* operator()(T& value) const { return &value; }
 };
 
-template<typename T> struct hdf5_datatype_creation
+template<typename T>
+struct hdf5_datatype_creation
 {
 };
 
-template<typename T> struct hdf5_dataspace_creation
+template<typename T>
+struct hdf5_dataspace_creation
 {
-    Dataspace operator()(const T&) { return Dataspace::scalar(); }
+    Dataspace operator()(const T&) const { return Dataspace::scalar(); }
 };
 
-template<typename T> struct hdf5_container_creation
+template<typename T>
+struct hdf5_container_creation
 {
-    T operator()(const Dataset&) { return T(); }
+    T operator()(const Dataset&) const { return T(); }
+};
+
+template<typename T>
+struct hdf5_conversion_post_read
+{
+    auto operator()(T&& value) const { return std::move(value); }
+};
+
+template<typename T>
+struct hdf5_is_key_value_container : std::false_type
+{
 };
 
 
@@ -844,9 +835,15 @@ void* container_address_of(T& value)
 }
 
 template<typename T>
-T create_container_for(const Dataset& dataset)
+auto create_container_for(const Dataset& dataset)
 {
     return hdf5_container_creation<T>()(dataset);
+}
+
+template<typename T>
+auto convert_data_post_read(T&& value)
+{
+    return hdf5_conversion_post_read<T>()(std::move(value));
 }
 
 
@@ -863,7 +860,8 @@ template<> struct hdf5_datatype_creation<unsigned long> { Datatype operator()(co
 
 
 //=============================================================================
-template<> struct hdf5_datatype_creation<std::string>
+template<>
+struct hdf5_datatype_creation<std::string>
 {
     Datatype operator()(const std::string& v)
     {
@@ -871,13 +869,15 @@ template<> struct hdf5_datatype_creation<std::string>
     }
 };
 
-template<> struct hdf5_container_address<std::string>
+template<>
+struct hdf5_container_address<std::string>
 {
     const void* operator()(const std::string& value) { return value.data(); }
     void* operator()(std::string& value) { return value.data(); }
 };
 
-template<> struct hdf5_container_creation<std::string>
+template<>
+struct hdf5_container_creation<std::string>
 {
     std::string operator()(const Dataset& dset)
     {
@@ -907,13 +907,15 @@ struct hdf5_datatype_creation<std::vector<T>>
     }
 };
 
-template<typename T> struct hdf5_container_address<std::vector<T>>
+template<typename T>
+struct hdf5_container_address<std::vector<T>>
 {
     const void* operator()(const std::vector<T>& value) { return value.data(); }
     void* operator()(std::vector<T>& value) { return value.data(); }
 };
 
-template<typename T> struct hdf5_container_creation<std::vector<T>>
+template<typename T>
+struct hdf5_container_creation<std::vector<T>>
 {
     std::vector<T> operator()(const Dataset& dset)
     {
@@ -928,6 +930,8 @@ template<typename T> struct hdf5_container_creation<std::vector<T>>
 template<typename T>
 void write(const Dataset& dset, const T& value)
 {
+    static_assert(! hdf5_is_key_value_container<T>::value);
+
     auto type = make_datatype_for(value);
     auto mspc = make_dataspace_for(value);
     auto data = container_address_of(value);
@@ -937,30 +941,59 @@ void write(const Dataset& dset, const T& value)
 template<typename T>
 void write(const Group& group, std::string name, const T& value)
 {
-    auto type = make_datatype_for(value);
-    auto mspc = make_dataspace_for(value);
-    write(group.require_dataset(name, type, mspc), value);
+    if constexpr (hdf5_is_key_value_container<T>::value)
+    {
+        auto subgroup = group.require_group(name);
+
+        for (const auto& item : value)
+        {
+            write(subgroup, item.first, item.second);
+        }
+    }
+    else
+    {
+        auto type = make_datatype_for(value);
+        auto mspc = make_dataspace_for(value);
+        write(group.require_dataset(name, type, mspc), value);
+    }
 }
 
 template<typename T>
 void read(const Dataset& dset, T& value)
 {
-    value = create_container_for<T>(dset);
-    auto type = make_datatype_for(value);
+    static_assert(! hdf5_is_key_value_container<T>::value);
+
+    auto temp = create_container_for<T>(dset);
+    auto type = make_datatype_for(temp);
     auto fspc = dset.get_space();
-    auto data = container_address_of(value);
+    auto data = container_address_of(temp);
     dset.read(type, fspc, fspc, data);
+    value = convert_data_post_read(std::move(temp));
 }
 
 template<typename T>
 void read(const Group& group, std::string name, T& value)
 {
-    read(group.open_dataset(name), value);
+    if constexpr (hdf5_is_key_value_container<T>::value)
+    {
+        auto subgroup = group.open_group(name);
+
+        for (auto key : subgroup)
+        {
+            value[key] = read<typename T::mapped_type>(subgroup, key);
+        }
+    }
+    else
+    {
+        read(group.open_dataset(name), value);
+    }
 }
 
 template<typename T>
 T read(const Dataset& dset)
 {
+    static_assert(! hdf5_is_key_value_container<T>::value);
+
     auto value = T();
     read(dset, value);
     return value;
@@ -969,7 +1002,16 @@ T read(const Dataset& dset)
 template<typename T>
 T read(const Group& group, std::string name)
 {
-    return read<T>(group.open_dataset(name));
+    if constexpr (hdf5_is_key_value_container<T>::value)
+    {
+        auto value = T();
+        read(group, name, value);
+        return value;
+    }
+    else
+    {
+        return read<T>(group.open_dataset(name));
+    }
 }
 
 } // namespace h5

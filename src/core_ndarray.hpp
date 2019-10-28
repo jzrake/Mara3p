@@ -85,8 +85,6 @@ struct uivec_t
     const uint& operator[](std::size_t n) const { return __value[n]; }
     bool operator==(const uivec_t& b) const { for (std::size_t i = 0; i < Rank; ++i) { if (__value[i] != b[i]) return false; } return true; }
     bool operator!=(const uivec_t& b) const { for (std::size_t i = 0; i < Rank; ++i) { if (__value[i] != b[i]) return true; } return false; }
-    // uivec_t operator+(const uivec_t& b) const { auto r = *this; for (std::size_t i = 0; i < Rank; ++i) r[i] += b[i]; return r; }
-    // uivec_t operator-(const uivec_t& b) const { auto r = *this; for (std::size_t i = 0; i < Rank; ++i) r[i] -= b[i]; return r; }
     uint __value[Rank];
 };
 
@@ -333,12 +331,6 @@ struct array_t
     decltype(auto) data() const { return provider.data(); }
     decltype(auto) data() { return provider.data(); }
 
-    // template<typename SliceType, typename = std::enable_if<SliceType::is_slice::value>>
-    // auto operator[](SliceType slice) const
-    // {
-    //     return slice(*this);
-    // }
-
     ProviderType provider;
     uivec_t<Rank> shape;
 };
@@ -364,6 +356,14 @@ template<typename ProviderType, uint Rank>
 auto make_array(ProviderType provider, uivec_t<Rank> shape)
 {
     return array_t<ProviderType, Rank>{std::move(provider), shape};
+}
+
+template<typename ValueType, uint Rank>
+auto make_unique_array(uivec_t<Rank> shape)
+{
+    auto t = strides_row_major(shape);
+    auto p = nd::unique_provider_t<ValueType, Rank>{std::make_unique<nd::buffer_t<ValueType>>(product(shape)), t};
+    return make_array(std::move(p), shape);    
 }
 
 template<typename ProviderType, uint Rank>

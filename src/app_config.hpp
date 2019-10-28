@@ -48,10 +48,8 @@ namespace mara
 
     //=========================================================================
     inline auto argv_to_string_map(int argc, const char* argv[]);
-    inline auto make_config_template();
-
-    template<typename Mapping>
-    void pretty_print(std::ostream& os, std::string header, const Mapping& parameters);
+    inline auto config_template();
+    inline void pretty_print(std::ostream& os, std::string header, const config_t& parameters);
 };
 
 
@@ -159,7 +157,7 @@ public:
 
     //=========================================================================
     config_template_t() {}
-    config_template_t(config_parameter_map_t&& parameters) : parameters(parameters) {}
+    config_template_t(config_parameter_map_t parameters) : parameters(parameters) {}
 
     template<typename ValueType>
     config_template_t item(const char* key, ValueType default_value) &&
@@ -205,7 +203,7 @@ auto mara::argv_to_string_map(int argc, const char* argv[])
 
             if (items.count(key))
             {
-                throw std::invalid_argument("duplicate parameter " + key);
+                throw std::invalid_argument("mara::argv_to_string_map (duplicate parameter " + key + ")");
             }
             items[key] = val;
         }
@@ -213,13 +211,12 @@ auto mara::argv_to_string_map(int argc, const char* argv[])
     return items;
 }
 
-auto mara::make_config_template()
+auto mara::config_template()
 {
     return config_template_t();
 }
 
-template<typename Mapping>
-void mara::pretty_print(std::ostream& os, std::string header, const Mapping& parameters)
+void mara::pretty_print(std::ostream& os, std::string header, const config_t& parameters)
 {
     using std::left;
     using std::setw;
