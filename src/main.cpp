@@ -28,8 +28,8 @@
 
 
 #define DO_UNIT_TESTS
-#include "app_config.hpp"
 #include "app_binary_serialize.hpp"
+#include "app_config.hpp"
 #include "app_hdf5.hpp"
 #include "app_hdf5_ndarray.hpp"
 #include "app_hdf5_std_map.hpp"
@@ -37,6 +37,7 @@
 #include "core_bqo_tree.hpp"
 #include "core_bsp_tree.hpp"
 #include "core_dimensional.hpp"
+#include "core_geometric.hpp"
 #include "core_linked_list.hpp"
 #include "core_ndarray.hpp"
 #include "core_numeric_array.hpp"
@@ -59,6 +60,7 @@ int main()
     test_bqo_tree();
     test_bsp_tree();
     test_dimensional();
+    test_geometric();
     test_linked_list();
     test_ndarray();
     test_numeric_array();
