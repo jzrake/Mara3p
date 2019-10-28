@@ -27,7 +27,6 @@
 
 
 #pragma once
-#include <cmath>
 #include "core_rational.hpp"
 
 
@@ -64,7 +63,7 @@ struct quantity_t
     }
     double value = 0.0;
     static constexpr auto dimensions = dimensions_t<N1, N2, N3, D1, D2, D3>{};
-    static constexpr auto powers = std::make_tuple(double(N1) / D1, double(N2) / D2, double(N3) / D3);
+    static constexpr auto powers = std::tuple(double(N1) / D1, double(N2) / D2, double(N3) / D3);
 };
 
 
@@ -211,22 +210,6 @@ using unit_energy_density  = decltype(unit_energy{}   / unit_volume{});
 using unit_mass_density    = decltype(unit_mass{}     / unit_volume{});
 using unit_specific_energy = decltype(unit_energy{}   / unit_mass{});
 
-
-
-
-//=============================================================================
-template<long N1, long N2, long N3, unsigned long D1, unsigned long D2, unsigned long D3>
-auto sqrt(quantity_t<N1, N2, N3, D1, D2, D3> a)
-{
-    return quantity(std::sqrt(a.value), pow(a.dimensions, static_rational_t<1, 2>{}));
-}
-
-template<long N, unsigned long D=1, long N1, long N2, long N3, unsigned long D1, unsigned long D2, unsigned long D3>
-auto pow(quantity_t<N1, N2, N3, D1, D2, D3> a, static_rational_t<N, D> p={})
-{
-    return quantity(std::pow(a.value, p.value), pow(a.dimensions, p));
-}
-
 } // namespace dimensional
 
 
@@ -243,20 +226,18 @@ auto pow(quantity_t<N1, N2, N3, D1, D2, D3> a, static_rational_t<N, D> p={})
 void test_dimensional()
 {
     require(sizeof(dimensional::time) == sizeof(double));
-    require((dimensional::mass * dimensional::mass).powers == std::make_tuple(2., 0., 0.));
-    require((dimensional::mass / dimensional::mass).powers == std::make_tuple(0., 0., 0.));
-    require((dimensional::dist * dimensional::dist).powers == std::make_tuple(0., 2., 0.));
-    require((dimensional::dist / dimensional::dist).powers == std::make_tuple(0., 0., 0.));
-    require((dimensional::time * dimensional::time).powers == std::make_tuple(0., 0., 2.));
-    require((dimensional::time / dimensional::time).powers == std::make_tuple(0., 0., 0.));
-    require((1. / dimensional::mass).powers == std::make_tuple(-1.,  0.,  0.));
-    require((1. / dimensional::dist).powers == std::make_tuple( 0., -1.,  0.));
-    require((1. / dimensional::time).powers == std::make_tuple( 0.,  0., -1.));
-    require((2. * dimensional::mass).powers == std::make_tuple( 1.,  0.,  0.));
-    require((2. * dimensional::dist).powers == std::make_tuple( 0.,  1.,  0.));
-    require((2. * dimensional::time).powers == std::make_tuple( 0.,  0.,  1.));
-    require(sqrt(dimensional::mass).powers == std::make_tuple(0.5, 0.0, 0.0));
-    require(pow(dimensional::mass, rational::number<1, 2>()).powers == std::make_tuple(0.5, 0.0, 0.0));
+    require((dimensional::mass * dimensional::mass).powers == std::tuple(2., 0., 0.));
+    require((dimensional::mass / dimensional::mass).powers == std::tuple(0., 0., 0.));
+    require((dimensional::dist * dimensional::dist).powers == std::tuple(0., 2., 0.));
+    require((dimensional::dist / dimensional::dist).powers == std::tuple(0., 0., 0.));
+    require((dimensional::time * dimensional::time).powers == std::tuple(0., 0., 2.));
+    require((dimensional::time / dimensional::time).powers == std::tuple(0., 0., 0.));
+    require((1. / dimensional::mass).powers == std::tuple(-1.,  0.,  0.));
+    require((1. / dimensional::dist).powers == std::tuple( 0., -1.,  0.));
+    require((1. / dimensional::time).powers == std::tuple( 0.,  0., -1.));
+    require((2. * dimensional::mass).powers == std::tuple( 1.,  0.,  0.));
+    require((2. * dimensional::dist).powers == std::tuple( 0.,  1.,  0.));
+    require((2. * dimensional::time).powers == std::tuple( 0.,  0.,  1.));
 }
 
 #endif // DO_UNIT_TESTS

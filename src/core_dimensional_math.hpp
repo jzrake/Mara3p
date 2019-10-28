@@ -1,4 +1,3 @@
-
 /**
  ==============================================================================
  Copyright 2019, Jonathan Zrake
@@ -27,61 +26,49 @@
 
 
 
-#define DO_UNIT_TESTS
-#include "app_binary_serialize.hpp"
-#include "app_config.hpp"
-#include "app_hdf5.hpp"
-#include "app_hdf5_ndarray.hpp"
-#include "app_hdf5_numeric_array.hpp"
-#include "app_hdf5_ndarray_dimensional.hpp"
-#include "app_hdf5_std_map.hpp"
-#include "app_hdf5_std_variant.hpp"
-#include "core_bqo_tree.hpp"
-#include "core_bsp_tree.hpp"
+#pragma once
+#include <cmath>
 #include "core_dimensional.hpp"
-#include "core_dimensional_math.hpp"
-#include "core_geometric.hpp"
-#include "core_linked_list.hpp"
-#include "core_ndarray.hpp"
-#include "core_numeric_array.hpp"
-#include "core_numeric_optional.hpp"
-#include "core_numeric_tuple.hpp"
-#include "core_rational.hpp"
-#include "core_sequence.hpp"
-#include "core_unit_test.hpp"
-#include "physics_euler.hpp"
 
 
 
 
 //=============================================================================
-int main()
+namespace dimensional {
+
+
+
+
+//=============================================================================
+template<long N1, long N2, long N3, unsigned long D1, unsigned long D2, unsigned long D3>
+auto sqrt(quantity_t<N1, N2, N3, D1, D2, D3> a)
 {
-    start_unit_tests();
-
-    // core
-    test_binary_serialize();
-    test_bqo_tree();
-    test_bsp_tree();
-    test_dimensional();
-    test_dimensional_math();
-    test_geometric();
-    test_linked_list();
-    test_ndarray();
-    test_numeric_array();
-    test_numeric_optional();
-    test_numeric_tuple();
-    test_rational();
-    test_sequence();
-
-    // app
-    test_hdf5();
-    test_hdf5_ndarray();
-    test_hdf5_ndarray_dimensional();
-    test_hdf5_numeric_array();
-    test_hdf5_std_variant();
-    test_hdf5_std_map();
-
-    report_test_results();
-    return 0;
+    return quantity(std::sqrt(a.value), pow(a.dimensions, static_rational_t<1, 2>{}));
 }
+
+template<long N, unsigned long D=1, long N1, long N2, long N3, unsigned long D1, unsigned long D2, unsigned long D3>
+auto pow(quantity_t<N1, N2, N3, D1, D2, D3> a, static_rational_t<N, D> p={})
+{
+    return quantity(std::pow(a.value, p.value), pow(a.dimensions, p));
+}
+
+} // namespace dimensional
+
+
+
+
+//=============================================================================
+#ifdef DO_UNIT_TESTS
+#include "core_unit_test.hpp"
+
+
+
+
+//=============================================================================
+void test_dimensional_math()
+{
+    require(sqrt(dimensional::mass).powers == std::tuple(0.5, 0.0, 0.0));
+    require(pow(dimensional::mass, rational::number<1, 2>()).powers == std::tuple(0.5, 0.0, 0.0));
+}
+
+#endif // DO_UNIT_TESTS
