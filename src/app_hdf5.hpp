@@ -796,7 +796,7 @@ struct hdf5_container_creation
 };
 
 template<typename T>
-struct hdf5_conversion_post_read
+struct hdf5_container_conversion_post_read
 {
     auto operator()(T&& value) const { return std::move(value); }
 };
@@ -804,6 +804,18 @@ struct hdf5_conversion_post_read
 template<typename T>
 struct hdf5_is_key_value_container : std::false_type
 {
+};
+
+template<typename T>
+struct hdf5_conversion_to_hdf5_writable
+{
+    using type = T;
+};
+
+template<typename T>
+struct hdf5_conversion_from_hdf5_writable
+{
+    using type = T;
 };
 
 
@@ -841,9 +853,21 @@ auto create_container_for(const Dataset& dataset)
 }
 
 template<typename T>
-auto convert_data_post_read(T&& value)
+auto convert_container_post_read(T&& value)
 {
-    return hdf5_conversion_post_read<T>()(std::move(value));
+    return hdf5_container_conversion_post_read<T>()(std::move(value));
+}
+
+template<typename T>
+auto convert_to_hdf5_writable(const T& value)
+{
+    return hdf5_conversion_to_hdf5_writable<T>()(value);
+}
+
+template<typename T>
+auto convert_from_hdf5_writable(const typename hdf5_conversion_from_hdf5_writable<T>::type& value)
+{
+    return hdf5_conversion_from_hdf5_writable<T>()(value);
 }
 
 
@@ -930,18 +954,29 @@ struct hdf5_container_creation<std::vector<T>>
 template<typename T>
 void write(const Dataset& dset, const T& value)
 {
-    static_assert(! hdf5_is_key_value_container<T>::value);
+    if constexpr (! std::is_same_v<typename hdf5_conversion_to_hdf5_writable<T>::type, T>)
+    {
+        write(dset, convert_to_hdf5_writable(value));
+    }
+    else
+    {
+        static_assert(! hdf5_is_key_value_container<T>::value);
 
-    auto type = make_datatype_for(value);
-    auto mspc = make_dataspace_for(value);
-    auto data = container_address_of(value);
-    dset.write(type, mspc, mspc, data);
+        auto type = make_datatype_for(value);
+        auto mspc = make_dataspace_for(value);
+        auto data = container_address_of(value);
+        dset.write(type, mspc, mspc, data);
+    }
 }
 
 template<typename T>
 void write(const Group& group, std::string name, const T& value)
 {
-    if constexpr (hdf5_is_key_value_container<T>::value)
+    if constexpr (! std::is_same_v<typename hdf5_conversion_to_hdf5_writable<T>::type, T>)
+    {
+        write(group, name, convert_to_hdf5_writable(value));
+    }
+    else if constexpr (hdf5_is_key_value_container<T>::value)
     {
         auto subgroup = group.require_group(name);
 
@@ -961,14 +996,23 @@ void write(const Group& group, std::string name, const T& value)
 template<typename T>
 void read(const Dataset& dset, T& value)
 {
-    static_assert(! hdf5_is_key_value_container<T>::value);
+    if constexpr (! std::is_same_v<typename hdf5_conversion_from_hdf5_writable<T>::type, T>)
+    {
+        auto value_in_file = typename hdf5_conversion_from_hdf5_writable<T>::type();
+        read(dset, value_in_file);
+        value = convert_from_hdf5_writable<T>(value_in_file);
+    }
+    else
+    {
+        static_assert(! hdf5_is_key_value_container<T>::value);
 
-    auto temp = create_container_for<T>(dset);
-    auto type = make_datatype_for(temp);
-    auto fspc = dset.get_space();
-    auto data = container_address_of(temp);
-    dset.read(type, fspc, fspc, data);
-    value = convert_data_post_read(std::move(temp));
+        auto temp = create_container_for<T>(dset);
+        auto type = make_datatype_for(temp);
+        auto fspc = dset.get_space();
+        auto data = container_address_of(temp);
+        dset.read(type, fspc, fspc, data);
+        value = convert_container_post_read(std::move(temp));
+    }
 }
 
 template<typename T>
@@ -1021,7 +1065,25 @@ T read(const Group& group, std::string name)
 
 //=============================================================================
 #ifdef DO_UNIT_TESTS
+#include <tuple>
 #include "core_unit_test.hpp"
+
+
+
+
+template<>
+struct h5::hdf5_conversion_to_hdf5_writable<std::tuple<int>>
+{
+    using type = int;
+    auto operator()(const std::tuple<int>& value) const { return std::get<0>(value); }
+};
+
+template<>
+struct h5::hdf5_conversion_from_hdf5_writable<std::tuple<int>>
+{
+    using type = int;
+    auto operator()(const int& value) const { return std::tuple(value); }
+};
 
 
 
@@ -1049,6 +1111,7 @@ void test_hdf5()
     test_read_write(std::string("ten"));
     test_read_write(std::vector{1, 2, 3});
     test_read_write(std::vector{1.1, 2.2, 3.3});
+    test_read_write(std::tuple(13));
 }
 
 #endif // DO_UNIT_TESTS

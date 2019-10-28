@@ -71,14 +71,6 @@ struct quantity_t
 
 
 //=============================================================================
-static quantity_t<1, 0, 0> mass {1.0};
-static quantity_t<0, 1, 0> dist {1.0};
-static quantity_t<0, 0, 1> time {1.0};
-
-
-
-
-//=============================================================================
 template<long N1, long N2, long N3, unsigned long D1=1, unsigned long D2=1, unsigned long D3=1>
 auto dimensions(static_rational_t<N1, D1>, static_rational_t<N2, D2>, static_rational_t<N3, D3>)
 {
@@ -197,6 +189,27 @@ bool operator!=(quantity_t<N1, N2, N3, D1, D2, D3> a, quantity_t<N1, N2, N3, D1,
 {
     return a.value != b.value;
 }
+
+
+
+
+//=============================================================================
+static quantity_t<1, 0, 0> mass {1.0};
+static quantity_t<0, 1, 0> dist {1.0};
+static quantity_t<0, 0, 1> time {1.0};
+
+using unit_mass            = quantity_t<1, 0, 0>;
+using unit_length          = quantity_t<0, 1, 0>;
+using unit_time            = quantity_t<0, 0, 1>;
+using unit_velocity        = decltype(unit_length{}   / unit_time{});
+using unit_acceleration    = decltype(unit_velocity{} * unit_time{});
+using unit_force           = decltype(unit_mass{}     * unit_acceleration{});
+using unit_energy          = decltype(unit_force{}    * unit_length{});
+using unit_area            = decltype(unit_length{}   * unit_length{});
+using unit_volume          = decltype(unit_length{}   * unit_length{} * unit_length{});
+using unit_energy_density  = decltype(unit_energy{}   / unit_volume{});
+using unit_mass_density    = decltype(unit_mass{}     / unit_volume{});
+using unit_specific_energy = decltype(unit_energy{}   / unit_mass{});
 
 
 

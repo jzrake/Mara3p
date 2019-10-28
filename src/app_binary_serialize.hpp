@@ -72,7 +72,7 @@ struct type_descriptor_t
  *             must also create an overload of the call operator taking a T and
  *             returning a U.
  *
- * @tparam     T     The data type to convert from
+ * @tparam     T     The serializable data type to convert to
  */
 template<typename T>
 struct conversion_to_serializable_t
@@ -91,7 +91,7 @@ struct conversion_to_serializable_t
  *             'type' to represent U, and overload the call operator to take a U
  *             and return a T.
  *
- * @tparam     T     The data type to convert to
+ * @tparam     T     The serializable data type that was converted to
  */
 template<typename T>
 struct conversion_from_serializable_t

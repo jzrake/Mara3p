@@ -97,7 +97,7 @@ struct hdf5_container_creation<nd::shared_array<ValueType, Rank>>
 };
 
 template<typename ValueType, nd::uint Rank>
-struct hdf5_conversion_post_read<nd::unique_array<ValueType, Rank>>
+struct hdf5_container_conversion_post_read<nd::unique_array<ValueType, Rank>>
 {
     auto operator()(nd::unique_array<ValueType, Rank>&& value) const
     {
@@ -113,6 +113,9 @@ struct hdf5_conversion_post_read<nd::unique_array<ValueType, Rank>>
 //=============================================================================
 #ifdef DO_UNIT_TESTS
 #include "core_unit_test.hpp"
+#include "core_numeric_tuple.hpp"
+#include "core_numeric_array.hpp"
+#include "core_dimensional.hpp"
 
 
 
