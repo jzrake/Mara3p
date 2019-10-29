@@ -1,3 +1,4 @@
+
 /**
  ==============================================================================
  Copyright 2019, Jonathan Zrake
@@ -26,58 +27,28 @@
 
 
 
-#pragma once
+#define DO_UNIT_TESTS
+#include "app_binary_serialize.hpp"
+#include "app_config.hpp"
 #include "app_hdf5.hpp"
-#include "core_numeric_array.hpp"
+#include "app_hdf5_ndarray.hpp"
+#include "app_hdf5_numeric_array.hpp"
+#include "app_hdf5_ndarray_dimensional.hpp"
+#include "app_hdf5_std_map.hpp"
+#include "app_hdf5_std_variant.hpp"
 
 
 
 
 //=============================================================================
-namespace h5 {
-
-
-
-
-//=============================================================================
-template<typename T, std::size_t S>
-struct hdf5_datatype_creation<numeric::array_t<T, S>>
+int test_app()
 {
-    auto operator()(const numeric::array_t<T, S>& value) const
-    {
-        return make_datatype_for(T()).as_array(S);
-    }
-};
-
-} // namespace h5
-
-
-
-
-//=============================================================================
-#ifdef DO_UNIT_TESTS
-#include "core_unit_test.hpp"
-
-
-
-
-//=============================================================================
-inline void test_hdf5_numeric_array()
-{
-    auto test_read_write = [] (auto value)
-    {
-        {
-            auto file = h5::File("test.h5", h5::File::Access::Truncate);
-            h5::write(file, "value", value);
-        }
-        {
-            auto file = h5::File("test.h5", h5::File::Access::Read);
-            require(h5::read<decltype(value)>(file, "value") == value);
-        }
-    };
-
-    test_read_write(numeric::array(1, 2, 3, 4));
-    test_read_write(numeric::array(1.2, 2.3, 3.4, 4.5, 5.6));
+    test_binary_serialize();
+    test_hdf5();
+    test_hdf5_ndarray();
+    test_hdf5_ndarray_dimensional();
+    test_hdf5_numeric_array();
+    test_hdf5_std_variant();
+    test_hdf5_std_map();
+    return 0;
 }
-
-#endif // DO_UNIT_TESTS

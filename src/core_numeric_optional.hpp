@@ -121,7 +121,7 @@ template<typename T> auto operator-(optional_t<T> a) { return map(a, std::negate
 
 
 //=============================================================================
-void test_numeric_optional()
+inline void test_numeric_optional()
 {
     require(  has_value(numeric::optional(12)));
     require(! has_value(numeric::optional<int>()));

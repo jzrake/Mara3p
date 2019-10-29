@@ -1089,7 +1089,7 @@ struct h5::hdf5_conversion_from_hdf5_writable<std::tuple<int>>
 
 
 //=============================================================================
-void test_hdf5()
+inline void test_hdf5()
 {
     auto test_read_write = [] (auto value)
     {

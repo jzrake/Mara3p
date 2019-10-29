@@ -444,7 +444,7 @@ struct pod_struct_t
     double b;
 };
 
-bool operator==(pod_struct_t a, pod_struct_t b)
+inline bool operator==(pod_struct_t a, pod_struct_t b)
 {
     return a.a == b.a && a.b == b.b;
 }
@@ -464,7 +464,7 @@ struct non_pod_struct_t
     std::string d;
 };
 
-bool operator==(non_pod_struct_t a, non_pod_struct_t b)
+inline bool operator==(non_pod_struct_t a, non_pod_struct_t b)
 {
     return a.a == b.a && a.b == b.b && a.c == b.c && a.d == b.d;
 }
@@ -486,7 +486,7 @@ struct serial::type_descriptor_t<non_pod_struct_t>
 
 
 //=============================================================================
-int test_binary_serialize()
+inline void test_binary_serialize()
 {
     auto require_serializes = [] (auto value)
     {
@@ -498,8 +498,6 @@ int test_binary_serialize()
     require_serializes(std::string("hey there!"));
     require_serializes(pod_struct_t{32, 3.14159});
     require_serializes(non_pod_struct_t{32, 3.14159, {3.4, 0.0, 3.10101}, "does it work?"});
-
-    return 0;
 }
 
 #endif // DO_UNIT_TESTS

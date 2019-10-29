@@ -59,7 +59,7 @@ struct hdf5_is_key_value_container<std::map<std::string, T>> : std::true_type
 
 
 //=============================================================================
-void test_hdf5_std_map()
+inline void test_hdf5_std_map()
 {
     auto test_read_write = [] (auto value)
     {

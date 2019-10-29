@@ -154,7 +154,7 @@ auto operator/(static_number_t<N1, D1> a, static_number_t<N2, D2> b)
 
 
 //=============================================================================
-void test_rational()
+inline void test_rational()
 {
     require(rational::number(+1, 2) + rational::number(+3, 2) == rational::number(+2));
     require(rational::number(+1, 2) - rational::number(+3, 2) == rational::number(-1));

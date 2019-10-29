@@ -90,7 +90,7 @@ struct h5::hdf5_conversion_from_hdf5_writable<nd::shared_array<numeric::tuple_t<
 
 
 //=============================================================================
-void test_hdf5_ndarray_dimensional()
+inline void test_hdf5_ndarray_dimensional()
 {
     auto test_read_write = [] (auto value)
     {

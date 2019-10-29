@@ -27,29 +27,13 @@
 
 
 
-#define DO_UNIT_TESTS
-#include "app_binary_serialize.hpp"
-#include "app_config.hpp"
-#include "app_hdf5.hpp"
-#include "app_hdf5_ndarray.hpp"
-#include "app_hdf5_numeric_array.hpp"
-#include "app_hdf5_ndarray_dimensional.hpp"
-#include "app_hdf5_std_map.hpp"
-#include "app_hdf5_std_variant.hpp"
-#include "core_bqo_tree.hpp"
-#include "core_bsp_tree.hpp"
-#include "core_dimensional.hpp"
-#include "core_dimensional_math.hpp"
-#include "core_geometric.hpp"
-#include "core_linked_list.hpp"
-#include "core_ndarray.hpp"
-#include "core_numeric_array.hpp"
-#include "core_numeric_optional.hpp"
-#include "core_numeric_tuple.hpp"
-#include "core_rational.hpp"
-#include "core_sequence.hpp"
 #include "core_unit_test.hpp"
-#include "physics_euler.hpp"
+
+
+
+
+int test_app();
+int test_core();
 
 
 
@@ -58,30 +42,8 @@
 int main()
 {
     start_unit_tests();
-
-    // core
-    test_binary_serialize();
-    test_bqo_tree();
-    test_bsp_tree();
-    test_dimensional();
-    test_dimensional_math();
-    test_geometric();
-    test_linked_list();
-    test_ndarray();
-    test_numeric_array();
-    test_numeric_optional();
-    test_numeric_tuple();
-    test_rational();
-    test_sequence();
-
-    // app
-    test_hdf5();
-    test_hdf5_ndarray();
-    test_hdf5_ndarray_dimensional();
-    test_hdf5_numeric_array();
-    test_hdf5_std_variant();
-    test_hdf5_std_map();
-
+    test_app();
+    test_core();
     report_test_results();
     return 0;
 }

@@ -166,7 +166,7 @@ template<typename... Ts, typename... Us> auto operator!=(tuple_t<Ts...> a, tuple
 
 
 //=============================================================================
-void test_numeric_tuple()
+inline void test_numeric_tuple()
 {
     auto a = numeric::tuple(1, 2.3, 3.f);
     auto b = map(a, [] (auto x) { return std::sqrt(x); });

@@ -231,7 +231,7 @@ auto generate(StartType start, FunctionType function)
     return generator_sequence_t<value_type, FunctionType>{start, function};
 }
 
-auto generate(long start=0)
+inline auto generate(long start=0)
 {
     return generate(start, [] (long i) { return i + 1; });
 }
@@ -862,12 +862,12 @@ auto chunk(SequenceType sequence, unsigned long chunk_size)
     return map(second(remove_if(enumerate(measure(sequence)), not_dividing)), advance_from);
 }
 
-auto range(unsigned long count)
+inline auto range(unsigned long count)
 {
     return take(generate(0), count);
 }
 
-auto range(long start, long final)
+inline auto range(long start, long final)
 {
     if (final < start)
         throw std::invalid_argument("seq::range (final must be >= start)");
@@ -989,7 +989,7 @@ inline auto repeat(unsigned long c) { return [c] (auto s) { return repeat(s, c);
 
 
 //=============================================================================
-void test_sequence()
+inline void test_sequence()
 {
     require((seq::to<std::basic_string>(seq::view(std::string("tree"))) == std::string("tree")));
     require((seq::to<std::vector>(seq::from(1, 2, 3)) == std::vector{1, 2, 3}));

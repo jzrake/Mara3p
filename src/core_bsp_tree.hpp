@@ -482,7 +482,7 @@ std::size_t size(tree_t<ValueType, ChildrenType, Ratio> tree)
 
 
 //=============================================================================
-void test_bsp_tree()
+inline void test_bsp_tree()
 {
     require(size(bsp_tree::just<2>(12)) == 1);
     require(size(bsp_tree::from(1, 2, 3)) == 3);

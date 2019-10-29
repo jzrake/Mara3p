@@ -1,3 +1,4 @@
+
 /**
  ==============================================================================
  Copyright 2019, Jonathan Zrake
@@ -26,58 +27,38 @@
 
 
 
-#pragma once
-#include "app_hdf5.hpp"
+#define DO_UNIT_TESTS
+#include "core_bqo_tree.hpp"
+#include "core_bsp_tree.hpp"
+#include "core_dimensional.hpp"
+#include "core_dimensional_math.hpp"
+#include "core_geometric.hpp"
+#include "core_linked_list.hpp"
+#include "core_ndarray.hpp"
 #include "core_numeric_array.hpp"
-
-
-
-
-//=============================================================================
-namespace h5 {
-
-
-
-
-//=============================================================================
-template<typename T, std::size_t S>
-struct hdf5_datatype_creation<numeric::array_t<T, S>>
-{
-    auto operator()(const numeric::array_t<T, S>& value) const
-    {
-        return make_datatype_for(T()).as_array(S);
-    }
-};
-
-} // namespace h5
-
-
-
-
-//=============================================================================
-#ifdef DO_UNIT_TESTS
+#include "core_numeric_optional.hpp"
+#include "core_numeric_tuple.hpp"
+#include "core_rational.hpp"
+#include "core_sequence.hpp"
 #include "core_unit_test.hpp"
 
 
 
 
 //=============================================================================
-inline void test_hdf5_numeric_array()
+int test_core()
 {
-    auto test_read_write = [] (auto value)
-    {
-        {
-            auto file = h5::File("test.h5", h5::File::Access::Truncate);
-            h5::write(file, "value", value);
-        }
-        {
-            auto file = h5::File("test.h5", h5::File::Access::Read);
-            require(h5::read<decltype(value)>(file, "value") == value);
-        }
-    };
-
-    test_read_write(numeric::array(1, 2, 3, 4));
-    test_read_write(numeric::array(1.2, 2.3, 3.4, 4.5, 5.6));
+    test_bqo_tree();
+    test_bsp_tree();
+    test_dimensional();
+    test_dimensional_math();
+    test_geometric();
+    test_linked_list();
+    test_ndarray();
+    test_numeric_array();
+    test_numeric_optional();
+    test_numeric_tuple();
+    test_rational();
+    test_sequence();
+    return 0;
 }
-
-#endif // DO_UNIT_TESTS

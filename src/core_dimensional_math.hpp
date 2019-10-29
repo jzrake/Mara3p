@@ -65,7 +65,7 @@ auto pow(quantity_t<N1, N2, N3, D1, D2, D3> a, static_rational_t<N, D> p={})
 
 
 //=============================================================================
-void test_dimensional_math()
+inline void test_dimensional_math()
 {
     require(sqrt(dimensional::mass).powers == std::tuple(0.5, 0.0, 0.0));
     require(pow(dimensional::mass, rational::number<1, 2>()).powers == std::tuple(0.5, 0.0, 0.0));

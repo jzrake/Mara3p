@@ -16,7 +16,7 @@
  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ LIABILITY, WHETHER IN AN ACTION OF CONT (eRACT, TORT OR OTHERWISE, ARISING FROM,
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  SOFTWARE.
 
@@ -26,58 +26,39 @@
 
 
 
-#pragma once
-#include "app_hdf5.hpp"
-#include "core_numeric_array.hpp"
-
-
-
-
-//=============================================================================
-namespace h5 {
-
-
-
-
-//=============================================================================
-template<typename T, std::size_t S>
-struct hdf5_datatype_creation<numeric::array_t<T, S>>
-{
-    auto operator()(const numeric::array_t<T, S>& value) const
-    {
-        return make_datatype_for(T()).as_array(S);
-    }
-};
-
-} // namespace h5
-
-
-
-
-//=============================================================================
-#ifdef DO_UNIT_TESTS
 #include "core_unit_test.hpp"
 
 
 
 
-//=============================================================================
-inline void test_hdf5_numeric_array()
-{
-    auto test_read_write = [] (auto value)
-    {
-        {
-            auto file = h5::File("test.h5", h5::File::Access::Truncate);
-            h5::write(file, "value", value);
-        }
-        {
-            auto file = h5::File("test.h5", h5::File::Access::Read);
-            require(h5::read<decltype(value)>(file, "value") == value);
-        }
-    };
+static unsigned NumPassed = 0;
+static unsigned NumFailed = 0;
 
-    test_read_write(numeric::array(1, 2, 3, 4));
-    test_read_write(numeric::array(1.2, 2.3, 3.4, 4.5, 5.6));
+
+
+
+//=============================================================================
+void start_unit_tests()
+{
+    NumPassed = 0;
+    NumFailed = 0;
 }
 
-#endif // DO_UNIT_TESTS
+void report_test_results()
+{
+    std::cout << std::endl << "===============================================================================" << std::endl;
+    std::cout << NumPassed << " passed" << std::endl;
+
+    if (NumFailed)
+        std::cout << '\033' << BrightRed << NumFailed << " failed" << std::endl;        
+}
+
+void increment_pass_count()
+{
+    ++NumPassed;
+}
+
+void increment_fail_count()
+{
+    ++NumFailed;
+}

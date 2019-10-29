@@ -229,7 +229,7 @@ template<typename T, std::size_t S> auto operator-(array_t<T, S> a) { return map
 
 
 //=============================================================================
-void test_numeric_array()
+inline void test_numeric_array()
 {
     require(numeric::array(1, 2) == numeric::array(1.0, 2.0));
     require(numeric::array(1, 2) * 2.1 == numeric::array(2.1, 4.2));

@@ -565,7 +565,7 @@ auto obtain(const singly_linked_t<ValueType>& a, const singly_linked_t<ValueType
 
 
 //=============================================================================
-void test_linked_list()
+inline void test_linked_list()
 {
     require(empty(list::empty<int>()));
     require(! empty(list::just(12)));

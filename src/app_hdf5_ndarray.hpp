@@ -121,7 +121,7 @@ struct hdf5_container_conversion_post_read<nd::unique_array<ValueType, Rank>>
 
 
 //=============================================================================
-void test_hdf5_ndarray()
+inline void test_hdf5_ndarray()
 {
     auto test_read_write = [] (auto value)
     {

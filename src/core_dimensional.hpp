@@ -56,11 +56,15 @@ struct dimensions_t
 template<long N1, long N2, long N3, unsigned long D1=1, unsigned long D2=1, unsigned long D3=1>
 struct quantity_t
 {
+    quantity_t() {}
+    quantity_t(double value) : value(value) {}
+
     operator double()
     {
         static_assert(N1 == 0 && N2 == 0 && N3 == 0, "only scalars are implicitly convertable to double");
         return value;
     }
+
     double value = 0.0;
     static constexpr auto dimensions = dimensions_t<N1, N2, N3, D1, D2, D3>{};
     static constexpr auto powers = std::tuple(double(N1) / D1, double(N2) / D2, double(N3) / D3);
@@ -223,7 +227,7 @@ using unit_specific_energy = decltype(unit_energy{}   / unit_mass{});
 
 
 //=============================================================================
-void test_dimensional()
+inline void test_dimensional()
 {
     require(sizeof(dimensional::time) == sizeof(double));
     require((dimensional::mass * dimensional::mass).powers == std::tuple(2., 0., 0.));

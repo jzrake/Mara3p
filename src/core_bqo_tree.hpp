@@ -400,7 +400,7 @@ bool contains(const bsp_tree::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, 
 
 
 //=============================================================================
-void test_bqo_tree()
+inline void test_bqo_tree()
 {
     require(bqo_tree::to_integral(numeric::array(false, false, false)) == 0);
     require(bqo_tree::to_integral(numeric::array(true, true, true)) == 7);

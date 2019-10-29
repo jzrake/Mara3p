@@ -119,7 +119,7 @@ struct hdf5_container_creation<std::variant<Ts...>>
 
 
 //=============================================================================
-void test_hdf5_std_variant()
+inline void test_hdf5_std_variant()
 {
     auto test_read_write = [] (auto value)
     {

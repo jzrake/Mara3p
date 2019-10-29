@@ -49,8 +49,11 @@
 
 
 
-static unsigned NumPassed = 0;
-static unsigned NumFailed = 0;
+//=============================================================================
+void start_unit_tests();
+void report_test_results();
+void increment_pass_count();
+void increment_fail_count();
 
 
 
@@ -60,11 +63,11 @@ static unsigned NumFailed = 0;
 do { \
     if (expr) { \
         std::cout << '\033' << Green     << "Test passed ... [" << __FILE__ << "] " << #expr << std::endl; \
-        ++NumPassed; \
+        increment_pass_count(); \
     } \
     else { \
         std::cout << '\033' << BrightRed << "Test failed ... " << #expr << " [" << __FILE__ << " on line " << __LINE__ << "]" << std::endl; \
-        ++NumFailed; \
+        increment_fail_count(); \
     } \
 } while (false)
 
@@ -72,30 +75,11 @@ do { \
 do { \
     try { \
         expr; \
-        ++NumFailed; \
+        increment_fail_count(); \
         std::cout << '\033' << BrightRed << "Test failed ... " << #expr << " " << __FILE__ << " on line " << __LINE__ << " [did not throw]" << std::endl; \
     } \
     catch (...) { \
-        ++NumPassed; \
+        increment_pass_count(); \
         std::cout << '\033' << Green     << "Test passed ... [" << __FILE__ << "] " << #expr << " [threw]" << std::endl; \
     } \
 } while (false)
-
-
-
-
-//=============================================================================
-inline void start_unit_tests()
-{
-    NumPassed = 0;
-    NumFailed = 0;
-}
-
-inline void report_test_results()
-{
-    std::cout << std::endl << "===============================================================================" << std::endl;
-    std::cout << NumPassed << " passed" << std::endl;
-
-    if (NumFailed)
-        std::cout << '\033' << BrightRed << NumFailed << " failed" << std::endl;        
-}

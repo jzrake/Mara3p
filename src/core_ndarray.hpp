@@ -482,7 +482,7 @@ auto from(Args... args)
         uivec(sizeof...(Args)));
 }
 
-auto range(long i0, long i1)
+inline auto range(long i0, long i1)
 {
     if (i0 > i1)
         throw std::invalid_argument("nd::range (lower index larger than upper index)");
@@ -490,12 +490,12 @@ auto range(long i0, long i1)
     return make_array([=] (const auto& i) { return i0 + get<0>(i); }, uivec(i1 - i0));
 }
 
-auto range(long i1)
+inline auto range(long i1)
 {
     return range(0, i1);
 }
 
-auto linspace(double x0, double x1, uint count)
+inline auto linspace(double x0, double x1, uint count)
 {
     return make_array(
         [=] (const auto& i) { return x0 + get<0>(i) * (x1 - x0) / (count - 1); },
@@ -799,7 +799,7 @@ template<typename A, uint R, typename F> auto operator|(const array_t<A, R>& a, 
 
 
 //=============================================================================
-void test_ndarray()
+inline void test_ndarray()
 {
     // remove(uivec)
     require(remove(nd::uivec(0, 1, 2), 0) == nd::uivec(1, 2));

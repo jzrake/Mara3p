@@ -82,7 +82,7 @@ euclidean_vector_t<T> euclidean_vector(numeric::array_t<T, 3> v)
     return {v};
 }
 
-unit_vector_t unit_vector_on_axis(unsigned axis)
+inline unit_vector_t unit_vector_on_axis(unsigned axis)
 {
     switch (axis)
     {
@@ -133,7 +133,7 @@ template<typename T, typename U> auto operator!=(euclidean_vector_t<T> a, euclid
 
 
 //=============================================================================
-void test_geometric()
+inline void test_geometric()
 {
     require(geometric::euclidean_vector(1, 2, 3).at(0) == 1);
     require(geometric::euclidean_vector(1, 2, 3)[1] == 2);
