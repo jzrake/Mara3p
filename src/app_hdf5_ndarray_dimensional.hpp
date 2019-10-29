@@ -105,8 +105,8 @@ inline void test_hdf5_ndarray_dimensional()
     };
 
     test_read_write(nd::from(
-        numeric::tuple(1.2 * dimensional::mass, 1.2 * dimensional::unit_energy{}),
-        numeric::tuple(1.3 * dimensional::mass, 1.3 * dimensional::unit_energy{})) | nd::to_shared());
+        numeric::tuple(1.2 * dimensional::unit_mass{}, 1.2 * dimensional::unit_energy{}),
+        numeric::tuple(1.3 * dimensional::unit_mass{}, 1.3 * dimensional::unit_energy{})) | nd::to_shared());
 }
 
 #endif // DO_UNIT_TESTS

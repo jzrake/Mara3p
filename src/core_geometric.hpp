@@ -103,6 +103,24 @@ auto dot(euclidean_vector_t<T> a, euclidean_vector_t<T> b)
     return sum(a.impl * b.impl);
 }
 
+template<typename T>
+auto dot(unit_vector_t a, euclidean_vector_t<T> b)
+{
+    return sum(a.impl * b.impl);
+}
+
+template<typename T>
+auto dot(euclidean_vector_t<T> b, unit_vector_t a)
+{
+    return sum(a.impl * b.impl);
+}
+
+template<typename T>
+auto length_squared(euclidean_vector_t<T> a)
+{
+    return sum(a.impl * a.impl);
+}
+
 
 
 

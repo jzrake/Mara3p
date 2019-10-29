@@ -193,26 +193,48 @@ bool operator!=(quantity_t<N1, N2, N3, D1, D2, D3> a, quantity_t<N1, N2, N3, D1,
     return a.value != b.value;
 }
 
+template<long N1, long N2, long N3, unsigned long D1, unsigned long D2, unsigned long D3>
+bool operator<=(quantity_t<N1, N2, N3, D1, D2, D3> a, quantity_t<N1, N2, N3, D1, D2, D3> b)
+{
+    return a.value <= b.value;
+}
+
+template<long N1, long N2, long N3, unsigned long D1, unsigned long D2, unsigned long D3>
+bool operator>=(quantity_t<N1, N2, N3, D1, D2, D3> a, quantity_t<N1, N2, N3, D1, D2, D3> b)
+{
+    return a.value >= b.value;
+}
+
+template<long N1, long N2, long N3, unsigned long D1, unsigned long D2, unsigned long D3>
+bool operator<(quantity_t<N1, N2, N3, D1, D2, D3> a, quantity_t<N1, N2, N3, D1, D2, D3> b)
+{
+    return a.value < b.value;
+}
+
+template<long N1, long N2, long N3, unsigned long D1, unsigned long D2, unsigned long D3>
+bool operator>(quantity_t<N1, N2, N3, D1, D2, D3> a, quantity_t<N1, N2, N3, D1, D2, D3> b)
+{
+    return a.value > b.value;
+}
+
 
 
 
 //=============================================================================
-static quantity_t<1, 0, 0> mass {1.0};
-static quantity_t<0, 1, 0> dist {1.0};
-static quantity_t<0, 0, 1> time {1.0};
-
-using unit_mass            = quantity_t<1, 0, 0>;
-using unit_length          = quantity_t<0, 1, 0>;
-using unit_time            = quantity_t<0, 0, 1>;
-using unit_velocity        = decltype(unit_length{}   / unit_time{});
-using unit_acceleration    = decltype(unit_velocity{} * unit_time{});
-using unit_force           = decltype(unit_mass{}     * unit_acceleration{});
-using unit_energy          = decltype(unit_force{}    * unit_length{});
-using unit_area            = decltype(unit_length{}   * unit_length{});
-using unit_volume          = decltype(unit_length{}   * unit_length{} * unit_length{});
-using unit_energy_density  = decltype(unit_energy{}   / unit_volume{});
-using unit_mass_density    = decltype(unit_mass{}     / unit_volume{});
-using unit_specific_energy = decltype(unit_energy{}   / unit_mass{});
+using unit_mass             = quantity_t<1, 0, 0>;
+using unit_length           = quantity_t<0, 1, 0>;
+using unit_time             = quantity_t<0, 0, 1>;
+using unit_velocity         = decltype(unit_length{}   / unit_time{});
+using unit_acceleration     = decltype(unit_velocity{} / unit_time{});
+using unit_momentum         = decltype(unit_velocity{} * unit_mass{});
+using unit_force            = decltype(unit_momentum{} / unit_time{});
+using unit_energy           = decltype(unit_force{}    * unit_length{});
+using unit_area             = decltype(unit_length{}   * unit_length{});
+using unit_volume           = decltype(unit_length{}   * unit_length{} * unit_length{});
+using unit_mass_density     = decltype(unit_mass{}     / unit_volume{});
+using unit_momentum_density = decltype(unit_momentum{} / unit_volume{});
+using unit_energy_density   = decltype(unit_energy{}   / unit_volume{});
+using unit_specific_energy  = decltype(unit_energy{}   / unit_mass{});
 
 } // namespace dimensional
 
@@ -229,19 +251,23 @@ using unit_specific_energy = decltype(unit_energy{}   / unit_mass{});
 //=============================================================================
 inline void test_dimensional()
 {
-    require(sizeof(dimensional::time) == sizeof(double));
-    require((dimensional::mass * dimensional::mass).powers == std::tuple(2., 0., 0.));
-    require((dimensional::mass / dimensional::mass).powers == std::tuple(0., 0., 0.));
-    require((dimensional::dist * dimensional::dist).powers == std::tuple(0., 2., 0.));
-    require((dimensional::dist / dimensional::dist).powers == std::tuple(0., 0., 0.));
-    require((dimensional::time * dimensional::time).powers == std::tuple(0., 0., 2.));
-    require((dimensional::time / dimensional::time).powers == std::tuple(0., 0., 0.));
-    require((1. / dimensional::mass).powers == std::tuple(-1.,  0.,  0.));
-    require((1. / dimensional::dist).powers == std::tuple( 0., -1.,  0.));
-    require((1. / dimensional::time).powers == std::tuple( 0.,  0., -1.));
-    require((2. * dimensional::mass).powers == std::tuple( 1.,  0.,  0.));
-    require((2. * dimensional::dist).powers == std::tuple( 0.,  1.,  0.));
-    require((2. * dimensional::time).powers == std::tuple( 0.,  0.,  1.));
+    auto mass = dimensional::unit_mass();
+    auto dist = dimensional::unit_length();
+    auto time = dimensional::unit_time();
+
+    require(sizeof(time) == sizeof(double));
+    require((mass * mass).powers == std::tuple(2., 0., 0.));
+    require((mass / mass).powers == std::tuple(0., 0., 0.));
+    require((dist * dist).powers == std::tuple(0., 2., 0.));
+    require((dist / dist).powers == std::tuple(0., 0., 0.));
+    require((time * time).powers == std::tuple(0., 0., 2.));
+    require((time / time).powers == std::tuple(0., 0., 0.));
+    require((1. / mass).powers == std::tuple(-1.,  0.,  0.));
+    require((1. / dist).powers == std::tuple( 0., -1.,  0.));
+    require((1. / time).powers == std::tuple( 0.,  0., -1.));
+    require((2. * mass).powers == std::tuple( 1.,  0.,  0.));
+    require((2. * dist).powers == std::tuple( 0.,  1.,  0.));
+    require((2. * time).powers == std::tuple( 0.,  0.,  1.));
 }
 
 #endif // DO_UNIT_TESTS

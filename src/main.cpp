@@ -34,6 +34,7 @@
 
 int test_app();
 int test_core();
+int test_physics();
 
 
 
@@ -44,6 +45,7 @@ int main()
     start_unit_tests();
     test_app();
     test_core();
+    test_physics();
     report_test_results();
     return 0;
 }
