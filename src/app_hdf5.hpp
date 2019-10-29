@@ -718,9 +718,20 @@ public:
 
 
 
+    static Access access(std::string mode)
+    {
+        if (mode == "r")  return Access::Read;
+        if (mode == "r+") return Access::ReadWrite;
+        if (mode == "w")  return Access::Truncate;
+
+        throw std::invalid_argument("h5::File (no such access mode " + mode + ")");
+    }
+
+
 
     File() {}
-    File(std::string filename, Access access)
+    File(std::string filename, std::string mode) : File(filename, access(mode)) {}
+    File(std::string filename, Access access=Access::Read)
     {
         switch (access)
         {

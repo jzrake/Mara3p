@@ -209,7 +209,7 @@ inline flux_vector_t flux(primitive_t p, geometric::unit_vector_t nhat, double g
 
 
 //=============================================================================
-inline flux_vector_t riemann_hlle( const primitive_t& pl, const primitive_t& pr, geometric::unit_vector_t nhat, double gamma_law_index)
+inline flux_vector_t riemann_hlle(const primitive_t& pl, const primitive_t& pr, geometric::unit_vector_t nhat, double gamma_law_index)
 {
     auto ul = conserved_density(pl, gamma_law_index);
     auto ur = conserved_density(pr, gamma_law_index);

@@ -151,6 +151,8 @@ template<typename... Ts, typename U> auto operator*(U b, tuple_t<Ts...> a) { ret
 template<typename... Ts, typename U> auto operator/(U b, tuple_t<Ts...> a) { return tuple(detail::map_tuple(a.impl, [b] (auto ai) { return b / ai; })); }
 template<typename... Ts, typename... Us> auto operator==(tuple_t<Ts...> a, tuple_t<Us...> b) { return all(tuple(detail::map_tuple(detail::zip_tuples(a.impl, b.impl), detail::apply_of(std::equal_to<>())))); }
 template<typename... Ts, typename... Us> auto operator!=(tuple_t<Ts...> a, tuple_t<Us...> b) { return any(tuple(detail::map_tuple(detail::zip_tuples(a.impl, b.impl), detail::apply_of(std::not_equal_to<>())))); }
+template<typename... Ts> auto operator+(tuple_t<Ts...> a) { return map(a, [] (auto t) { return +t; }); }
+template<typename... Ts> auto operator-(tuple_t<Ts...> a) { return map(a, [] (auto t) { return -t; }); }
 
 } // namespace numeric
 

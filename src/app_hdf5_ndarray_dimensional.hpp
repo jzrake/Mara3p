@@ -28,16 +28,11 @@
 
 #pragma once
 #include "app_hdf5.hpp"
+#include "app_hdf5_numeric_array.hpp"
 #include "core_ndarray.hpp"
 #include "core_numeric_tuple.hpp"
 #include "core_numeric_array.hpp"
 #include "core_dimensional.hpp"
-
-
-
-
-//=============================================================================
-namespace h5 {
 
 
 
@@ -75,8 +70,6 @@ struct h5::hdf5_conversion_from_hdf5_writable<nd::shared_array<numeric::tuple_t<
         }) | nd::to_shared();
     }
 };
-
-} // namespace h5
 
 
 
