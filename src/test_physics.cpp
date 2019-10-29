@@ -36,5 +36,16 @@
 //=============================================================================
 int test_physics()
 {
+    auto require_cons_to_prim = [] (euler::primitive_t p0)
+    {
+        auto p1 = euler::recover_primitive(euler::conserved_density(p0, 1.4), 1.4);
+        require(all(map(p1 - p0, [] (auto x) { return std::abs(x.value) < 1e-12; })));
+    };
+
+    require_cons_to_prim(euler::primitive(1.0, 1.0));
+    require_cons_to_prim(euler::primitive(1.5, 1e3));
+    require_cons_to_prim(euler::primitive(1.0, 0.0, 0.0, 0.0, 1.0));
+    require_cons_to_prim(euler::primitive(5.7, 1.0, 2.0, 3.0, 5.0));
+
     return 0;
 }

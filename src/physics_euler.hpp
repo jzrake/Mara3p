@@ -38,7 +38,7 @@
 
 
 //=============================================================================
-namespace {
+namespace euler {
 
 
 //=============================================================================
@@ -47,6 +47,22 @@ using primitive_t = numeric::tuple_t<unit_mass_density, unit_velocity, unit_velo
 using conserved_t = numeric::tuple_t<unit_mass, unit_momentum, unit_momentum, unit_momentum, unit_energy>;
 using conserved_density_t = decltype(conserved_t{} / unit_volume{});
 using flux_vector_t       = decltype(conserved_density_t{} * unit_velocity{});
+
+
+
+
+//=============================================================================
+inline primitive_t primitive(unit_mass_density d, unit_velocity u, unit_velocity v, unit_velocity w, unit_energy_density p)
+{
+    return {{d, u, v, w, p}};
+}
+
+inline primitive_t primitive(unit_mass_density d, unit_energy_density p)
+{
+    return primitive(d, 0.0, 0.0, 0.0, p);
+}
+
+
 
 
 //=============================================================================

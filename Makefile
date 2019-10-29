@@ -22,7 +22,7 @@
 
 # Default build macros
 CXX      = mpicxx
-CXXFLAGS = -std=c++17 -Wall -O0 -MMD -MP
+CXXFLAGS = -std=c++17 -Isrc -Wall -O0 -MMD -MP
 LDFLAGS  = -lhdf5
 
 
@@ -32,26 +32,22 @@ LDFLAGS  = -lhdf5
 
 # Build macros
 # =====================================================================
-SRC         := $(wildcard src/*.cpp)
+SRC         := $(wildcard src/*.cpp) $(wildcard examples/*.cpp)
 OBJ         := $(SRC:%.cpp=%.o)
 DEP         := $(SRC:%.cpp=%.d)
-EXE         := mara
-
-EXAMPLE_SRC := $(wildcard examples/*.cpp)
-EXAMPLE_DEP := $(EXAMPLE_SRC:%.cpp=%.d)
-EXAMPLE_EXE := $(EXAMPLE_SRC:%.cpp=%)
 
 
 # Build rules
 # =====================================================================
-all: $(EXE) $(EXAMPLE_EXE) tutorial
+all: mara examples/euler1d
 
-$(EXE): $(OBJ)
+mara: src/main.o src/test_core.o src/test_app.o src/test_physics.o src/core_unit_test.o
+	$(CXX) -o $@ $^ $(LDFLAGS)
+
+examples/euler1d: examples/euler1d.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 clean:
-	$(RM) $(OBJ) $(DEP) $(EXE) $(EXAMPLE_EXE) $(EXAMPLE_DEP)
-
-.PHONY: tutorial
+	$(RM) $(OBJ) $(DEP) mara
 
 -include $(DEP)
