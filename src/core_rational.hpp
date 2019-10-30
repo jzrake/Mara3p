@@ -44,6 +44,14 @@ struct number_t
     number_t(int value) : num(value), den(1) {}
     number_t(long num, unsigned long den) : num(num), den(den) {}
     operator double() { return double(num) / den; }
+    operator long()
+    {
+        if (den != 1)
+        {
+            throw std::invalid_argument("rational::number_t (cannot convert to long (number is not integral)");
+        }
+        return num;
+    }
 
     long num = 0;
     unsigned long den = 1;
@@ -76,10 +84,10 @@ inline number_t operator-(number_t a, number_t b) { return reduce({a.num * long(
 inline number_t operator*(number_t a, number_t b) { return reduce({a.num * b.num, a.den * b.den}); }
 inline number_t operator/(number_t a, number_t b) { return a * reciprocal(b); }
 
-inline number_t& operator+=(number_t& a, number_t b) { a = a + b; return a; }
-inline number_t& operator-=(number_t& a, number_t b) { a = a - b; return a; }
-inline number_t& operator*=(number_t& a, number_t b) { a = a * b; return a; }
-inline number_t& operator/=(number_t& a, number_t b) { a = a / b; return a; }
+// inline number_t& operator+=(number_t& a, number_t b) { a = a + b; return a; }
+// inline number_t& operator-=(number_t& a, number_t b) { a = a - b; return a; }
+// inline number_t& operator*=(number_t& a, number_t b) { a = a * b; return a; }
+// inline number_t& operator/=(number_t& a, number_t b) { a = a / b; return a; }
 
 inline bool operator==(number_t a, number_t b) { return reduce(a / b).num == 1 && reduce(a / b).den == 1; }
 inline bool operator!=(number_t a, number_t b) { return reduce(a / b).num != 1 || reduce(a / b).den != 1; }

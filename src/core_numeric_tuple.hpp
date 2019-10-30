@@ -50,9 +50,9 @@ auto zip_tuples(std::tuple<Ts...> t, std::tuple<Us...> u)
 }
 
 template<typename FunctionType, typename... Ts>
-auto map_tuple(const std::tuple<Ts...>& t, FunctionType fn)
+auto map_tuple(std::tuple<Ts...> t, FunctionType fn)
 {
-    return std::apply([fn] (const auto&... ts) { return std::tuple(fn(ts)...); }, t);
+    return std::apply([fn] (auto... ts) { return std::tuple(fn(ts)...); }, t);
 }
 
 template<typename FunctionType>

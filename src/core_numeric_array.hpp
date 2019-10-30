@@ -50,9 +50,9 @@ auto zip_arrays(std::array<T, S> t, std::array<U, S> u)
 }
 
 template<typename T, std::size_t S, typename FunctionType>
-auto map_array(const std::array<T, S>& t, FunctionType fn)
+auto map_array(std::array<T, S> t, FunctionType fn)
 {
-    return std::apply([fn] (const auto&... ts) { return std::array{fn(ts)...}; }, t);
+    return std::apply([fn] (auto... ts) { return std::array{fn(ts)...}; }, t);
 }
 
 }

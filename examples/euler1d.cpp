@@ -26,65 +26,20 @@
 
 
 
-#include "app_hdf5.hpp"
-#include "app_hdf5_ndarray.hpp"
-#include "app_hdf5_numeric_array.hpp"
-#include "app_hdf5_ndarray_dimensional.hpp"
-#include "core_ndarray.hpp"
-#include "physics_euler.hpp"
-
-
-
-
 //=============================================================================
-static const auto gamma_law_index = 5. / 3;
-static const auto xhat = geometric::unit_vector_t{{1.0, 0.0, 0.0}};
-static const auto num_cells = 10000;
+#include <chrono>
+#include <tuple>
 
-
-
-
-//=============================================================================
-namespace nd {
-
-inline auto adjacent_zip(uint axis=0)
+template<typename Function, typename... Args>
+auto time_execution(Function&& func, Args&&... args)
 {
-    return [axis] (auto x)
-    {
-        return zip(select(x, axis, 0, -1), select(x, axis, 1));
-    };
-}
+    auto start = std::chrono::high_resolution_clock::now();
+    auto result = std::forward<Function>(func)(std::forward<Args>(args)...);
+    auto stop = std::chrono::high_resolution_clock::now();
+    auto ms = 1e-6 * std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start).count();
+    return std::make_pair(std::move(result), ms);
+};
 
-inline auto adjacent_mean(uint axis=0)
-{
-    return [axis] (auto x)
-    {
-        return 0.5 * (select(x, axis, 0, -1) + select(x, axis, 1));
-    };
-}
-
-inline auto adjacent_diff(uint axis=0)
-{
-    return [axis] (auto x)
-    {
-        return select(x, axis, 1) - select(x, axis, 0, -1);
-    };
-}
-
-inline auto extend_periodic(uint axis=0)
-{
-    return [axis] (auto x)
-    {
-        return select(x, axis, -1) | nd::concat(x, axis) | nd::concat(select(x, axis, 0, 1), axis);
-    };
-}
-
-}
-
-
-
-
-//=============================================================================
 template<typename T>
 auto construct()
 {
@@ -93,16 +48,43 @@ auto construct()
 
 
 
-#include <chrono>
 
-template<typename Function, typename... Args>
-auto time_execution(Function&& func, Args&&... args)
+//=============================================================================
+#include "app_hdf5.hpp"
+#include "app_hdf5_ndarray.hpp"
+#include "app_hdf5_numeric_array.hpp"
+#include "app_hdf5_ndarray_dimensional.hpp"
+#include "core_ndarray.hpp"
+#include "core_ndarray_ops.hpp"
+#include "physics_euler.hpp"
+
+
+
+
+//=============================================================================
+static const auto gamma_law_index = 5. / 3;
+static const auto xhat = geometric::unit_vector_t{{1.0, 0.0, 0.0}};
+static const auto num_cells = 8192;
+
+
+
+
+//=============================================================================
+namespace nd {
+
+inline auto to_shared_prof(const char* message)
 {
-    auto start = std::chrono::high_resolution_clock::now();
-    auto result = std::forward<Function>(func)(std::forward<Args>(args)...);
-    auto stop = std::chrono::high_resolution_clock::now();
-    return std::make_pair(std::move(result), stop - start);
-};
+    return [/*message*/] (auto x)
+    {
+        return to_shared(x);
+        // auto result = time_execution([] (auto x) { return nd::to_shared(x); }, x);
+        // std::printf("\t[%-20s]: %5.4e\n", message, result.second);
+        // return result.first;
+    };
+}
+
+}
+    
 
 
 
@@ -169,14 +151,14 @@ state_t advance(state_t state)
     auto dx = mesh::cell_spacings(num_cells);
     auto u0 = state.conserved;
     auto p0 = u0 | nd::map([] (auto u) { return euler::recover_primitive(u, gamma_law_index); });
-    auto f0 = p0 | nd::extend_periodic() | nd::adjacent_zip() | nd::map(riemann_solver_for(xhat));
+    auto f0 = p0 | nd::extend_zero_gradient() | nd::adjacent_zip() | nd::map(riemann_solver_for(xhat)) | nd::to_shared_prof("Riemann");
     auto df = f0 | nd::adjacent_diff();
-    auto u1 = u0 - df * dt / dx;
+    auto u1 = u0 - df * dt / dx | nd::to_shared_prof("U + dU");
 
     return {
         state.time + dt,
         state.iteration + rational::number(1),
-        u1 | nd::to_shared()
+        u1,
     };
 }
 
@@ -187,19 +169,18 @@ state_t advance(state_t state)
 int main()
 {
     auto state = initial_state();
+    auto total_kzps = 0.0;
 
-
-    while (state.iteration < 1000)
+    while (state.time < dimensional::unit_time(0.3))
     {
-        auto [next_state, duration] = time_execution(advance, state);
+        auto [next_state, ms] = time_execution(advance, state);
+        std::printf("[%04lu] t=%.4e kzps=%3.2lf\n", long(state.iteration), state.time.value, double(num_cells) / ms);
 
-        auto ms = 1e-6 * std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
-        auto kzps = double(num_cells) / ms;
-
+        total_kzps += double(num_cells) / ms;
         state = next_state;
-        std::printf("[%04lu] t=%4.4lf kzps=%3.2lf\n", state.iteration.num, state.time.value, kzps);
     }
 
+    std::printf("finished: mean kzps = %3.2lf\n", total_kzps / double(state.iteration));
 
     auto file = h5::File("euler.h5", "w");
 

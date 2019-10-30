@@ -52,9 +52,9 @@ auto zip_tuples(std::tuple<Ts...> t, std::tuple<Us...> u)
 }
 
 template<typename FunctionType, typename... Ts>
-auto map(const std::tuple<Ts...>& t, FunctionType f)
+auto map(std::tuple<Ts...> t, FunctionType f)
 {
-    return std::apply([f] (const auto&... ts) { return std::tuple(f(ts)...); }, t);
+    return std::apply([f] (auto... ts) { return std::tuple(f(ts)...); }, t);
 }
 
 template<typename... Ts>
@@ -83,8 +83,8 @@ struct uivec_t
 {
     uint& operator[](std::size_t n) { return __value[n]; }
     const uint& operator[](std::size_t n) const { return __value[n]; }
-    bool operator==(const uivec_t& b) const { for (std::size_t i = 0; i < Rank; ++i) { if (__value[i] != b[i]) return false; } return true; }
-    bool operator!=(const uivec_t& b) const { for (std::size_t i = 0; i < Rank; ++i) { if (__value[i] != b[i]) return true; } return false; }
+    bool operator==(uivec_t b) const { for (std::size_t i = 0; i < Rank; ++i) { if (__value[i] != b[i]) return false; } return true; }
+    bool operator!=(uivec_t b) const { for (std::size_t i = 0; i < Rank; ++i) { if (__value[i] != b[i]) return true; } return false; }
     uint __value[Rank];
 };
 
@@ -95,7 +95,7 @@ auto uivec(Args... args)
 }
 
 template<uint Rank>
-constexpr std::size_t size(const uivec_t<Rank>&)
+constexpr std::size_t size(uivec_t<Rank>)
 {
     return Rank;
 }
@@ -120,9 +120,9 @@ const uint& get(const uivec_t<Rank>& vec)
 }
 
 template<uint Rank>
-auto to_tuple(const uivec_t<Rank>& t)
+auto to_tuple(uivec_t<Rank> t)
 {
-    return apply([] (auto&&... is) { return std::forward_as_tuple(is...); }, t);
+    return apply([] (auto... is) { return std::tuple(is...); }, t);
 }
 
 template<uint Rank>
@@ -136,7 +136,7 @@ uivec_t<Rank> replace(uivec_t<Rank> vec, uint axis, uint value)
 }
 
 template<uint Rank>
-uivec_t<Rank - 1> remove(const uivec_t<Rank>& t, std::size_t axis)
+uivec_t<Rank - 1> remove(uivec_t<Rank> t, std::size_t axis)
 {
     if (axis >= Rank)
         throw std::out_of_range("nd::remove (invalid axis)");
@@ -150,7 +150,7 @@ uivec_t<Rank - 1> remove(const uivec_t<Rank>& t, std::size_t axis)
 }
 
 template<uint Rank>
-uivec_t<Rank + 1> insert(const uivec_t<Rank>& t, std::size_t axis, uint value)
+uivec_t<Rank + 1> insert(uivec_t<Rank> t, std::size_t axis, uint value)
 {
     if (axis > Rank)
         throw std::out_of_range("nd::insert (invalid axis)");
@@ -168,7 +168,7 @@ uivec_t<Rank + 1> insert(const uivec_t<Rank>& t, std::size_t axis, uint value)
 }
 
 template<uint Rank>
-uint product(const uivec_t<Rank>& t)
+uint product(uivec_t<Rank> t)
 {
     uint n = 1;
 
@@ -178,7 +178,7 @@ uint product(const uivec_t<Rank>& t)
 }
 
 template<uint Rank>
-uint dot(const uivec_t<Rank>& t, const uivec_t<Rank>& u)
+uint dot(uivec_t<Rank> t, uivec_t<Rank> u)
 {
     uint n = 0;
 
@@ -188,7 +188,7 @@ uint dot(const uivec_t<Rank>& t, const uivec_t<Rank>& u)
 }
 
 template<uint Rank>
-uivec_t<Rank> strides_row_major(const uivec_t<Rank>& shape)
+uivec_t<Rank> strides_row_major(uivec_t<Rank> shape)
 {
     auto result = uivec_t<Rank>{};
 
@@ -202,7 +202,7 @@ uivec_t<Rank> strides_row_major(const uivec_t<Rank>& shape)
 }
 
 template<uint Rank>
-uivec_t<Rank> next(uivec_t<Rank> index, const uivec_t<Rank>& shape)
+uivec_t<Rank> next(uivec_t<Rank> index, uivec_t<Rank> shape)
 {
     if constexpr (Rank == 0)
         return index;
@@ -229,7 +229,7 @@ uivec_t<Rank> next(uivec_t<Rank> index, const uivec_t<Rank>& shape)
 namespace detail {
 
 template<typename FunctionType, uint Rank, std::size_t... I>
-constexpr decltype(auto) apply_impl(FunctionType&& f, const uivec_t<Rank>& t, std::index_sequence<I...>)
+constexpr decltype(auto) apply_impl(FunctionType&& f, uivec_t<Rank> t, std::index_sequence<I...>)
 {
     return std::invoke(std::forward<FunctionType>(f), get<I>(t)...);
 }
@@ -237,7 +237,7 @@ constexpr decltype(auto) apply_impl(FunctionType&& f, const uivec_t<Rank>& t, st
 } // namespace detail
 
 template<typename FunctionType, uint Rank>
-constexpr decltype(auto) apply(FunctionType&& f, const uivec_t<Rank>& t)
+constexpr decltype(auto) apply(FunctionType&& f, uivec_t<Rank> t)
 {
     return detail::apply_impl(std::forward<FunctionType>(f), t, std::make_index_sequence<Rank>{});
 }
@@ -271,7 +271,7 @@ template<typename ValueType, uint Rank>
 struct shared_provider_t
 {
     using value_type = ValueType;
-    const value_type& operator()(const uivec_t<Rank>& i) const { return memory->operator[](dot(i, strides)); }
+    const value_type& operator()(uivec_t<Rank> i) const { return memory->operator[](dot(i, strides)); }
     const value_type* data() const { return memory ? memory->data() : nullptr; }
 
     std::shared_ptr<buffer_t<value_type>> memory;
@@ -286,8 +286,8 @@ template<typename ValueType, uint Rank>
 struct unique_provider_t
 {
     using value_type = ValueType;
-    const value_type& operator()(const uivec_t<Rank>& i) const { return memory->operator[](dot(i, strides)); }
-    value_type& operator()(const uivec_t<Rank>& i)             { return memory->operator[](dot(i, strides)); }
+    const value_type& operator()(uivec_t<Rank> i) const { return memory->operator[](dot(i, strides)); }
+    value_type& operator()(uivec_t<Rank> i)             { return memory->operator[](dot(i, strides)); }
     const value_type* data() const { return memory ? memory->data() : nullptr; }
     value_type* data()             { return memory ? memory->data() : nullptr; }
     auto shared() && { return shared_provider_t<value_type, Rank>{std::move(memory), strides}; }
@@ -327,7 +327,7 @@ struct array_t
 
     template<typename... Args>
     decltype(auto) operator()(Args... index_args) const { return provider(uivec(index_args...)); }
-    decltype(auto) operator()(const uivec_t<Rank>& index) const { return provider(index); }
+    decltype(auto) operator()(uivec_t<Rank> index) const { return provider(index); }
     decltype(auto) data() const { return provider.data(); }
     decltype(auto) data() { return provider.data(); }
 
@@ -391,7 +391,7 @@ uint size(const array_t<ProviderType, Rank>& array)
 }
 
 template<typename ProviderType, uint Rank>
-const uivec_t<Rank>& shape(const array_t<ProviderType, Rank>& array)
+uivec_t<Rank> shape(const array_t<ProviderType, Rank>& array)
 {
     return array.shape;
 }
@@ -433,7 +433,7 @@ struct index_space_row_major_t
 };
 
 template<uint Rank>
-auto index_space(const uivec_t<Rank>& shape)
+auto index_space(uivec_t<Rank> shape)
 {
     return index_space_row_major_t<Rank>{shape};
 }
@@ -700,7 +700,7 @@ auto where(array_t<ProviderType, Rank> array)
 }
 
 template<typename ProviderType, uint Rank, typename FunctionType>
-auto reduce(const array_t<ProviderType, Rank>& array, FunctionType function, typename array_t<ProviderType, Rank>::value_type x)
+auto reduce(array_t<ProviderType, Rank> array, FunctionType function, typename array_t<ProviderType, Rank>::value_type x)
 {
     for (auto y : array)
         x = function(x, y);
@@ -708,19 +708,19 @@ auto reduce(const array_t<ProviderType, Rank>& array, FunctionType function, typ
 }
 
 template<typename ProviderType, uint Rank>
-auto sum(const array_t<ProviderType, Rank>& array)
+auto sum(array_t<ProviderType, Rank> array)
 {
     return reduce(array, std::plus<>(), 0);
 }
 
 template<typename ProviderType, uint Rank>
-auto product(const array_t<ProviderType, Rank>& array)
+auto product(array_t<ProviderType, Rank> array)
 {
     return reduce(array, std::multiplies<>(), 1);
 }
 
 template<typename ProviderType, uint Rank>
-bool any(const array_t<ProviderType, Rank>& array)
+bool any(array_t<ProviderType, Rank> array)
 {
     for (auto x : array)
         if (x)
@@ -729,7 +729,7 @@ bool any(const array_t<ProviderType, Rank>& array)
 }
 
 template<typename ProviderType, uint Rank>
-bool all(const array_t<ProviderType, Rank>& array)
+bool all(array_t<ProviderType, Rank> array)
 {
     for (auto x : array)
         if (! x)
@@ -746,45 +746,45 @@ inline auto all()     { return [] (auto array) { return all    (array); }; }
 
 
 //=============================================================================
-template<typename A, typename B, uint R> auto operator+ (const array_t<A, R>& a, const array_t<B, R>& b) { return map(zip(a, b), [] (const auto& ab) { return apply(std::plus<>(),            ab); }); }
-template<typename A, typename B, uint R> auto operator- (const array_t<A, R>& a, const array_t<B, R>& b) { return map(zip(a, b), [] (const auto& ab) { return apply(std::minus<>(),           ab); }); }
-template<typename A, typename B, uint R> auto operator* (const array_t<A, R>& a, const array_t<B, R>& b) { return map(zip(a, b), [] (const auto& ab) { return apply(std::multiplies<>(),      ab); }); }
-template<typename A, typename B, uint R> auto operator/ (const array_t<A, R>& a, const array_t<B, R>& b) { return map(zip(a, b), [] (const auto& ab) { return apply(std::divides<>(),         ab); }); }
-template<typename A, typename B, uint R> auto operator< (const array_t<A, R>& a, const array_t<B, R>& b) { return map(zip(a, b), [] (const auto& ab) { return apply(std::less<>(),            ab); }); }
-template<typename A, typename B, uint R> auto operator> (const array_t<A, R>& a, const array_t<B, R>& b) { return map(zip(a, b), [] (const auto& ab) { return apply(std::greater<>(),         ab); }); }
-template<typename A, typename B, uint R> auto operator<=(const array_t<A, R>& a, const array_t<B, R>& b) { return map(zip(a, b), [] (const auto& ab) { return apply(std::less_equal<>(),      ab); }); }
-template<typename A, typename B, uint R> auto operator>=(const array_t<A, R>& a, const array_t<B, R>& b) { return map(zip(a, b), [] (const auto& ab) { return apply(std::greater_equal<>(),   ab); }); }
-template<typename A, typename B, uint R> auto operator==(const array_t<A, R>& a, const array_t<B, R>& b) { return map(zip(a, b), [] (const auto& ab) { return apply(std::equal_to<>(),        ab); }); }
-template<typename A, typename B, uint R> auto operator!=(const array_t<A, R>& a, const array_t<B, R>& b) { return map(zip(a, b), [] (const auto& ab) { return apply(std::not_equal_to<>(),    ab); }); }
-template<typename A, typename B, uint R> auto operator&&(const array_t<A, R>& a, const array_t<B, R>& b) { return map(zip(a, b), [] (const auto& ab) { return apply(std::logical_and<>(),     ab); }); }
-template<typename A, typename B, uint R> auto operator||(const array_t<A, R>& a, const array_t<B, R>& b) { return map(zip(a, b), [] (const auto& ab) { return apply(std::logical_or<>(),      ab); }); }
-template<typename A, typename T, uint R> auto operator+ (const array_t<A, R>& a, const T& b) { return a +  uniform(b, shape(a)); }
-template<typename A, typename T, uint R> auto operator- (const array_t<A, R>& a, const T& b) { return a -  uniform(b, shape(a)); }
-template<typename A, typename T, uint R> auto operator* (const array_t<A, R>& a, const T& b) { return a *  uniform(b, shape(a)); }
-template<typename A, typename T, uint R> auto operator/ (const array_t<A, R>& a, const T& b) { return a /  uniform(b, shape(a)); }
-template<typename A, typename T, uint R> auto operator< (const array_t<A, R>& a, const T& b) { return a <  uniform(b, shape(a)); }
-template<typename A, typename T, uint R> auto operator> (const array_t<A, R>& a, const T& b) { return a >  uniform(b, shape(a)); }
-template<typename A, typename T, uint R> auto operator<=(const array_t<A, R>& a, const T& b) { return a <= uniform(b, shape(a)); }
-template<typename A, typename T, uint R> auto operator>=(const array_t<A, R>& a, const T& b) { return a >= uniform(b, shape(a)); }
-template<typename A, typename T, uint R> auto operator==(const array_t<A, R>& a, const T& b) { return a == uniform(b, shape(a)); }
-template<typename A, typename T, uint R> auto operator!=(const array_t<A, R>& a, const T& b) { return a != uniform(b, shape(a)); }
-template<typename A, typename T, uint R> auto operator&&(const array_t<A, R>& a, const T& b) { return a && uniform(b, shape(a)); }
-template<typename A, typename T, uint R> auto operator||(const array_t<A, R>& a, const T& b) { return a || uniform(b, shape(a)); }
-template<typename A, typename T, uint R> auto operator+ (const T& a, const array_t<A, R>& b) { return uniform(a, shape(b)) +  b; }
-template<typename A, typename T, uint R> auto operator- (const T& a, const array_t<A, R>& b) { return uniform(a, shape(b)) -  b; }
-template<typename A, typename T, uint R> auto operator* (const T& a, const array_t<A, R>& b) { return uniform(a, shape(b)) *  b; }
-template<typename A, typename T, uint R> auto operator/ (const T& a, const array_t<A, R>& b) { return uniform(a, shape(b)) /  b; }
-template<typename A, typename T, uint R> auto operator< (const T& a, const array_t<A, R>& b) { return uniform(a, shape(b)) >  b; }
-template<typename A, typename T, uint R> auto operator> (const T& a, const array_t<A, R>& b) { return uniform(a, shape(b)) <  b; }
-template<typename A, typename T, uint R> auto operator<=(const T& a, const array_t<A, R>& b) { return uniform(a, shape(b)) <= b; }
-template<typename A, typename T, uint R> auto operator>=(const T& a, const array_t<A, R>& b) { return uniform(a, shape(b)) >= b; }
-template<typename A, typename T, uint R> auto operator==(const T& a, const array_t<A, R>& b) { return uniform(a, shape(b)) == b; }
-template<typename A, typename T, uint R> auto operator!=(const T& a, const array_t<A, R>& b) { return uniform(a, shape(b)) != b; }
-template<typename A, typename T, uint R> auto operator&&(const T& a, const array_t<A, R>& b) { return uniform(a, shape(b)) && b; }
-template<typename A, typename T, uint R> auto operator||(const T& a, const array_t<A, R>& b) { return uniform(a, shape(b)) || b; }
-template<typename A, uint R> auto operator+(const array_t<A, R>& a) { return a; };
-template<typename A, uint R> auto operator-(const array_t<A, R>& a) { return map(a, std::negate<>()); };
-template<typename A, uint R, typename F> auto operator|(const array_t<A, R>& a, F f) { return f(a); }
+template<typename A, typename B, uint R> auto operator+ (array_t<A, R> a, array_t<B, R> b) { return map(zip(a, b), [] (auto ab) { return apply(std::plus<>(),            ab); }); }
+template<typename A, typename B, uint R> auto operator- (array_t<A, R> a, array_t<B, R> b) { return map(zip(a, b), [] (auto ab) { return apply(std::minus<>(),           ab); }); }
+template<typename A, typename B, uint R> auto operator* (array_t<A, R> a, array_t<B, R> b) { return map(zip(a, b), [] (auto ab) { return apply(std::multiplies<>(),      ab); }); }
+template<typename A, typename B, uint R> auto operator/ (array_t<A, R> a, array_t<B, R> b) { return map(zip(a, b), [] (auto ab) { return apply(std::divides<>(),         ab); }); }
+template<typename A, typename B, uint R> auto operator< (array_t<A, R> a, array_t<B, R> b) { return map(zip(a, b), [] (auto ab) { return apply(std::less<>(),            ab); }); }
+template<typename A, typename B, uint R> auto operator> (array_t<A, R> a, array_t<B, R> b) { return map(zip(a, b), [] (auto ab) { return apply(std::greater<>(),         ab); }); }
+template<typename A, typename B, uint R> auto operator<=(array_t<A, R> a, array_t<B, R> b) { return map(zip(a, b), [] (auto ab) { return apply(std::less_equal<>(),      ab); }); }
+template<typename A, typename B, uint R> auto operator>=(array_t<A, R> a, array_t<B, R> b) { return map(zip(a, b), [] (auto ab) { return apply(std::greater_equal<>(),   ab); }); }
+template<typename A, typename B, uint R> auto operator==(array_t<A, R> a, array_t<B, R> b) { return map(zip(a, b), [] (auto ab) { return apply(std::equal_to<>(),        ab); }); }
+template<typename A, typename B, uint R> auto operator!=(array_t<A, R> a, array_t<B, R> b) { return map(zip(a, b), [] (auto ab) { return apply(std::not_equal_to<>(),    ab); }); }
+template<typename A, typename B, uint R> auto operator&&(array_t<A, R> a, array_t<B, R> b) { return map(zip(a, b), [] (auto ab) { return apply(std::logical_and<>(),     ab); }); }
+template<typename A, typename B, uint R> auto operator||(array_t<A, R> a, array_t<B, R> b) { return map(zip(a, b), [] (auto ab) { return apply(std::logical_or<>(),      ab); }); }
+template<typename A, typename T, uint R> auto operator+ (array_t<A, R> a, T b) { return a +  uniform(b, shape(a)); }
+template<typename A, typename T, uint R> auto operator- (array_t<A, R> a, T b) { return a -  uniform(b, shape(a)); }
+template<typename A, typename T, uint R> auto operator* (array_t<A, R> a, T b) { return a *  uniform(b, shape(a)); }
+template<typename A, typename T, uint R> auto operator/ (array_t<A, R> a, T b) { return a /  uniform(b, shape(a)); }
+template<typename A, typename T, uint R> auto operator< (array_t<A, R> a, T b) { return a <  uniform(b, shape(a)); }
+template<typename A, typename T, uint R> auto operator> (array_t<A, R> a, T b) { return a >  uniform(b, shape(a)); }
+template<typename A, typename T, uint R> auto operator<=(array_t<A, R> a, T b) { return a <= uniform(b, shape(a)); }
+template<typename A, typename T, uint R> auto operator>=(array_t<A, R> a, T b) { return a >= uniform(b, shape(a)); }
+template<typename A, typename T, uint R> auto operator==(array_t<A, R> a, T b) { return a == uniform(b, shape(a)); }
+template<typename A, typename T, uint R> auto operator!=(array_t<A, R> a, T b) { return a != uniform(b, shape(a)); }
+template<typename A, typename T, uint R> auto operator&&(array_t<A, R> a, T b) { return a && uniform(b, shape(a)); }
+template<typename A, typename T, uint R> auto operator||(array_t<A, R> a, T b) { return a || uniform(b, shape(a)); }
+template<typename A, typename T, uint R> auto operator+ (T a, array_t<A, R> b) { return uniform(a, shape(b)) +  b; }
+template<typename A, typename T, uint R> auto operator- (T a, array_t<A, R> b) { return uniform(a, shape(b)) -  b; }
+template<typename A, typename T, uint R> auto operator* (T a, array_t<A, R> b) { return uniform(a, shape(b)) *  b; }
+template<typename A, typename T, uint R> auto operator/ (T a, array_t<A, R> b) { return uniform(a, shape(b)) /  b; }
+template<typename A, typename T, uint R> auto operator< (T a, array_t<A, R> b) { return uniform(a, shape(b)) >  b; }
+template<typename A, typename T, uint R> auto operator> (T a, array_t<A, R> b) { return uniform(a, shape(b)) <  b; }
+template<typename A, typename T, uint R> auto operator<=(T a, array_t<A, R> b) { return uniform(a, shape(b)) <= b; }
+template<typename A, typename T, uint R> auto operator>=(T a, array_t<A, R> b) { return uniform(a, shape(b)) >= b; }
+template<typename A, typename T, uint R> auto operator==(T a, array_t<A, R> b) { return uniform(a, shape(b)) == b; }
+template<typename A, typename T, uint R> auto operator!=(T a, array_t<A, R> b) { return uniform(a, shape(b)) != b; }
+template<typename A, typename T, uint R> auto operator&&(T a, array_t<A, R> b) { return uniform(a, shape(b)) && b; }
+template<typename A, typename T, uint R> auto operator||(T a, array_t<A, R> b) { return uniform(a, shape(b)) || b; }
+template<typename A, uint R> auto operator+(array_t<A, R> a) { return a; };
+template<typename A, uint R> auto operator-(array_t<A, R> a) { return map(a, std::negate<>()); };
+template<typename A, uint R, typename F> auto operator|(array_t<A, R> a, F f) { return f(a); }
 
 } // namespace nd
 
