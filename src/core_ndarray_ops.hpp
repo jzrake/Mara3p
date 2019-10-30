@@ -75,4 +75,13 @@ inline auto extend_zero_gradient(uint axis=0)
     };
 }
 
+template<typename T>
+auto construct()
+{
+    return [] (auto a)
+    {
+        return map(a, [] (auto x) { return T(x); });
+    };
+}
+
 } // namespace nd

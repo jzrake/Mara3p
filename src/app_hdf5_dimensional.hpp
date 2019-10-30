@@ -1,4 +1,3 @@
-
 /**
  ==============================================================================
  Copyright 2019, Jonathan Zrake
@@ -27,30 +26,58 @@
 
 
 
-#define DO_UNIT_TESTS
-#include "app_binary_serialize.hpp"
-#include "app_config.hpp"
+#pragma once
 #include "app_hdf5.hpp"
-#include "app_hdf5_dimensional.hpp"
-#include "app_hdf5_ndarray.hpp"
-#include "app_hdf5_numeric_array.hpp"
-#include "app_hdf5_ndarray_dimensional.hpp"
-#include "app_hdf5_std_map.hpp"
-#include "app_hdf5_std_variant.hpp"
+#include "core_dimensional.hpp"
 
 
 
 
 //=============================================================================
-int test_app()
+namespace h5 {
+
+
+
+
+//=============================================================================
+template<long N1, long N2, long N3, unsigned long D1, unsigned long D2, unsigned long D3>
+struct hdf5_datatype_creation<dimensional::quantity_t<N1, N2, N3, D1, D2, D3>>
 {
-    test_binary_serialize();
-    test_hdf5();
-    test_hdf5_dimensional();
-    test_hdf5_ndarray();
-    test_hdf5_ndarray_dimensional();
-    test_hdf5_numeric_array();
-    test_hdf5_std_variant();
-    test_hdf5_std_map();
-    return 0;
+    auto operator()(const dimensional::quantity_t<N1, N2, N3, D1, D2, D3>& value) const
+    {
+        return make_datatype_for(double());
+    }
+};
+
+} // namespace h5
+
+
+
+
+//=============================================================================
+#ifdef DO_UNIT_TESTS
+#include "core_unit_test.hpp"
+
+
+
+
+//=============================================================================
+inline void test_hdf5_dimensional()
+{
+    auto test_read_write = [] (auto value)
+    {
+        {
+            auto file = h5::File("test.h5", h5::File::Access::Truncate);
+            h5::write(file, "value", value);
+        }
+        {
+            auto file = h5::File("test.h5", h5::File::Access::Read);
+            require(h5::read<decltype(value)>(file, "value") == value);
+        }
+    };
+
+    test_read_write(dimensional::unit_mass(2.0));
+    test_read_write(dimensional::unit_time(2.5));
 }
+
+#endif // DO_UNIT_TESTS

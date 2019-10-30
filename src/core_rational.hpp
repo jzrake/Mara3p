@@ -43,8 +43,8 @@ struct number_t
 {
     number_t(int value) : num(value), den(1) {}
     number_t(long num, unsigned long den) : num(num), den(den) {}
-    operator double() { return double(num) / den; }
-    operator long()
+    operator double() const { return double(num) / den; }
+    operator long() const
     {
         if (den != 1)
         {
