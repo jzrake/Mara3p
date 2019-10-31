@@ -200,7 +200,22 @@ inline flux_vector_t flux(primitive_t p, geometric::unit_vector_t nhat, double g
 
 
 //=============================================================================
-inline flux_vector_t riemann_hlle(primitive_t pl, primitive_t pr, geometric::unit_vector_t nhat, double gamma_law_index)
+inline flux_vector_t riemann_hlle(primitive_t pl, primitive_t pr, geometric::unit_vector_t face_normal, double gamma_law_index)
+{
+    auto ul = conserved_density(pl, gamma_law_index);
+    auto ur = conserved_density(pr, gamma_law_index);
+    auto fl = flux(pl, face_normal, gamma_law_index);
+    auto fr = flux(pr, face_normal, gamma_law_index);
+
+    auto [alm, alp] = outer_wavespeeds(pl, face_normal, gamma_law_index);
+    auto [arm, arp] = outer_wavespeeds(pr, face_normal, gamma_law_index);
+    auto ap = std::max(unit_velocity(0), std::max(alp, arp));
+    auto am = std::min(unit_velocity(0), std::min(alm, arm));
+
+    return (ap * fl - am * fr - (ul - ur) * ap * am) / (ap - am);
+}
+
+inline flux_vector_t riemann_hlle(primitive_t pl, primitive_t pr, geometric::unit_vector_t nhat, unit_velocity face_speed, double gamma_law_index)
 {
     auto ul = conserved_density(pl, gamma_law_index);
     auto ur = conserved_density(pr, gamma_law_index);
@@ -209,10 +224,19 @@ inline flux_vector_t riemann_hlle(primitive_t pl, primitive_t pr, geometric::uni
 
     auto [alm, alp] = outer_wavespeeds(pl, nhat, gamma_law_index);
     auto [arm, arp] = outer_wavespeeds(pr, nhat, gamma_law_index);
-    auto ap = std::max(unit_velocity{}, std::max(alp, arp));
-    auto am = std::min(unit_velocity{}, std::min(alm, arm));
+    auto ap = std::max(alp, arp);
+    auto am = std::min(alm, arm);
 
-    return (fl * ap - fr * am - (ul - ur) * ap * am) / (ap - am);
+    if (face_speed < am)
+        return fl - face_speed * ul;
+
+    if (face_speed > ap)
+        return fr - face_speed * ur;
+
+    auto u_hll = (ap * ur - am * ul + (fl - fr))           / (ap - am);
+    auto f_hll = (ap * fl - am * fr - (ul - ur) * ap * am) / (ap - am);
+
+    return f_hll - face_speed * u_hll;
 }
 
 } // namespace euler

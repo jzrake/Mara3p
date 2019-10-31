@@ -35,18 +35,10 @@
 
 
 //=============================================================================
-namespace h5 {
-
-
-
-
-//=============================================================================
 template<typename T>
-struct hdf5_is_key_value_container<std::map<std::string, T>> : std::true_type
+struct h5::hdf5_is_key_value_container<std::map<std::string, T>> : std::true_type
 {
 };
-
-} // namespace h5
 
 
 

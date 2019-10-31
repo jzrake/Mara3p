@@ -34,14 +34,8 @@
 
 
 //=============================================================================
-namespace h5 {
-
-
-
-
-//=============================================================================
 template<typename... Ts>
-struct hdf5_container_address<std::variant<Ts...>>
+struct h5::hdf5_container_address<std::variant<Ts...>>
 {
     const void* operator()(const std::variant<Ts...>& value) const
     {
@@ -54,7 +48,7 @@ struct hdf5_container_address<std::variant<Ts...>>
 };
 
 template<typename... Ts>
-struct hdf5_dataspace_creation<std::variant<Ts...>>
+struct h5::hdf5_dataspace_creation<std::variant<Ts...>>
 {
     auto operator()(const std::variant<Ts...>& value) const
     {
@@ -63,7 +57,7 @@ struct hdf5_dataspace_creation<std::variant<Ts...>>
 };
 
 template<typename... Ts>
-struct hdf5_datatype_creation<std::variant<Ts...>>
+struct h5::hdf5_datatype_creation<std::variant<Ts...>>
 {
     auto operator()(const std::variant<Ts...>& value) const
     {
@@ -72,7 +66,7 @@ struct hdf5_datatype_creation<std::variant<Ts...>>
 };
 
 template<typename... Ts>
-struct hdf5_container_creation<std::variant<Ts...>>
+struct h5::hdf5_container_creation<std::variant<Ts...>>
 {
     std::variant<Ts...> operator()(const Dataset& dset) const
     {
@@ -105,8 +99,6 @@ struct hdf5_container_creation<std::variant<Ts...>>
         throw std::invalid_argument("h5::read<std::variant> (HDF5 type cannot be matched to the variant type)");
     }
 };
-
-} // namespace h5
 
 
 
