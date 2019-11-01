@@ -20,10 +20,11 @@
 # =====================================================================
 
 
-# Default build macros
+# Default build macros (these may be over-ridden by entries in the Makefile.in)
 CXX      = mpicxx
 CXXFLAGS = -std=c++17 -Isrc -Wall -O0 -MMD -MP
 LDFLAGS  = -lhdf5
+TARGETS  = mara examples/euler1d examples/euler1d_moving_mesh
 
 
 # If a Makefile.in exists in this directory, then use it
@@ -39,12 +40,15 @@ DEP         := $(SRC:%.cpp=%.d)
 
 # Build rules
 # =====================================================================
-all: mara examples/euler1d
+all: $(TARGETS)
 
 mara: src/main.o src/test_core.o src/test_app.o src/test_physics.o src/core_unit_test.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 examples/euler1d: examples/euler1d.o
+	$(CXX) -o $@ $^ $(LDFLAGS)
+
+examples/euler1d_moving_mesh: examples/euler1d_moving_mesh.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 clean:
