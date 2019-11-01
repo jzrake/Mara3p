@@ -27,6 +27,7 @@
 
 
 #pragma once
+#include <array>
 #include <tuple>
 #include <functional>
 #include <memory>
@@ -81,11 +82,11 @@ using uint = unsigned long;
 template<uint Rank>
 struct uivec_t
 {
-    uint& operator[](std::size_t n) { return __value[n]; }
-    const uint& operator[](std::size_t n) const { return __value[n]; }
-    bool operator==(uivec_t b) const { for (std::size_t i = 0; i < Rank; ++i) { if (__value[i] != b[i]) return false; } return true; }
-    bool operator!=(uivec_t b) const { for (std::size_t i = 0; i < Rank; ++i) { if (__value[i] != b[i]) return true; } return false; }
-    uint __value[Rank];
+    uint& operator[](std::size_t n) { return impl[n]; }
+    const uint& operator[](std::size_t n) const { return impl[n]; }
+    bool operator==(uivec_t b) const { for (std::size_t i = 0; i < Rank; ++i) { if (impl[i] != b[i]) return false; } return true; }
+    bool operator!=(uivec_t b) const { for (std::size_t i = 0; i < Rank; ++i) { if (impl[i] != b[i]) return true; } return false; }
+    std::array<uint, Rank> impl;
 };
 
 template<typename... Args>
@@ -103,13 +104,13 @@ constexpr std::size_t size(uivec_t<Rank>)
 template<uint Rank>
 auto begin(const uivec_t<Rank>& t)
 {
-    return std::begin(t.__value);
+    return std::begin(t.impl);
 }
 
 template<uint Rank>
 auto end(const uivec_t<Rank>& t)
 {
-    return std::end(t.__value);
+    return std::end(t.impl);
 }
 
 template<uint Index, uint Rank>
@@ -120,16 +121,10 @@ const uint& get(const uivec_t<Rank>& vec)
 }
 
 template<uint Rank>
-auto to_tuple(uivec_t<Rank> t)
-{
-    return apply([] (auto... is) { return std::tuple(is...); }, t);
-}
-
-template<uint Rank>
 uivec_t<Rank> replace(uivec_t<Rank> vec, uint axis, uint value)
 {
-    if (axis >= Rank)
-        throw std::out_of_range("nd::replace (invalid axis)");
+    // if (axis >= Rank)
+    //     throw std::out_of_range("nd::replace (invalid axis)");
 
     vec[axis] = value;
     return vec;
@@ -138,8 +133,8 @@ uivec_t<Rank> replace(uivec_t<Rank> vec, uint axis, uint value)
 template<uint Rank>
 uivec_t<Rank - 1> remove(uivec_t<Rank> t, std::size_t axis)
 {
-    if (axis >= Rank)
-        throw std::out_of_range("nd::remove (invalid axis)");
+    // if (axis >= Rank)
+    //     throw std::out_of_range("nd::remove (invalid axis)");
 
     auto u = uivec_t<Rank - 1>{};
 
@@ -152,8 +147,8 @@ uivec_t<Rank - 1> remove(uivec_t<Rank> t, std::size_t axis)
 template<uint Rank>
 uivec_t<Rank + 1> insert(uivec_t<Rank> t, std::size_t axis, uint value)
 {
-    if (axis > Rank)
-        throw std::out_of_range("nd::insert (invalid axis)");
+    // if (axis > Rank)
+    //     throw std::out_of_range("nd::insert (invalid axis)");
 
     auto u = uivec_t<Rank + 1>{};
 
@@ -194,6 +189,7 @@ uivec_t<Rank> strides_row_major(uivec_t<Rank> shape)
 
     if constexpr (Rank > 0)
         result[Rank - 1] = 1;
+
     if constexpr (Rank > 1)
         for (int n = Rank - 2; n >= 0; --n)
             result[n] = result[n + 1] * shape[n + 1];
@@ -220,26 +216,6 @@ uivec_t<Rank> next(uivec_t<Rank> index, uivec_t<Rank> shape)
         index[n] = 0; --n; ++index[n];
     }
     return index;
-}
-
-
-
-
-//=============================================================================
-namespace detail {
-
-template<typename FunctionType, uint Rank, std::size_t... I>
-constexpr decltype(auto) apply_impl(FunctionType&& f, uivec_t<Rank> t, std::index_sequence<I...>)
-{
-    return std::invoke(std::forward<FunctionType>(f), get<I>(t)...);
-}
-
-} // namespace detail
-
-template<typename FunctionType, uint Rank>
-constexpr decltype(auto) apply(FunctionType&& f, uivec_t<Rank> t)
-{
-    return detail::apply_impl(std::forward<FunctionType>(f), t, std::make_index_sequence<Rank>{});
 }
 
 
@@ -379,19 +355,19 @@ auto end(const array_t<ProviderType, Rank>& array)
 }
 
 template<typename ProviderType, uint Rank>
-constexpr uint rank(const array_t<ProviderType, Rank>&)
+constexpr uint rank(array_t<ProviderType, Rank>)
 {
     return Rank;
 }
 
 template<typename ProviderType, uint Rank>
-uint size(const array_t<ProviderType, Rank>& array)
+uint size(array_t<ProviderType, Rank> array)
 {
     return product(array.shape);
 }
 
 template<typename ProviderType, uint Rank>
-uivec_t<Rank> shape(const array_t<ProviderType, Rank>& array)
+const uivec_t<Rank>& shape(const array_t<ProviderType, Rank>& array)
 {
     return array.shape;
 }
@@ -457,7 +433,7 @@ auto end(const index_space_row_major_t<Rank>& space)
 template<typename ValueType, uint Rank>
 auto uniform(ValueType value, uivec_t<Rank> shape)
 {
-    return make_array([value] (const auto& i) { return value; }, shape);
+    return make_array([value] (auto i) { return value; }, shape);
 }
 
 template<typename ValueType=int, uint Rank>
@@ -466,10 +442,22 @@ auto zeros(uivec_t<Rank> shape)
     return uniform(ValueType(), shape);
 }
 
+template<typename ValueType=int, uint Rank>
+auto ones(uivec_t<Rank> shape)
+{
+    return uniform(ValueType(1), shape);
+}
+
 template<typename ValueType=int, typename... Args>
 auto zeros(Args... args)
 {
     return uniform(ValueType(), uivec(args...));
+}
+
+template<typename ValueType=int, typename... Args>
+auto ones(Args... args)
+{
+    return uniform(ValueType(1), uivec(args...));
 }
 
 template<typename... Args>
@@ -478,7 +466,7 @@ auto from(Args... args)
     std::common_type_t<Args...> a[] = {args...};
 
     return make_array(
-        [a] (const auto& i) { return a[get<0>(i)]; },
+        [a] (auto i) { return a[get<0>(i)]; },
         uivec(sizeof...(Args)));
 }
 
@@ -487,7 +475,7 @@ inline auto range(long i0, long i1)
     if (i0 > i1)
         throw std::invalid_argument("nd::range (lower index larger than upper index)");
 
-    return make_array([=] (const auto& i) { return i0 + get<0>(i); }, uivec(i1 - i0));
+    return make_array([=] (auto i) { return i0 + get<0>(i); }, uivec(i1 - i0));
 }
 
 inline auto range(long i1)
@@ -498,20 +486,20 @@ inline auto range(long i1)
 inline auto linspace(double x0, double x1, uint count)
 {
     return make_array(
-        [=] (const auto& i) { return x0 + get<0>(i) * (x1 - x0) / (count - 1); },
+        [=] (auto i) { return x0 + get<0>(i) * (x1 - x0) / (count - 1); },
         uivec(count));
 }
 
 template<typename... Args>
 auto indexes(Args... args)
 {
-    return make_array([] (const auto& i) { return i; }, uivec(args...));
+    return make_array([] (auto i) { return i; }, uivec(args...));
 }
 
 template<typename ProviderType, uint Rank>
 auto indexes(const array_t<ProviderType, Rank>& array)
 {
-    return make_array([] (const auto& i) { return i; }, shape(array));
+    return make_array([] (auto i) { return i; }, shape(array));
 }
 
 
@@ -521,12 +509,12 @@ auto indexes(const array_t<ProviderType, Rank>& array)
 template<typename... ProviderTypes>
 auto cartesian_product(array_t<ProviderTypes, 1>... arrays)
 {
-    auto f = [array_tuple = std::tuple(arrays...)] (const uivec_t<sizeof...(arrays)>& i)
+    auto f = [array_tuple = std::tuple(arrays...)] (uivec_t<sizeof...(arrays)> i)
     {
-        return apply([] (auto&&... args)
+        return std::apply([] (auto... args)
         {
             return std::tuple(std::get<0>(args)(std::get<1>(args))...);
-        }, detail::zip_tuples(array_tuple, to_tuple(i)));
+        }, detail::zip_tuples(array_tuple, i.impl));
     };
     return make_array(f, uivec(size(arrays)...));
 }
@@ -535,7 +523,7 @@ template<typename... ProviderTypes, uint Rank>
 auto zip(array_t<ProviderTypes, Rank>... arrays)
 {
     auto s = detail::check_uniform("nd::zip (arrays have non-uniform shapes)", shape(arrays)...);
-    auto f = [arrays...] (const auto& i)
+    auto f = [arrays...] (auto i)
     {
         return std::tuple(arrays(i)...);
     };
@@ -545,14 +533,14 @@ auto zip(array_t<ProviderTypes, Rank>... arrays)
 template<std::size_t Index, typename ProviderType, uint Rank>
 auto get(array_t<ProviderType, Rank> array)
 {
-    return map(array, [] (const auto& x) { return get<Index>(x); });
+    return map(array, [] (auto x) { return get<Index>(x); });
 }
 
 template<typename ProviderType, uint Rank, typename FunctionType>
 auto map(array_t<ProviderType, Rank> array, FunctionType function)
 {
     return make_array(
-        [array, function] (const auto& i) { return function(array(i)); },
+        [array, function] (auto i) { return function(array(i)); },
         shape(array));
 }
 
@@ -569,7 +557,7 @@ auto concat(array_t<ProviderType1, Rank> array1, array_t<ProviderType2, Rank> ar
     auto n2 = shape(array2, axis);
 
     return make_array(
-        [=] (const auto& i)
+        [=] (auto i)
         {
             return i[axis] < n1 ? array1(i) : array2(replace(i, axis, i[axis] - n1));
         },
@@ -586,7 +574,7 @@ auto freeze(array_t<ProviderType, Rank> array, uint axis, uint index)
         throw std::out_of_range("nd::freeze (index out of range)");
 
     return make_array(
-        [=] (const auto& i) { return array(insert(i, axis, index)); },
+        [=] (auto i) { return array(insert(i, axis, index)); },
         remove(shape(array), axis));
 }
 
@@ -597,7 +585,7 @@ auto new_axis(array_t<ProviderType, Rank> array, uint axis)
         throw std::invalid_argument("nd::new_axis (axis is larger than array rank)");
 
     return make_array(
-        [=] (const auto& i) { return array(remove(i, axis)); },
+        [=] (auto i) { return array(remove(i, axis)); },
         insert(shape(array), axis, 1));
 }
 
@@ -617,7 +605,7 @@ auto select(array_t<ProviderType, Rank> array, uint axis, long start_s, long fin
         throw std::out_of_range("nd::select (selection out of range)");
 
     return make_array(
-        [=] (const auto& i) { return array(replace(i, axis, i[axis] + start)); },
+        [=] (auto i) { return array(replace(i, axis, i[axis] + start)); },
         replace(shape(array), axis, final - start));
 }
 

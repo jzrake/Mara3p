@@ -73,6 +73,7 @@ euler::primitive_t initial_condition(dimensional::unit_length x)
 }
 
 auto riemann_solver_for(geometric::unit_vector_t nhat)
+// -> std::function<euler::flux_vector_t(std::tuple<euler::primitive_t, euler::primitive_t>)>
 {
     return [nhat] (auto t)
     {
@@ -81,6 +82,7 @@ auto riemann_solver_for(geometric::unit_vector_t nhat)
 }
 
 auto recover_primitive()
+// -> std::function<euler::primitive_t(euler::conserved_density_t)>
 {
     return [] (auto u) { return euler::recover_primitive(u, gamma_law_index); };
 }
@@ -130,13 +132,13 @@ bool should_continue(std::pair<state_t, state_t> states)
 
 void print_run_loop(const std::pair<state_t, state_t>& states)
 {
-    auto milliseconds_between = [] (auto t0, auto t1)
+    auto microseconds_between = [] (auto t0, auto t1)
     {
-        return 1e-6 * std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
+        return 1e-3  * std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
     };
-    auto ms = milliseconds_between(states.first.time_point, states.second.time_point);
+    auto us = microseconds_between(states.first.time_point, states.second.time_point);
     auto s = states.first;
-    std::printf("[%04lu] t=%6.5lf kzps=%3.2lf\n", long(s.iteration), s.time.value, double(num_cells) / ms);    
+    std::printf("[%04lu] t=%6.5lf Mzps=%3.2lf\n", long(s.iteration), s.time.value, double(num_cells) / us);    
 }
 
 void side_effects(std::pair<state_t, state_t> states)
