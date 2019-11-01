@@ -29,6 +29,7 @@
 #include <cstdio>
 #include <chrono>
 #include <tuple>
+#include "app_control.hpp"
 #include "app_hdf5.hpp"
 #include "app_hdf5_dimensional.hpp"
 #include "app_hdf5_ndarray.hpp"
@@ -58,8 +59,9 @@ struct state_t
     rational::number_t iteration = 0;
     nd::shared_array<dimensional::unit_length, 1> vertices;
     nd::shared_array<euler::conserved_t, 1> conserved;
-    std::chrono::time_point<std::chrono::high_resolution_clock> time_point;
 };
+
+using timed_state_pair_t = control::timed_pair_t<state_t>;
 
 
 
@@ -110,7 +112,7 @@ state_t initial_state()
     auto dv = (xv | nd::adjacent_diff()) * dimensional::unit_area(1.0);
     auto p0 = cell_centers(num_cells) | nd::map(initial_condition);
     auto u0 = p0 | nd::map([] (auto p) { return euler::conserved_density(p, gamma_law_index); });
-    return {0.0, 0, xv | nd::to_shared(), (u0 * dv) | nd::to_shared(), std::chrono::high_resolution_clock::now()};
+    return {0.0, 0, xv | nd::to_shared(), (u0 * dv) | nd::to_shared()};
 }
 
 state_t advance(state_t state)
@@ -134,36 +136,31 @@ state_t advance(state_t state)
         state.iteration + rational::number(1),
         x1,
         q1,
-        std::chrono::high_resolution_clock::now(),
     };
 }
 
-bool should_continue(std::pair<state_t, state_t> states)
+bool should_continue(timed_state_pair_t p)
 {
-    return states.first.time < dimensional::unit_time(final_time);
+    return control::last_state(p).time < dimensional::unit_time(final_time);
 }
 
-void print_run_loop(const std::pair<state_t, state_t>& states)
+void print_run_loop(timed_state_pair_t p)
 {
-    auto microseconds_between = [] (auto t0, auto t1)
-    {
-        return 1e-3 * std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
-    };
-    auto us = microseconds_between(states.first.time_point, states.second.time_point);
-    auto s = states.first;
+    auto us = control::microseconds_separating(p);
+    auto s = control::this_state(p);
     std::printf("[%04lu] t=%6.5lf Mzps=%3.2lf\n", long(s.iteration), s.time.value, double(num_cells) / us);    
 }
 
-void side_effects(std::pair<state_t, state_t> states)
+void side_effects(timed_state_pair_t p)
 {
-    print_run_loop(states);
+    print_run_loop(p);
 
-    if (states.second.time >= dimensional::unit_time(final_time))
+    if (control::this_state(p).time >= dimensional::unit_time(final_time))
     {
-        auto dv = cell_volumes(states.second);
-        auto primitive = (states.second.conserved / dv) | nd::map(recover_primitive());
+        auto dv = cell_volumes(control::this_state(p));
+        auto primitive = (control::this_state(p).conserved / dv) | nd::map(recover_primitive());
         auto file = h5::File("euler.h5", "w");
-        h5::write(file, "cell_centers", states.second.vertices | nd::adjacent_mean() | nd::to_shared());
+        h5::write(file, "cell_centers", control::this_state(p).vertices | nd::adjacent_mean() | nd::to_shared());
         h5::write(file, "primitive", primitive | nd::to_shared());
     }
 }
@@ -175,6 +172,7 @@ void side_effects(std::pair<state_t, state_t> states)
 int main()
 {
     auto simulation = seq::generate(initial_state(), advance)
+    | seq::pair_with(control::time_point_sequence())
     | seq::window()
     | seq::take_while(should_continue);
 

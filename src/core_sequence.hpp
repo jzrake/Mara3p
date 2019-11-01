@@ -965,6 +965,7 @@ template<typename T, typename F> auto scan(T b, F f) { return [=] (auto s) { ret
 template<typename F> auto map       (F f)  { return [f] (auto s) { return map       (s, f); }; }
 template<typename F> auto take_while(F f)  { return [f] (auto s) { return take_while(s, f); }; }
 template<typename F> auto remove_if (F f)  { return [f] (auto s) { return remove_if (s, f); }; }
+template<typename T> auto pair_with (T t)  { return [t] (auto s) { return zip       (s, t); }; }
 
 inline auto flat  ()                { return [ ] (auto s) { return flat  (s); }; }
 inline auto cycle ()                { return [ ] (auto s) { return cycle (s); }; }
