@@ -123,9 +123,6 @@ const uint& get(const uivec_t<Rank>& vec)
 template<uint Rank>
 uivec_t<Rank> replace(uivec_t<Rank> vec, uint axis, uint value)
 {
-    // if (axis >= Rank)
-    //     throw std::out_of_range("nd::replace (invalid axis)");
-
     vec[axis] = value;
     return vec;
 }
@@ -133,9 +130,6 @@ uivec_t<Rank> replace(uivec_t<Rank> vec, uint axis, uint value)
 template<uint Rank>
 uivec_t<Rank - 1> remove(uivec_t<Rank> t, std::size_t axis)
 {
-    // if (axis >= Rank)
-    //     throw std::out_of_range("nd::remove (invalid axis)");
-
     auto u = uivec_t<Rank - 1>{};
 
     for (std::size_t i = 0, j = 0; i < size(t); ++i)
@@ -147,9 +141,6 @@ uivec_t<Rank - 1> remove(uivec_t<Rank> t, std::size_t axis)
 template<uint Rank>
 uivec_t<Rank + 1> insert(uivec_t<Rank> t, std::size_t axis, uint value)
 {
-    // if (axis > Rank)
-    //     throw std::out_of_range("nd::insert (invalid axis)");
-
     auto u = uivec_t<Rank + 1>{};
 
     for (std::size_t i = 0, j = 0; i < size(u); ++i)
@@ -619,6 +610,17 @@ auto select(array_t<ProviderType, Rank> array, uint axis, long start_s)
 }
 
 template<typename ProviderType, uint Rank>
+auto repeat(array_t<ProviderType, Rank> array, uint axis, uint count)
+{
+    if (axis > Rank)
+        throw std::invalid_argument("nd::repeat (axis is larger than array rank)");
+
+    return make_array(
+        [=] (auto i) { return array(replace(i, axis, i[axis] % count)); },
+        replace(shape(array), axis, shape(array, axis) * count));
+}
+
+template<typename ProviderType, uint Rank>
 auto to_shared(array_t<ProviderType, Rank> array)
 {
     using value_type = typename array_t<ProviderType, Rank>::value_type;
@@ -847,6 +849,9 @@ inline void test_ndarray()
     require_throws(select(nd::range(10), 0, 2, 1));
     require_throws(select(nd::range(10), 0, 0, 11));
     require_throws(select(nd::range(10), 1, 0, 1));
+
+    // repeat
+    require(all(repeat(nd::from(1, 2, 3), 0, 3) == nd::from(1, 2, 3, 1, 2, 3, 1, 2, 3)));
 
     // sum, product
     require(sum(nd::range(1, 4)) == 6);
