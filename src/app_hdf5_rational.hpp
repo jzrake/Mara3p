@@ -1,4 +1,3 @@
-
 /**
  ==============================================================================
  Copyright 2019, Jonathan Zrake
@@ -27,32 +26,53 @@
 
 
 
-#define DO_UNIT_TESTS
-#include "app_binary_serialize.hpp"
-#include "app_config.hpp"
+#pragma once
 #include "app_hdf5.hpp"
-#include "app_hdf5_dimensional.hpp"
-#include "app_hdf5_ndarray.hpp"
-#include "app_hdf5_numeric_array.hpp"
-#include "app_hdf5_ndarray_dimensional.hpp"
-#include "app_hdf5_rational.hpp"
-#include "app_hdf5_std_map.hpp"
-#include "app_hdf5_std_variant.hpp"
+#include "core_rational.hpp"
 
 
 
 
 //=============================================================================
-int test_app()
+template<>
+struct h5::hdf5_datatype_creation<rational::number_t>
 {
-    test_binary_serialize();
-    test_hdf5();
-    test_hdf5_dimensional();
-    test_hdf5_ndarray();
-    test_hdf5_ndarray_dimensional();
-    test_hdf5_numeric_array();
-    test_hdf5_rational();
-    test_hdf5_std_variant();
-    test_hdf5_std_map();
-    return 0;
+    auto operator()(const rational::number_t& value) const
+    {
+        return Datatype::compound<rational::number_t>({
+            h5_compound_type_member(rational::number_t, num),
+            h5_compound_type_member(rational::number_t, den),
+        });
+    }
+};
+
+
+
+
+//=============================================================================
+#ifdef DO_UNIT_TESTS
+#include "app_hdf5_rational.hpp"
+#include "core_unit_test.hpp"
+
+
+
+
+//=============================================================================
+inline void test_hdf5_rational()
+{
+    auto test_read_write = [] (auto value)
+    {
+        {
+            auto file = h5::File("test.h5", h5::File::Access::Truncate);
+            h5::write(file, "value", value);
+        }
+        {
+            auto file = h5::File("test.h5", h5::File::Access::Read);
+            require(h5::read<decltype(value)>(file, "value") == value);
+        }
+    };
+    test_read_write(rational::number(1));
+    test_read_write(rational::number(3, 2));
 }
+
+#endif // DO_UNIT_TESTS

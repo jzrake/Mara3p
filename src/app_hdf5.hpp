@@ -36,6 +36,12 @@
 
 
 //=============================================================================
+#define h5_compound_type_member(type, name) {#name, offsetof(type, name), h5::make_datatype_for(type().name)}
+
+
+
+
+//=============================================================================
 namespace h5 {
 
 namespace detail {
