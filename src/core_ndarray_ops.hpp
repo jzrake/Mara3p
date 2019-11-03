@@ -37,9 +37,17 @@ namespace nd {
 
 inline auto adjacent_zip(uint axis=0)
 {
-    return [axis] (const auto& x)
+    return [axis] (auto x)
     {
         return zip(select(x, axis, 0, -1), select(x, axis, 1));
+    };
+}
+
+inline auto adjacent_zip3(uint axis=0)
+{
+    return [axis] (auto x)
+    {
+        return zip(select(x, axis, 0, -2), select(x, axis, 1, -1), select(x, axis, 2));
     };
 }
 
@@ -59,19 +67,23 @@ inline auto adjacent_diff(uint axis=0)
     };
 }
 
-inline auto extend_periodic(uint axis=0)
+inline auto extend_periodic(uint axis=0, uint count=1)
 {
-    return [axis] (auto x)
+    return [count, axis] (auto x)
     {
-        return select(x, axis, -1) | nd::concat(x, axis) | nd::concat(select(x, axis, 0, 1), axis);
+        return select(x, axis, -count)
+        | nd::concat(x, axis)
+        | nd::concat(select(x, axis, 0, count), axis);
     };
 }
 
-inline auto extend_zero_gradient(uint axis=0)
+inline auto extend_zero_gradient(uint axis=0, uint count=1)
 {
-    return [axis] (auto x)
+    return [count, axis] (auto x)
     {
-        return select(x, axis, 0, 1) | nd::concat(x, axis) | nd::concat(select(x, axis, -1), axis);
+        return repeat(select(x, axis, 0, 1), axis, count)
+        | nd::concat(x, axis)
+        | nd::concat(repeat(select(x, axis, -1), axis, count), axis);
     };
 }
 

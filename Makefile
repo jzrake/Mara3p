@@ -24,7 +24,10 @@
 CXX      = mpicxx
 CXXFLAGS = -std=c++17 -Isrc -Wall -O0 -MMD -MP
 LDFLAGS  = -lhdf5
-TARGETS  = mara examples/euler1d examples/euler1d_moving_mesh
+TARGETS  = mara \
+	examples/euler1d \
+	examples/euler1d_moving_mesh \
+	examples/euler1d_moving_mesh_plm
 
 
 # If a Makefile.in exists in this directory, then use it
@@ -49,6 +52,9 @@ examples/euler1d: examples/euler1d.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 examples/euler1d_moving_mesh: examples/euler1d_moving_mesh.o
+	$(CXX) -o $@ $^ $(LDFLAGS)
+
+examples/euler1d_moving_mesh_plm: examples/euler1d_moving_mesh_plm.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 clean:

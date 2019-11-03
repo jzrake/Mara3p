@@ -52,6 +52,18 @@ auto pow(quantity_t<N1, N2, N3, D1, D2, D3> a, static_rational_t<N, D> p={})
     return quantity(std::pow(a.value, p.value), pow(a.dimensions, p));
 }
 
+template<long N1, long N2, long N3, unsigned long D1, unsigned long D2, unsigned long D3>
+auto abs(quantity_t<N1, N2, N3, D1, D2, D3> a)
+{
+    return quantity(std::abs(a.value), a.dimensions);
+}
+
+template<long N1, long N2, long N3, unsigned long D1, unsigned long D2, unsigned long D3>
+auto copysign(double y, quantity_t<N1, N2, N3, D1, D2, D3> a)
+{
+    return std::copysign(y, a.value);
+}
+
 } // namespace dimensional
 
 
