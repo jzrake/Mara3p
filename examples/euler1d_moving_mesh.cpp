@@ -26,9 +26,6 @@
 
 
 
-#include <cstdio>
-#include <chrono>
-#include <tuple>
 #include "app_control.hpp"
 #include "app_hdf5.hpp"
 #include "app_hdf5_dimensional.hpp"
@@ -45,7 +42,6 @@
 
 //=============================================================================
 static const auto gamma_law_index = 5. / 3;
-static const auto xhat = geometric::unit_vector_t{{1.0, 0.0, 0.0}};
 static const auto num_cells = 8192;
 static const auto final_time = 0.15;
 
@@ -117,23 +113,23 @@ state_t initial_state()
 
 state_t advance(state_t state)
 {
+    auto xh = geometric::unit_vector_on_axis(1);
     auto dt = dimensional::unit_time(0.3 / num_cells);
     auto da = dimensional::unit_area(1.0);
     auto dv = cell_volumes(state);
-    auto u0 = state.conserved / dv;
-    auto p0 = u0 | nd::map(recover_primitive());
+    auto p0 = state.conserved / dv | nd::map(recover_primitive());
     auto pe = p0 | nd::extend_zero_gradient() | nd::to_shared();
     auto pf = pe | nd::adjacent_zip() | nd::to_shared();
     auto vf = pe | nd::map(euler::velocity_1) | nd::adjacent_mean();
 
-    auto f0 = zip(pf, vf) | nd::map(riemann_solver_for(xhat)) | nd::to_shared();
+    auto f0 = zip(pf, vf) | nd::map(riemann_solver_for(xh)) | nd::to_shared();
     auto df = f0 | nd::adjacent_diff();
     auto q1 = state.conserved - df * dt * da | nd::to_shared();
     auto x1 = state.vertices  + vf * dt      | nd::to_shared();
 
     return {
         state.time + dt,
-        state.iteration + rational::number(1),
+        state.iteration + 1,
         x1,
         q1,
     };

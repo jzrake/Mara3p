@@ -24,10 +24,11 @@
 CXX      = mpicxx
 CXXFLAGS = -std=c++17 -Isrc -Wall -O0 -MMD -MP
 LDFLAGS  = -lhdf5
-TARGETS  = mara \
+ALL_TARGETS = mara \
 	examples/euler1d \
 	examples/euler1d_moving_mesh \
 	examples/euler1d_moving_mesh_plm
+TARGETS = $(ALL_TARGETS)
 
 
 # If a Makefile.in exists in this directory, then use it
@@ -43,7 +44,8 @@ DEP         := $(SRC:%.cpp=%.d)
 
 # Build rules
 # =====================================================================
-all: $(TARGETS)
+default: $(TARGETS)
+all: $(ALL_TARGETS)
 
 mara: src/main.o src/test_core.o src/test_app.o src/test_physics.o src/core_unit_test.o
 	$(CXX) -o $@ $^ $(LDFLAGS)

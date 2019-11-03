@@ -45,7 +45,6 @@
 
 //=============================================================================
 static const auto gamma_law_index = 5. / 3;
-static const auto xhat = geometric::unit_vector_t{{1.0, 0.0, 0.0}};
 static const auto num_cells = 8192;
 static const auto final_time = 0.22;
 
@@ -116,17 +115,18 @@ state_t initial_state()
 
 state_t advance(state_t state)
 {
+    auto xh = geometric::unit_vector_on_axis(1);
     auto dt = dimensional::unit_time(0.3 / num_cells);
     auto dx = cell_spacings(num_cells);
     auto u0 = state.conserved;
     auto p0 = u0 | nd::map(recover_primitive());
-    auto f0 = p0 | nd::extend_zero_gradient() | nd::adjacent_zip() | nd::map(riemann_solver_for(xhat)) | nd::to_shared();
+    auto f0 = p0 | nd::extend_zero_gradient() | nd::adjacent_zip() | nd::map(riemann_solver_for(xh)) | nd::to_shared();
     auto df = f0 | nd::adjacent_diff();
     auto u1 = u0 - df * dt / dx | nd::to_shared();
 
     return {
         state.time + dt,
-        state.iteration + rational::number(1),
+        state.iteration + 1,
         u1,
         std::chrono::high_resolution_clock::now(),
     };

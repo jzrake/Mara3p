@@ -41,6 +41,7 @@ namespace rational {
 //=============================================================================
 struct number_t
 {
+    number_t() {}
     number_t(int value) : num(value), den(1) {}
     number_t(long num, unsigned long den) : num(num), den(den) {}
     operator double() const { return double(num) / den; }
@@ -83,14 +84,17 @@ inline number_t operator+(number_t a, number_t b) { return reduce({a.num * long(
 inline number_t operator-(number_t a, number_t b) { return reduce({a.num * long(b.den) - long(a.den) * b.num, a.den * b.den}); }
 inline number_t operator*(number_t a, number_t b) { return reduce({a.num * b.num, a.den * b.den}); }
 inline number_t operator/(number_t a, number_t b) { return a * reciprocal(b); }
-
-// inline number_t& operator+=(number_t& a, number_t b) { a = a + b; return a; }
-// inline number_t& operator-=(number_t& a, number_t b) { a = a - b; return a; }
-// inline number_t& operator*=(number_t& a, number_t b) { a = a * b; return a; }
-// inline number_t& operator/=(number_t& a, number_t b) { a = a / b; return a; }
-
+inline number_t operator+(number_t a, int b) { return a + number(b); }
+inline number_t operator-(number_t a, int b) { return a - number(b); }
+inline number_t operator*(number_t a, int b) { return a * number(b); }
+inline number_t operator/(number_t a, int b) { return a / number(b); }
+inline number_t operator+(int a, number_t b) { return number(a) + b; }
+inline number_t operator-(int a, number_t b) { return number(a) - b; }
+inline number_t operator*(int a, number_t b) { return number(a) * b; }
+inline number_t operator/(int a, number_t b) { return number(a) / b; }
 inline bool operator==(number_t a, number_t b) { return reduce(a / b).num == 1 && reduce(a / b).den == 1; }
 inline bool operator!=(number_t a, number_t b) { return reduce(a / b).num != 1 || reduce(a / b).den != 1; }
+
 
 
 

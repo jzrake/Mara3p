@@ -26,9 +26,6 @@
 
 
 
-#include <cstdio>
-#include <chrono>
-#include <tuple>
 #include "app_control.hpp"
 #include "app_hdf5.hpp"
 #include "app_hdf5_dimensional.hpp"
@@ -46,9 +43,9 @@
 
 //=============================================================================
 static const auto gamma_law_index = 5. / 3;
-static const auto xhat = geometric::unit_vector_t{{1.0, 0.0, 0.0}};
 static const auto num_cells = 8192;
 static const auto final_time = 0.125;
+static const auto cfl_number = 2.5; // large CFL is allowed when pressure is small
 
 
 
@@ -90,11 +87,10 @@ auto cell_volumes(state_t state)
 
 euler::primitive_t initial_condition(dimensional::unit_length x)
 {
-    // return x < dimensional::unit_length(0.5) ? euler::primitive(1.0, 1.0) : euler::primitive(0.125, 0.1);
     auto x0 = dimensional::unit_length(0.5);
     auto dx = dimensional::unit_length(0.05);
     auto d = 1.0 + std::exp(-std::pow((x - x0) / dx, 2.0));
-    return euler::primitive(d, 1.0, 0.0, 0.0, 1.0);
+    return euler::primitive(d, 1.0, 0.0, 0.0, 0.01);
 }
 
 auto riemann_solver_for(geometric::unit_vector_t nhat)
@@ -127,7 +123,8 @@ state_t initial_state()
 
 state_t advance(state_t state)
 {
-    auto dt = dimensional::unit_time(0.1 / num_cells);
+    auto xh = geometric::unit_vector_on_axis(1);
+    auto dt = dimensional::unit_time(cfl_number / num_cells);
     auto da = dimensional::unit_area(1.0);
     auto dv = cell_volumes(state);
     auto dx = cell_spacing(state);
@@ -139,14 +136,14 @@ state_t advance(state_t state)
     auto vf = nd::map((pl + pr) * 0.5, euler::velocity_1) | nd::to_shared();
     auto pf = nd::zip(pl, pr);
 
-    auto f0 = zip(pf, vf) | nd::map(riemann_solver_for(xhat)) | nd::to_shared();
+    auto f0 = zip(pf, vf) | nd::map(riemann_solver_for(xh)) | nd::to_shared();
     auto df = f0 | nd::adjacent_diff() | nd::extend_zero_gradient() | nd::to_shared();
     auto q1 = state.conserved - (df * dt * da) | nd::to_shared();
     auto x1 = state.vertices  + (vf * dt | nd::extend_zero_gradient()) | nd::to_shared();
 
     return {
         state.time + dt,
-        state.iteration + rational::number(1),
+        state.iteration + 1,
         x1,
         q1,
     };

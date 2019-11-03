@@ -199,6 +199,7 @@ inline flux_vector_t flux(primitive_t p, geometric::unit_vector_t nhat, double g
 
 
 
+
 //=============================================================================
 inline flux_vector_t riemann_hlle(primitive_t pl, primitive_t pr, geometric::unit_vector_t face_normal, double gamma_law_index)
 {
