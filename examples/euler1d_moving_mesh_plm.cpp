@@ -47,7 +47,7 @@
 //=============================================================================
 static const auto gamma_law_index = 5. / 3;
 static const auto xhat = geometric::unit_vector_t{{1.0, 0.0, 0.0}};
-static const auto num_cells = 512;
+static const auto num_cells = 8192;
 static const auto final_time = 0.125;
 
 
@@ -132,16 +132,15 @@ state_t advance(state_t state)
     auto dv = cell_volumes(state);
     auto dx = cell_spacing(state);
     auto x0 = cell_centers(state);
-    auto u0 = state.conserved / dv;
-    auto p0 = u0 | nd::map(recover_primitive());
+    auto p0 = state.conserved / dv | nd::map(recover_primitive()) | nd::to_shared();
     auto gx = nd::zip(x0 | nd::adjacent_zip3(), p0 | nd::adjacent_zip3()) | nd::map(mara::plm_gradient(1.5)) | nd::extend_zero_gradient() | nd::to_shared();
     auto pl = select(p0 + 0.5 * dx * gx, 0, 0, -1);
     auto pr = select(p0 - 0.5 * dx * gx, 0, 1);
+    auto vf = nd::map((pl + pr) * 0.5, euler::velocity_1) | nd::to_shared();
     auto pf = nd::zip(pl, pr);
-    auto vf = 0.5 * (map(pl, euler::velocity_1) + map(pr, euler::velocity_1));
 
     auto f0 = zip(pf, vf) | nd::map(riemann_solver_for(xhat)) | nd::to_shared();
-    auto df = f0 | nd::adjacent_diff() | nd::extend_zero_gradient();
+    auto df = f0 | nd::adjacent_diff() | nd::extend_zero_gradient() | nd::to_shared();
     auto q1 = state.conserved - (df * dt * da) | nd::to_shared();
     auto x1 = state.vertices  + (vf * dt | nd::extend_zero_gradient()) | nd::to_shared();
 
