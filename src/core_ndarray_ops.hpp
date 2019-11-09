@@ -35,6 +35,15 @@
 //=============================================================================
 namespace nd {
 
+template<typename ArrayType>
+auto multiply(ArrayType b)
+{
+    return [b] (auto a)
+    {
+        return a * b;
+    };
+}
+
 inline auto adjacent_zip(uint axis=0)
 {
     return [axis] (auto x)

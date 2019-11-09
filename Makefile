@@ -27,7 +27,8 @@ LDFLAGS  = -lhdf5
 ALL_TARGETS = mara \
 	examples/euler1d \
 	examples/euler1d_moving_mesh \
-	examples/euler1d_moving_mesh_plm
+	examples/euler1d_moving_mesh_plm \
+	problems/sedov
 TARGETS = $(ALL_TARGETS)
 
 
@@ -57,6 +58,9 @@ examples/euler1d_moving_mesh: examples/euler1d_moving_mesh.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 examples/euler1d_moving_mesh_plm: examples/euler1d_moving_mesh_plm.o
+	$(CXX) -o $@ $^ $(LDFLAGS)
+
+problems/sedov: problems/sedov.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 clean:

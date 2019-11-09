@@ -111,6 +111,13 @@ inline auto lorentz_factor(primitive_t p)
     return std::sqrt(lorentz_factor_squared(p));
 }
 
+
+
+
+//=============================================================================
+inline auto velocity_1(primitive_t p) { return light_speed * gamma_beta_1(p) / lorentz_factor(p); }
+inline auto velocity_2(primitive_t p) { return light_speed * gamma_beta_2(p) / lorentz_factor(p); }
+inline auto velocity_3(primitive_t p) { return light_speed * gamma_beta_3(p) / lorentz_factor(p); }
 inline auto velocity_vector(primitive_t p)
 {
     auto gamma = lorentz_factor(p);
@@ -121,6 +128,10 @@ inline auto velocity_vector(primitive_t p)
         light_speed * gamma_beta_3(p) / gamma);
 }
 
+
+
+
+//=============================================================================
 inline auto enthalpy_density(primitive_t p, double gamma_law_index)
 {
     auto c2 = light_speed * light_speed;
