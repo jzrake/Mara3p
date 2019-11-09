@@ -346,6 +346,15 @@ auto end(const array_t<ProviderType, Rank>& array)
 }
 
 template<typename ProviderType, uint Rank>
+auto front(const array_t<ProviderType, Rank>& array)
+{
+    if (size(array) == 0)
+        throw std::out_of_range("nd::front (empty array)");
+
+    return *begin(array);
+}
+
+template<typename ProviderType, uint Rank>
 constexpr uint rank(array_t<ProviderType, Rank>)
 {
     return Rank;
@@ -710,6 +719,18 @@ auto product(array_t<ProviderType, Rank> array)
 }
 
 template<typename ProviderType, uint Rank>
+auto min(array_t<ProviderType, Rank> array)
+{
+    return reduce(array, [] (auto a, auto b) { return std::min(a, b); }, front(array));
+}
+
+template<typename ProviderType, uint Rank>
+auto max(array_t<ProviderType, Rank> array)
+{
+    return reduce(array, [] (auto a, auto b) { return std::max(a, b); }, front(array));
+}
+
+template<typename ProviderType, uint Rank>
 bool any(array_t<ProviderType, Rank> array)
 {
     for (auto x : array)
@@ -853,9 +874,12 @@ inline void test_ndarray()
     // repeat
     require(all(repeat(nd::from(1, 2, 3), 0, 3) == nd::from(1, 2, 3, 1, 2, 3, 1, 2, 3)));
 
-    // sum, product
+    // sum, product, min, max
     require(sum(nd::range(1, 4)) == 6);
     require(product(nd::range(1, 4)) == 6);
+    require(min(nd::from(7, 2, 4, 5, 4, 3)) == 2);
+    require(max(nd::from(7, 2, 4, 5, 4, 3)) == 7);
+    require_throws(min(nd::range(0)));
 
     // where, operator<, operator>, operator<=, operator>=
     require(size(where(nd::range(10) < 5)) == 5);
