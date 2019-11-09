@@ -32,6 +32,7 @@
 #include "app_hdf5_ndarray.hpp"
 #include "app_hdf5_numeric_array.hpp"
 #include "app_hdf5_ndarray_dimensional.hpp"
+#include "app_state_templates.hpp"
 #include "core_ndarray.hpp"
 #include "core_ndarray_ops.hpp"
 #include "core_sequence.hpp"
@@ -51,14 +52,7 @@ static const auto cfl_number = 2.5; // large CFL is allowed when pressure is sma
 
 
 //=============================================================================
-struct state_t
-{
-    dimensional::unit_time time = 0.0;
-    rational::number_t iteration = 0;
-    nd::shared_array<dimensional::unit_length, 1> vertices;
-    nd::shared_array<euler::conserved_t, 1> conserved;
-};
-
+using state_t = mara::state_with_vertices_t<euler::conserved_t>;
 using timed_state_pair_t = control::timed_pair_t<state_t>;
 
 
@@ -142,8 +136,8 @@ state_t advance(state_t state)
     auto x1 = state.vertices  + (vf * dt | nd::extend_zero_gradient()) | nd::to_shared();
 
     return {
-        state.time + dt,
         state.iteration + 1,
+        state.time + dt,
         x1,
         q1,
     };

@@ -1,4 +1,3 @@
-
 /**
  ==============================================================================
  Copyright 2019, Jonathan Zrake
@@ -27,17 +26,40 @@
 
 
 
-#define DO_UNIT_TESTS
-#include "physics_euler.hpp"
-#include "physics_srhd.hpp"
+#pragma once
+#include "core_dimensional.hpp"
+#include "core_ndarray.hpp"
+#include "core_numeric_tuple.hpp"
+#include "core_rational.hpp"
 
 
 
 
 //=============================================================================
-int test_physics()
+namespace mara {
+
+
+
+
+//=============================================================================
+template<typename ConservedType>
+struct state_with_vertices_t
 {
-    test_euler();
-    test_srhd();
-    return 0;
+    rational::number_t iteration = 0;
+    dimensional::unit_time time = 0.0;
+    nd::shared_array<dimensional::unit_length, 1> vertices;
+    nd::shared_array<ConservedType, 1> conserved;
+};
+
+template<typename ConservedType>
+auto weighted_sum(state_with_vertices_t<ConservedType> s, state_with_vertices_t<ConservedType> t, rational::number_t b)
+{
+    return state_with_vertices_t<ConservedType>{
+        s.iteration * b + t.iteration * (1 - b),
+        s.time      * b + t.time      * (1 - b),
+        s.vertices  * b + t.vertices  * (1 - b) | nd::to_shared(),
+        s.conserved * b + t.conserved * (1 - b) | nd::to_shared(),
+    };
 }
+
+} // namespace mara

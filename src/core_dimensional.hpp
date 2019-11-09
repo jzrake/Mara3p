@@ -233,6 +233,7 @@ auto operator-(quantity_t<N1, N2, N3, D1, D2, D3> a)
 
 
 //=============================================================================
+using unit_scalar           = quantity_t<0, 0, 0>;
 using unit_mass             = quantity_t<1, 0, 0>;
 using unit_length           = quantity_t<0, 1, 0>;
 using unit_time             = quantity_t<0, 0, 1>;
