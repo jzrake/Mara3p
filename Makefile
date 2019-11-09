@@ -38,7 +38,7 @@ TARGETS = $(ALL_TARGETS)
 
 # Build macros
 # =====================================================================
-SRC         := $(wildcard src/*.cpp) $(wildcard examples/*.cpp)
+SRC         := $(wildcard src/*.cpp) $(wildcard examples/*.cpp) $(wildcard problems/*.cpp)
 OBJ         := $(SRC:%.cpp=%.o)
 DEP         := $(SRC:%.cpp=%.d)
 

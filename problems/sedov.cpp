@@ -114,19 +114,34 @@ auto face_areas(state_t state)
 
 auto time_step(state_t state)
 {
-    return nd::min(state.vertices | nd::adjacent_diff()) / srhd::light_speed;
+    return 0.33 * nd::min(state.vertices | nd::adjacent_diff()) / srhd::light_speed;
 }
 
 
 
 
 //=============================================================================
-srhd::primitive_t initial_condition(dimensional::unit_length r)
+auto initial_condition(const mara::config_t& run_config, dimensional::unit_length r)
 {
-    auto r0 = dimensional::unit_length(10.0);
-    auto dr = dimensional::unit_length(1.0);
-    auto d = 1.0 + std::exp(-std::pow((r - r0) / dr, 2.0));
-    return srhd::primitive(d, 0.0, 0.0, 0.0, 1.0);
+    auto r0 = dimensional::unit_length(1.0);
+    auto d_wind = dimensional::unit_mass_density(1.0) * std::pow(r / r0, -2.0);
+    auto u_wind = 2.0;
+    auto p_wind = d_wind * 1e-3 * dimensional::pow<2>(srhd::light_speed);
+    auto d_upst = 1e-3;
+    auto p_upst = 1e-3 * d_upst;
+
+    auto wind = srhd::primitive(d_wind, u_wind, 0.0, 0.0, p_wind);
+    auto upst = srhd::primitive(d_upst,    0.0, 0.0, 0.0, p_upst);
+
+    return r < dimensional::unit_length(10.0) ? wind : upst;
+}
+
+auto initial_condition(const mara::config_t& run_config)
+{
+    return [run_config] (dimensional::unit_length r)
+    {
+        return initial_condition(run_config, r);
+    };
 }
 
 auto riemann_solver_for(geometric::unit_vector_t nhat)
@@ -152,7 +167,7 @@ state_t initial_state(const mara::config_t& run_config)
 {
     auto xv = initial_vertices(run_config.get_int("nr") * int(std::log10(run_config.get_double("outer_radius"))));
     auto dv = xv | nd::adjacent_zip() | nd::map(apply_to(shell_volume));
-    auto p0 = xv | nd::adjacent_mean() | nd::map(initial_condition);
+    auto p0 = xv | nd::adjacent_mean() | nd::map(initial_condition(run_config));
     auto u0 = p0 | nd::map([] (auto p) { return srhd::conserved_density(p, gamma_law_index); });
     return {0.0, 0, xv | nd::to_shared(), (u0 * dv) | nd::to_shared()};
 }
@@ -161,35 +176,43 @@ state_t initial_state(const mara::config_t& run_config)
 
 
 //=============================================================================
-state_t advance(state_t state)
+state_t advance(const mara::config_t& run_config, state_t state)
 {
-    using namespace std::placeholders;
-    auto source_terms = std::bind(srhd::spherical_geometry_source_terms, _1, _2, M_PI / 2, gamma_law_index);
-
     /*
         p0  :=    x   x   x   x   x
         s0  :=    x   x   x   x   x
-        gx  :=    o   x   x   x   o      (o = extend-zero-gradient)
+        gx  :=    o   x   x   x   o      (o = extend zeros)
         pf  :=      |   |   |   |
         vf  :=      |   |   |   |
-        f0  :=  :   |   |   |   |   :    (: = extend-zero-gradient)
+        f0  :=  :   |   |   |   |   ;    (: = extend-uniform-lower ; = extend-zero-gradient-upper)
         df  :=    x   x   x   x   x
     */
 
+    using namespace std::placeholders;
+
+    auto st = std::bind(srhd::spherical_geometry_source_terms, _1, _2, M_PI / 2, gamma_law_index);
     auto xh = geometric::unit_vector_on_axis(1);
+    auto bf = srhd::flux(initial_condition(run_config, front(state.vertices)), xh, gamma_law_index);
     auto dt = time_step(state);
     auto da = face_areas(state);
     auto dv = cell_volumes(state);
     auto dx = cell_spacing(state);
     auto x0 = cell_centers(state);
     auto p0 = state.conserved / dv | nd::map(recover_primitive()) | nd::to_shared();
-    auto s0 = nd::zip(p0, x0) | nd::map(apply_to(source_terms)) | nd::multiply(dv);
-    auto gx = nd::zip(x0 | nd::adjacent_zip3(), p0 | nd::adjacent_zip3()) | nd::map(mara::plm_gradient(1.5)) | nd::extend_zero_gradient() | nd::to_shared();
+    auto s0 = nd::zip(p0, x0) | nd::map(apply_to(st)) | nd::multiply(dv);
+    auto gx = nd::zip(x0 | nd::adjacent_zip3(), p0 | nd::adjacent_zip3()) | nd::map(mara::plm_gradient(1.5)) | nd::extend_zeros() | nd::to_shared();
     auto pl = select(p0 + 0.5 * dx * gx, 0, 0, -1);
     auto pr = select(p0 - 0.5 * dx * gx, 0, 1);
     auto vf = nd::map((pl + pr) * 0.5, srhd::velocity_1) * 0.0 | nd::to_shared();
     auto pf = nd::zip(pl, pr);
-    auto f0 = nd::zip(pf, vf) | nd::map(riemann_solver_for(xh)) | nd::extend_zero_gradient() | nd::multiply(da)  | nd::to_shared();
+
+    auto f0 = nd::zip(pf, vf)
+    | nd::map(riemann_solver_for(xh))
+    | nd::extend_uniform_lower(bf)
+    | nd::extend_zero_gradient_upper()
+    | nd::multiply(da)
+    | nd::to_shared();
+
     auto df = f0 | nd::adjacent_diff() | nd::to_shared();
     auto q1 = state.conserved + (s0 - df) * dt | nd::to_shared();
     auto x1 = state.vertices  + (vf * dt | nd::extend_zero_gradient()) | nd::to_shared();
@@ -202,16 +225,24 @@ state_t advance(state_t state)
     };
 }
 
+auto advance(const mara::config_t& run_config)
+{
+    return [run_config] (state_t state)
+    {
+        return advance(run_config, state);
+    };
+}
+
 
 
 
 //=============================================================================
 void write_diagnostics(state_t state)
 {
-    std::printf("Write checkpoint %s\n", "srhd.h5");
+    std::printf("Write checkpoint %s\n", "sedov.h5");
     auto dv = cell_volumes(state);
     auto primitive = (state.conserved / dv) | nd::map(recover_primitive());
-    auto file = h5::File("srhd.h5", "w");
+    auto file = h5::File("sedov.h5", "w");
     h5::write(file, "vertices", state.vertices | nd::adjacent_mean() | nd::to_shared());
     h5::write(file, "primitive", primitive | nd::to_shared());
 }
@@ -262,12 +293,12 @@ int main(int argc, const char* argv[])
     .create()
     .update(mara::argv_to_string_map(argc, argv));
 
-    mara::pretty_print(std::cout, "config", run_config);
-
-    auto simulation = seq::generate(initial_state(run_config), advance)
+    auto simulation = seq::generate(initial_state(run_config), advance(run_config))
     | seq::pair_with(control::time_point_sequence())
     | seq::window()
     | seq::take_while(should_continue(run_config));
+
+    mara::pretty_print(std::cout, "config", run_config);
 
     for (auto state_pair : simulation)
     {

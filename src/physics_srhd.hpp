@@ -157,16 +157,16 @@ inline auto sound_speed_squared(primitive_t p, double gamma_law_index)
 inline auto outer_wavespeeds(primitive_t p, geometric::unit_vector_t nhat, double gamma_law_index)
 {
     auto c2 = light_speed * light_speed;
-    auto vn = dot(nhat, velocity_vector(p));
+    auto a2 = sound_speed_squared(p, gamma_law_index) / c2;
     auto uu = gamma_beta_squared(p);
-    auto vv = uu / (1.0 + uu) * c2;
-    auto v2 = vn * vn;
-    auto a2 = sound_speed_squared(p, gamma_law_index);
-    auto k0 = sqrt(c2 * (1.0 - vv / c2) * (1.0 - vv / c2 - v2 / c2 * (1.0 - a2 / c2)));
+    auto vn = dot(nhat, velocity_vector(p));
+    auto bn = vn / light_speed;
+    auto bb = uu / (1 + uu);
+    auto b2 = bn * bn;
+    auto k0 = sqrt(a2 * (1 - bb) * (1 - bb * a2 - b2 * (1 - a2))) * light_speed;
 
-    return std::pair(
-        (vn * (1 - a2 / c2) - k0) / (1.0 - vv * a2 / c2 / c2),
-        (vn * (1 - a2 / c2) + k0) / (1.0 - vv * a2 / c2 / c2));
+    return std::pair((vn * (1 - a2) - k0) / (1 - bb * a2),
+                     (vn * (1 - a2) + k0) / (1 - bb * a2));
 }
 
 

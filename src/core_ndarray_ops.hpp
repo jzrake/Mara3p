@@ -86,13 +86,62 @@ inline auto extend_periodic(uint axis=0, uint count=1)
     };
 }
 
+inline auto extend_zero_gradient_lower(uint axis=0, uint count=1)
+{
+    return [axis, count] (auto x)
+    {
+        return nd::concat(repeat(select(x, axis, 0, 1), axis, count), x, axis);
+    };
+}
+
+inline auto extend_zero_gradient_upper(uint axis=0, uint count=1)
+{
+    return [axis, count] (auto x)
+    {
+        return nd::concat(x, repeat(select(x, axis, -1), axis, count), axis);
+    };
+}
+
 inline auto extend_zero_gradient(uint axis=0, uint count=1)
 {
     return [count, axis] (auto x)
     {
-        return repeat(select(x, axis, 0, 1), axis, count)
-        | nd::concat(x, axis)
-        | nd::concat(repeat(select(x, axis, -1), axis, count), axis);
+        return x | extend_zero_gradient_lower(axis, count) | extend_zero_gradient_upper(axis, count);
+    };
+}
+
+template<typename T>
+inline auto extend_uniform_lower(T value, uint axis=0, uint count=1)
+{
+    return [count, axis, value] (auto x)
+    {
+        return nd::concat(nd::uniform(value, replace(shape(x), axis, count)), x, axis);
+    };
+}
+
+template<typename T>
+auto extend_uniform_upper(T value, uint axis=0, uint count=1)
+{
+    return [count, axis, value] (auto x)
+    {
+        return nd::concat(x, nd::uniform(value, replace(shape(x), axis, count)), axis);
+    };
+}
+
+template<typename T>
+auto extend_uniform(T value, uint axis=0, uint count=1)
+{
+    return [count, axis, value] (auto x)
+    {
+        return x | extend_uniform_lower(value, axis, count) | extend_uniform_upper(value, axis, count);
+    };
+}
+
+auto extend_zeros(uint axis=0, uint count=1)
+{
+    return [count, axis] (auto x)
+    {
+        return x | extend_uniform(typename decltype(x)::value_type(), axis, count);
     };
 }
 
