@@ -28,7 +28,9 @@
 
 #pragma once
 #include <chrono>
+#include <string>
 #include <tuple>
+#include "core_dimensional.hpp"
 #include "core_sequence.hpp"
 
 
@@ -41,14 +43,64 @@ namespace control
 
 
 
+//=============================================================================
+struct task_t
+{
+    std::string name;
+    dimensional::unit_time next_time = 0.0;
+    unsigned long count = 0;
+};
+
+
+
+
+//=============================================================================
+inline task_t task(std::string name, dimensional::unit_time next_time=0.0)
+{
+    return {name, next_time, 0};
+}
+
+inline auto jump(task_t task, dimensional::unit_time time, dimensional::unit_time cadence)
+{
+    if (time >= task.next_time)
+    {
+        task.count += 1;
+        task.next_time = task.next_time + cadence;
+    }
+    return task;
+}
+
+inline auto jump(task_t task, dimensional::unit_time time, double factor)
+{
+    if (time >= task.next_time)
+    {
+        task.count += 1;
+        task.next_time = task.next_time * factor;
+    }
+    return task;
+}
+
+inline auto jump_task(dimensional::unit_time time, std::function<dimensional::unit_time(std::string)> cadence)
+{
+    return [=] (task_t task)
+    {
+        return jump(task, time, cadence(task.name));
+    };
+}
+
+
+
+
+
 using time_point_t = std::chrono::high_resolution_clock::time_point;
+
 
 
 
 
 /**
  * A typedef intended for use with T as a solution state. The inner pair is a
- * solution state combined with a time point, helpful for use as aœ performance
+ * solution state combined with a time point, helpful for use as a performance
  * diagnostic. The outer pair is two solution-states-time-point pairs.
  * Convenience functions below aid in accessing these four effective
  * "data members" by name.

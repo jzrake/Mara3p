@@ -195,7 +195,7 @@ inline auto internal_energy_density(conserved_density_t u)
 
 
 //=============================================================================
-inline primitive_t recover_primitive(conserved_density_t u, double gamma_law_index)
+inline primitive_t recover_primitive(conserved_density_t u, double gamma_law_index, double temperature_floor=0.0)
 {
     auto newton_iter_max = 50;
     auto error_tolerance = 1e-10;
@@ -232,6 +232,10 @@ inline primitive_t recover_primitive(conserved_density_t u, double gamma_law_ind
         }
         ++iteration;
     }
+
+
+    if (temperature_floor > 0.0)
+        p = std::max(p, temperature_floor * D * c2);
 
     if (! found)
         throw std::invalid_argument("srhd::recover_primitive (root finder not converging)");
