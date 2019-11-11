@@ -43,11 +43,10 @@ namespace geometric
 template<typename CoordinateType>
 struct euclidean_vector_t
 {
-    const CoordinateType& at(std::size_t i) const { return impl.at(i); }
-    CoordinateType& at(std::size_t i) { return impl.at(i); }
-
-    const CoordinateType& operator[](std::size_t i) const { return impl.operator[](i); }
-    CoordinateType& operator[](std::size_t i) { return impl.operator[](i); }
+    CoordinateType component_1() const { return impl[0]; }
+    CoordinateType component_2() const { return impl[1]; }
+    CoordinateType component_3() const { return impl[2]; }
+    CoordinateType component(unsigned axis) const { return impl.at(axis - 1); }
 
     numeric::array_t<CoordinateType, 3> impl;
 };
@@ -130,13 +129,16 @@ template<typename T, typename U> auto operator-(euclidean_vector_t<T> a, euclide
 template<typename T, typename U> auto operator*(euclidean_vector_t<T> a, euclidean_vector_t<U> b) { return euclidean_vector(a.impl * b.impl); }
 template<typename T, typename U> auto operator/(euclidean_vector_t<T> a, euclidean_vector_t<U> b) { return euclidean_vector(a.impl / b.impl); }
 template<typename T, typename U> auto operator*(euclidean_vector_t<T> a, U b) { return euclidean_vector(a.impl * b); }
-template<typename T, typename U> auto operator/(euclidean_vector_t<T> a, U b) { return euclidean_vector(a.impl * b); }
+template<typename T, typename U> auto operator/(euclidean_vector_t<T> a, U b) { return euclidean_vector(a.impl / b); }
 template<typename T, typename U> auto operator*(U b, euclidean_vector_t<T> a) { return euclidean_vector(b * a.impl); }
-template<typename T, typename U> auto operator/(U b, euclidean_vector_t<T> a) { return euclidean_vector(b * a.impl); }
+template<typename T, typename U> auto operator/(U b, euclidean_vector_t<T> a) { return euclidean_vector(b / a.impl); }
 template<typename T, typename U> auto operator+(euclidean_vector_t<T> a) { return euclidean_vector(+a.impl); }
 template<typename T, typename U> auto operator-(euclidean_vector_t<T> a) { return euclidean_vector(-a.impl); }
 template<typename T, typename U> auto operator==(euclidean_vector_t<T> a, euclidean_vector_t<U> b) { return a.impl == b.impl; }
 template<typename T, typename U> auto operator!=(euclidean_vector_t<T> a, euclidean_vector_t<U> b) { return a.impl != b.impl; }
+
+template<typename T> auto operator*(unit_vector_t a, T b) { return euclidean_vector(a.impl * b); }
+template<typename T> auto operator*(T a, unit_vector_t b) { return euclidean_vector(a * b.impl); }
 
 } // namespace geometric
 
@@ -153,9 +155,8 @@ template<typename T, typename U> auto operator!=(euclidean_vector_t<T> a, euclid
 //=============================================================================
 inline void test_geometric()
 {
-    require(geometric::euclidean_vector(1, 2, 3).at(0) == 1);
-    require(geometric::euclidean_vector(1, 2, 3)[1] == 2);
-    require_throws(geometric::euclidean_vector(1, 2, 3).at(3));
+    require(geometric::euclidean_vector(1, 2, 3).component_1() == 1);
+    require(geometric::euclidean_vector(1, 2, 3).component_2() == 2);
     require(geometric::euclidean_vector(1, 2, 3) + geometric::euclidean_vector(1, 2, 3) == geometric::euclidean_vector(2, 4, 6));
     require(geometric::euclidean_vector(1, 2, 3) * 2.0 == geometric::euclidean_vector(2, 4, 6));
 }
