@@ -53,6 +53,24 @@ const static auto light_speed = dimensional::unit_velocity(1.0);
 
 
 //=============================================================================
+template<typename ExceptionType>
+#ifdef SRHD_NO_EXCEPTIONS
+void throw_or_abort(const char* message) noexcept
+{
+    std::printf("FATAL: %s\n", message);
+    exit(1);
+}
+#else
+void throw_or_abort(const char* message)
+{
+    throw ExceptionType(message);
+}
+#endif
+
+
+
+
+//=============================================================================
 inline primitive_t primitive(unit_mass_density d, unit_scalar u, unit_scalar v, unit_scalar w, unit_energy_density p)
 {
     return {{d, u, v, w, p}};
@@ -88,6 +106,12 @@ inline auto conserved_momentum_density_1(conserved_density_t u) { return numeric
 inline auto conserved_momentum_density_2(conserved_density_t u) { return numeric::get<2>(u); }
 inline auto conserved_momentum_density_3(conserved_density_t u) { return numeric::get<3>(u); }
 inline auto conserved_energy_density    (conserved_density_t u) { return numeric::get<4>(u); }
+
+inline auto conserved_mass_density      (flux_vector_t f) { return numeric::get<0>(f); }
+inline auto conserved_momentum_density_1(flux_vector_t f) { return numeric::get<1>(f); }
+inline auto conserved_momentum_density_2(flux_vector_t f) { return numeric::get<2>(f); }
+inline auto conserved_momentum_density_3(flux_vector_t f) { return numeric::get<3>(f); }
+inline auto conserved_energy_density    (flux_vector_t f) { return numeric::get<4>(f); }
 
 
 
@@ -181,6 +205,14 @@ inline auto momentum_density_vector(conserved_density_t u)
         conserved_momentum_density_3(u));
 }
 
+inline auto momentum_density_vector(flux_vector_t f)
+{
+    return geometric::euclidean_vector(
+        conserved_momentum_density_1(f),
+        conserved_momentum_density_2(f),
+        conserved_momentum_density_3(f));
+}
+
 inline auto kinetic_energy_density(conserved_density_t u)
 {
     return 0.5 * length_squared(momentum_density_vector(u)) / conserved_mass_density(u);
@@ -198,7 +230,7 @@ inline auto internal_energy_density(conserved_density_t u)
 inline primitive_t recover_primitive(conserved_density_t u, double gamma_law_index, double temperature_floor=0.0)
 {
     auto newton_iter_max = 50;
-    auto error_tolerance = 1e-10;
+    auto error_tolerance = 1e-12;
     auto c2        = light_speed * light_speed;
     auto gm        = gamma_law_index;
     auto D         = conserved_mass_density(u);
@@ -224,7 +256,7 @@ inline primitive_t recover_primitive(conserved_density_t u, double gamma_law_ind
 
         p = p - f / g;
 
-        if (std::fabs(f / unit_energy_density(1.0)) < error_tolerance)
+        if (std::fabs(f.value) < error_tolerance)
         {
             W0 = W;
             found = true;
@@ -233,18 +265,14 @@ inline primitive_t recover_primitive(conserved_density_t u, double gamma_law_ind
         ++iteration;
     }
 
-
     if (temperature_floor > 0.0)
         p = std::max(p, temperature_floor * D * c2);
 
     if (! found)
-        throw std::invalid_argument("srhd::recover_primitive (root finder not converging)");
+        throw_or_abort<std::invalid_argument>("srhd::recover_primitive (root finder not converging)");
 
-    if (p <= unit_energy_density(0.0))
-        throw std::invalid_argument("srhd::recover_primitive (negative pressure)");
-
-    if (D <= unit_mass_density(0.0))
-        throw std::invalid_argument("srhd::recover_primitive (negative density)");
+    if (temperature_floor <= 0.0 && p <= unit_energy_density(0.0))
+        throw_or_abort<std::invalid_argument>("srhd::recover_primitive (negative pressure)");
 
     return numeric::tuple(
         D / W0,
@@ -318,23 +346,35 @@ inline auto spherical_geometry_source_terms(primitive_t p, unit_length spherical
 
 
 //=============================================================================
-inline flux_vector_t riemann_hlle(primitive_t pl, primitive_t pr, geometric::unit_vector_t face_normal, double gamma_law_index)
+struct riemann_solver_mode_hlle_fluxes_t {};
+struct riemann_solver_mode_hlle_fluxes_moving_face_t { unit_velocity face_speed; };
+struct riemann_solver_mode_hllc_fluxes_moving_face_t { unit_velocity face_speed; };
+struct riemann_solver_mode_hllc_fluxes_across_contact_t {};
+struct riemann_solver_mode_contact_speed_t {};
+
+
+
+
+/**
+ * @brief      HLLC Riemann solver based on Mignone & Bodo (2005)
+ *
+ * @param[in]  pl                 Primitive state left of the interface
+ * @param[in]  pr                 Primitive state right of the interface
+ * @param[in]  nhat               The unit vector normal to the interface
+ * @param[in]  gamma_law_index    The adiabatic gamma law index
+ * @param[in]  mode               Instance of one of the structs above,
+ *                                determining what will be returned
+ *
+ * @tparam     RiemannSolverMode  The type of the calculation mode
+ *
+ * @return     Either the contact speed, or fluxes, depending on the mode
+ *
+ * @note       Equation numbers given are from Mignone & Bodo (2005).
+ */
+template<typename RiemannSolverMode>
+auto riemann_solver(primitive_t pl, primitive_t pr, geometric::unit_vector_t nhat, double gamma_law_index, RiemannSolverMode mode)
 {
-    auto ul = conserved_density(pl, gamma_law_index);
-    auto ur = conserved_density(pr, gamma_law_index);
-    auto fl = flux(pl, face_normal, gamma_law_index);
-    auto fr = flux(pr, face_normal, gamma_law_index);
-
-    auto [alm, alp] = outer_wavespeeds(pl, face_normal, gamma_law_index);
-    auto [arm, arp] = outer_wavespeeds(pr, face_normal, gamma_law_index);
-    auto ap = std::max(unit_velocity(0), std::max(alp, arp));
-    auto am = std::min(unit_velocity(0), std::min(alm, arm));
-
-    return (ap * fl - am * fr - (ul - ur) * ap * am) / (ap - am);
-}
-
-inline flux_vector_t riemann_hlle(primitive_t pl, primitive_t pr, geometric::unit_vector_t nhat, unit_velocity face_speed, double gamma_law_index)
-{
+    auto c2 = light_speed * light_speed;
     auto ul = conserved_density(pl, gamma_law_index);
     auto ur = conserved_density(pr, gamma_law_index);
     auto fl = flux(pl, nhat, gamma_law_index);
@@ -342,19 +382,84 @@ inline flux_vector_t riemann_hlle(primitive_t pl, primitive_t pr, geometric::uni
 
     auto [alm, alp] = outer_wavespeeds(pl, nhat, gamma_law_index);
     auto [arm, arp] = outer_wavespeeds(pr, nhat, gamma_law_index);
-    auto ap = std::max(alp, arp);
-    auto am = std::min(alm, arm);
+    auto ar = std::max(alp, arp);
+    auto al = std::min(alm, arm);
 
-    if (face_speed < am)
-        return fl - face_speed * ul;
+    if constexpr (std::is_same_v<RiemannSolverMode, riemann_solver_mode_hlle_fluxes_t>)
+    {
+        return (ar * fl - al * fr - (ul - ur) * ar * al) / (ar - al);
+    }
 
-    if (face_speed > ap)
-        return fr - face_speed * ur;
+    // Equations (9) and (11)
+    auto u_hll = (ar * ur - al * ul + (fl - fr))           / (ar - al);
+    auto f_hll = (ar * fl - al * fr - (ul - ur) * ar * al) / (ar - al);
 
-    auto u_hll = (ap * ur - am * ul + (fl - fr))           / (ap - am);
-    auto f_hll = (ap * fl - am * fr - (ul - ur) * ap * am) / (ap - am);
+    if constexpr (std::is_same_v<RiemannSolverMode, riemann_solver_mode_hlle_fluxes_moving_face_t>)
+    {
+        return f_hll - mode.face_speed * u_hll;
+    }
 
-    return f_hll - face_speed * u_hll;
+    // Mignone defines total energy as including the rest mass
+    auto ue_hll = conserved_energy_density(u_hll) + conserved_mass_density(u_hll) * c2;
+    auto fe_hll = conserved_energy_density(f_hll) + conserved_mass_density(f_hll) * c2;
+    auto um_hll = dot(momentum_density_vector(u_hll), nhat);
+    auto fm_hll = dot(momentum_density_vector(f_hll), nhat);
+
+    // Equation (18)
+    auto a = +fe_hll;
+    auto b = -fm_hll - ue_hll;
+    auto c = +um_hll;
+    auto as = (std::abs(a.value) > 1e-8 ? (-b - sqrt(b * b - 4.0 * a * c)) / (2.0 * a) : -c / b) * c2;
+    auto ps = -fe_hll * as / c2 + fm_hll;
+
+    if constexpr (std::is_same_v<RiemannSolverMode, riemann_solver_mode_contact_speed_t>)
+    {
+        return as;
+    }
+
+    auto star_state_flux = [nhat, c2, as, ps] (conserved_density_t u, flux_vector_t f, primitive_t p, unit_velocity a, unit_velocity face_speed)
+    {
+        // Equations (16)
+        auto S = momentum_density_vector(u);
+        auto v = dot(velocity_vector(p), nhat);
+        auto e = conserved_energy_density(u) + conserved_mass_density(u) * c2;
+        auto m = dot(S, nhat);
+        auto n = S - m * nhat; // transverse momentum
+        auto es = (e * (a - v) + ps * as - gas_pressure(p) * v) / (a - as);
+        auto ms = (m * (a - v) + ps - gas_pressure(p))          / (a - as);
+        auto ns =  n * (a - v)                                  / (a - as);
+        auto Ds = conserved_mass_density(u) * (a - v)           / (a - as);
+        auto Ss = ms * nhat + ns;
+
+        auto us = numeric::tuple(Ds, Ss.component_1(), Ss.component_2(), Ss.component_3(), es - Ds * c2);
+        auto fs = f + a * (us - u);
+
+        return fs - face_speed * us;
+    };
+
+    if constexpr (std::is_same_v<RiemannSolverMode, riemann_solver_mode_hllc_fluxes_across_contact_t>)
+    {
+        return std::pair(star_state_flux(ul, fl, pl, al, as), as);
+    }
+    if constexpr (std::is_same_v<RiemannSolverMode, riemann_solver_mode_hllc_fluxes_moving_face_t>)
+    {
+        if (mode.face_speed <= al) return fl - mode.face_speed * ul;
+        if (mode.face_speed >= ar) return fr - mode.face_speed * ur;
+        if (mode.face_speed <= as) return star_state_flux(ul, fl, pl, al, mode.face_speed);
+        if (mode.face_speed >= as) return star_state_flux(ur, fr, pr, ar, mode.face_speed);
+
+        return flux_vector_t{};
+    }
+}
+
+inline flux_vector_t riemann_hlle(primitive_t pl, primitive_t pr, geometric::unit_vector_t nhat, double gamma_law_index)
+{
+    return riemann_solver(pl, pr, nhat, gamma_law_index, riemann_solver_mode_hlle_fluxes_t{});
+}
+
+inline flux_vector_t riemann_hlle(primitive_t pl, primitive_t pr, geometric::unit_vector_t nhat, unit_velocity face_speed, double gamma_law_index)
+{
+    return riemann_solver(pl, pr, nhat, gamma_law_index, riemann_solver_mode_hlle_fluxes_moving_face_t{face_speed});
 }
 
 } // namespace srhd
@@ -372,14 +477,31 @@ inline flux_vector_t riemann_hlle(primitive_t pl, primitive_t pr, geometric::uni
 //=============================================================================
 inline void test_srhd()
 {
+    using namespace srhd;
+
     auto require_cons_to_prim = [] (srhd::primitive_t p0)
     {
-        auto p1 = srhd::recover_primitive(srhd::conserved_density(p0, 4. / 3), 4. / 3);
+        auto p1 = recover_primitive(conserved_density(p0, 4. / 3), 4. / 3);
         require(all(map(p1 - p0, [] (auto x) { return std::abs(x.value) < 1e-10; })));
     };
 
-    require_cons_to_prim(srhd::primitive(1.0, 1.0));
-    require_cons_to_prim(srhd::primitive(1.5, 1e3));
-    require_cons_to_prim(srhd::primitive(1.0, 0.0, 0.0, 0.0, 1.0));
-    require_cons_to_prim(srhd::primitive(5.7, 1.0, 2.0, 3.0, 5.0));
+    require_cons_to_prim(primitive(1.0, 1.0));
+    require_cons_to_prim(primitive(1.5, 1e3));
+    require_cons_to_prim(primitive(1.0, 0.0, 0.0, 0.0, 1.0));
+    require_cons_to_prim(primitive(5.7, 1.0, 2.0, 3.0, 5.0));
+
+    auto require_contact_speed = [] (unsigned axis)
+    {
+        auto xh = geometric::unit_vector_on_axis(axis);
+        auto pl = primitive(1.0, 0.5 * (axis == 1), 0.6 * (axis == 2), 0.7 * (axis == 3), 10.0);
+        auto pr = primitive(4.0, 0.5 * (axis == 1), 0.6 * (axis == 2), 0.7 * (axis == 3), 10.0);
+        auto contact_speed = riemann_solver(pl, pr, xh, 4. / 3, riemann_solver_mode_contact_speed_t());
+        auto fc = riemann_solver(pl, pr, xh, 4. / 3, riemann_solver_mode_hllc_fluxes_moving_face_t{contact_speed});
+
+        require(abs(contact_speed - velocity_vector(pl).component(axis)).value < 1e-12);
+        require(abs(conserved_mass_density(fc)).value < 1e-12);
+    };
+    require_contact_speed(1);
+    require_contact_speed(2);
+    require_contact_speed(3);
 }

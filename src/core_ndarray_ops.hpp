@@ -60,6 +60,14 @@ inline auto adjacent_zip3(uint axis=0)
     };
 }
 
+inline auto adjacent_zip4(uint axis=0)
+{
+    return [axis] (auto x)
+    {
+        return zip(select(x, axis, 0, -3), select(x, axis, 1, -2), select(x, axis, 2, -1), select(x, axis, 3));
+    };
+}
+
 inline auto adjacent_mean(uint axis=0)
 {
     return [axis] (auto x)
