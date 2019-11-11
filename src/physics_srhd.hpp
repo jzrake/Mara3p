@@ -347,6 +347,7 @@ inline auto spherical_geometry_source_terms(primitive_t p, unit_length spherical
 
 //=============================================================================
 struct riemann_solver_mode_hlle_fluxes_t {};
+struct riemann_solver_mode_hllc_fluxes_t {};
 struct riemann_solver_mode_hlle_fluxes_moving_face_t { unit_velocity face_speed; };
 struct riemann_solver_mode_hllc_fluxes_moving_face_t { unit_velocity face_speed; };
 struct riemann_solver_mode_hllc_fluxes_across_contact_t {};
@@ -445,6 +446,17 @@ auto riemann_solver(primitive_t pl, primitive_t pr, geometric::unit_vector_t nha
     {
         return std::pair(star_state_flux(ul, fl, pl, al, as), as);
     }
+
+    if constexpr (std::is_same_v<RiemannSolverMode, riemann_solver_mode_hllc_fluxes_t>)
+    {
+        if (unit_velocity(0.0) <= al) return fl;
+        if (unit_velocity(0.0) >= ar) return fr;
+        if (unit_velocity(0.0) <= as) return star_state_flux(ul, fl, pl, al, 0.0);
+        if (unit_velocity(0.0) >= as) return star_state_flux(ur, fr, pr, ar, 0.0);
+
+        return flux_vector_t{};        
+    }
+
     if constexpr (std::is_same_v<RiemannSolverMode, riemann_solver_mode_hllc_fluxes_moving_face_t>)
     {
         if (mode.face_speed <= al) return fl - mode.face_speed * ul;
@@ -464,6 +476,16 @@ inline flux_vector_t riemann_hlle(primitive_t pl, primitive_t pr, geometric::uni
 inline flux_vector_t riemann_hlle(primitive_t pl, primitive_t pr, geometric::unit_vector_t nhat, unit_velocity face_speed, double gamma_law_index)
 {
     return riemann_solver(pl, pr, nhat, gamma_law_index, riemann_solver_mode_hlle_fluxes_moving_face_t{face_speed});
+}
+
+inline flux_vector_t riemann_hllc(primitive_t pl, primitive_t pr, geometric::unit_vector_t nhat, double gamma_law_index)
+{
+    return riemann_solver(pl, pr, nhat, gamma_law_index, riemann_solver_mode_hllc_fluxes_t{});
+}
+
+inline flux_vector_t riemann_hllc(primitive_t pl, primitive_t pr, geometric::unit_vector_t nhat, unit_velocity face_speed, double gamma_law_index)
+{
+    return riemann_solver(pl, pr, nhat, gamma_law_index, riemann_solver_mode_hllc_fluxes_moving_face_t{face_speed});
 }
 
 } // namespace srhd
