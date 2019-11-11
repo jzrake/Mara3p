@@ -207,7 +207,7 @@ state_with_tasks_t initial_app_state(const mara::config_t& run_config)
 
 
 //=============================================================================
-state_t advance_rk(const mara::config_t& run_config, state_t state, dimensional::unit_time dt)
+state_t advance(const mara::config_t& run_config, state_t state, dimensional::unit_time dt)
 {
     /*
         p0  :=    x   x   x   x   x
@@ -257,24 +257,12 @@ state_t advance_rk(const mara::config_t& run_config, state_t state, dimensional:
 
 state_t advance(const mara::config_t& run_config, state_t state)
 {
-    auto s0 = state;
-    auto dt = time_step(run_config, state);
-
-    switch (run_config.get_int("rk_order"))
+    auto rk_order = run_config.get_int("rk_order");
+    auto base = [&run_config, dt = time_step(run_config, state)] (state_t s)
     {
-        case 1:
-        {
-            return advance_rk(run_config, s0, dt);
-        }
-        case 2:
-        {
-            auto b0 = rational::number(1, 2);
-            auto s1 = advance_rk(run_config, s0, dt);
-            auto s2 = advance_rk(run_config, s1, dt);
-            return mara::weighted_sum(s0, s2, b0);
-        }
-    }
-    throw std::invalid_argument("sedov::advance (rk_order must be 1 or 2)");
+        return advance(run_config, s, dt);
+    };
+    return control::advance_runge_kutta(base, rk_order, state);
 }
 
 control::task_t advance(const mara::config_t& run_config, control::task_t task, dimensional::unit_time time)

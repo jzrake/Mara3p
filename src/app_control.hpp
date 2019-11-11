@@ -140,4 +140,55 @@ inline auto time_point_sequence()
     return seq::generate(high_resolution_clock::now(), [] (auto) { return high_resolution_clock::now(); });
 }
 
+
+
+
+/**
+ * @brief      Advance a solution state using a common low-storage explicit
+ *             Runge-Kutta scheme of order 1, 2, or 3.
+ *
+ * @param[in]  base               The base scheme (single step)
+ * @param[in]  rk_order           The order
+ * @param[in]  state              The solution state
+ *
+ * @tparam     BaseSchemeType     The base scheme type
+ * @tparam     SolutionStateType  The solutions state type
+ *
+ * @return     An updated solution state
+ *
+ * @note       SolutionStateType must define an overload of the weighted_sum
+ *             function. For two states s0 and s1 this function must return b *
+ *             s0 + (1 - b) * s1.
+ */
+template<typename BaseSchemeType, typename SolutionStateType>
+auto advance_runge_kutta(BaseSchemeType base, unsigned rk_order, SolutionStateType state)
+{
+    switch (rk_order)
+    {
+        case 1:
+        {
+            return base(state);
+        }
+        case 2:
+        {
+            auto b0 = rational::number(1, 2);
+            auto s1 = state;
+            s1 = base(state);
+            s1 = weighted_sum(state, base(s1), b0);
+            return s1;
+        }
+        case 3:
+        {
+            auto b0 = rational::number(3, 4);
+            auto b1 = rational::number(1, 3);
+            auto s1 = state;
+            s1 = base(state);
+            s1 = weighted_sum(state, base(s1), b0);
+            s1 = weighted_sum(state, base(s1), b1);
+            return s1;
+        }
+    }
+    throw std::invalid_argument("sedov::advance (rk_order must be 1, 2, or 3)");
+}
+
 } // namespace control
