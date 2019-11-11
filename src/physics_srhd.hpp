@@ -387,6 +387,8 @@ auto riemann_solver(primitive_t pl, primitive_t pr, geometric::unit_vector_t nha
 
     if constexpr (std::is_same_v<RiemannSolverMode, riemann_solver_mode_hlle_fluxes_t>)
     {
+        if (unit_velocity(0.0) < al) return fl;
+        if (unit_velocity(0.0) > ar) return fr;
         return (ar * fl - al * fr - (ul - ur) * ar * al) / (ar - al);
     }
 
@@ -396,6 +398,8 @@ auto riemann_solver(primitive_t pl, primitive_t pr, geometric::unit_vector_t nha
 
     if constexpr (std::is_same_v<RiemannSolverMode, riemann_solver_mode_hlle_fluxes_moving_face_t>)
     {
+        if (mode.face_speed < al) return fl - mode.face_speed * ul;
+        if (mode.face_speed > ar) return fr - mode.face_speed * ur;
         return f_hll - mode.face_speed * u_hll;
     }
 

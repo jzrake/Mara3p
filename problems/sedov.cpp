@@ -26,6 +26,7 @@
 
 
 
+#define SRHD_NO_EXCEPTIONS
 #include "app_config.hpp"
 #include "app_control.hpp"
 #include "app_hdf5.hpp"
@@ -47,12 +48,17 @@
 auto config_template()
 {
     return mara::config_template()
-    .item("nr",                 256)   // number of radial zones, per decade
-    .item("tfinal",             1.0)   // time to stop the simulation
-    .item("rk_order",             2)   // Runge-Kutta order (1 or 2)
-    .item("cfl",                0.5)   // courant number
-    .item("router",           100.0)   // outer boundary radius
-    .item("uwind",              2.0);  // radial gamma-beta of the wind
+    .item("nr",                   256)   // number of radial zones, per decade
+    .item("tfinal",               1.0)   // time to stop the simulation
+    .item("rk_order",               2)   // Runge-Kutta order (1 or 2)
+    .item("cfl",                  0.5)   // courant number
+    .item("router",             100.0)   // outer boundary radius
+    .item("move",                   0)   // whether to move the cells
+    .item("ambient_medium_index", 2.0)   // index in A * (r / r0)^(-index)
+    .item("ambient_medium_norm",  1.0)   //     A in A * (r / r0)^(-index)
+    .item("rwind",                1.0)   // radius out to which an initial wind profile is set
+    .item("uwind",                2.0)   // radial gamma-beta of the wind
+    .item("twind",                1.0);  // time scale the wind lasts for
 }
 
 static const auto gamma_law_index   = 4. / 3;
@@ -128,18 +134,25 @@ auto initial_vertices(const mara::config_t& run_config)
 auto wind_profile(const mara::config_t& run_config, dimensional::unit_length r, dimensional::unit_time t)
 {
     auto r0 = dimensional::unit_length(1.0);
+    auto tw = dimensional::unit_time(run_config.get_double("twind"));
     auto t0 = dimensional::unit_time(1.0);
     auto d_wind = dimensional::unit_mass_density(1.0) * std::pow(r / r0, -2.0);
-    auto u_wind = run_config.get_double("uwind") * 1.0 / (1.0 + t / t0);
-    auto p_wind = d_wind * 1e-1 * dimensional::pow<2>(srhd::light_speed);
+    auto u_wind = run_config.get_double("uwind") * std::exp(-(t - t0) / tw);
+    auto p_wind = d_wind * 1e-3 * dimensional::pow<2>(srhd::light_speed);
 
     return srhd::primitive(d_wind, u_wind, 0.0, 0.0, p_wind);
 }
 
 auto initial_condition(const mara::config_t& run_config, dimensional::unit_length r)
 {
+    if (r < dimensional::unit_length(run_config.get_double("rwind")))
+    {
+        return wind_profile(run_config, r, 1.0);        
+    }
+    auto A = run_config.get_double("ambient_medium_norm");
+    auto n = run_config.get_double("ambient_medium_index");
     auto r0 = dimensional::unit_length(1.0);
-    auto d_upst = 1e-3 * std::pow(r / r0, -2);
+    auto d_upst = A * std::pow(r / r0, -n);
     auto p_upst = 1e-2 * d_upst;
     return srhd::primitive(d_upst, 0.0, 0.0, 0.0, p_upst);
 }
@@ -156,9 +169,8 @@ auto riemann_solver_for(geometric::unit_vector_t nhat)
 {
     return [nhat] (auto t)
     {
-        auto [pf, vf] = t;
-        auto [pl, pr] = pf;
-        return srhd::riemann_hlle(pl, pr, nhat, vf, gamma_law_index);
+        auto [pl, pr] = t;
+        return std::make_pair(srhd::riemann_hlle(pl, pr, nhat, gamma_law_index), dimensional::unit_velocity(0.0));
     };
 }
 
@@ -177,7 +189,7 @@ state_t initial_solution_state(const mara::config_t& run_config)
     auto dv = xv | nd::adjacent_zip() | nd::map(apply_to(shell_volume));
     auto p0 = xv | nd::adjacent_mean() | nd::map(initial_condition(run_config));
     auto u0 = p0 | nd::map([] (auto p) { return srhd::conserved_density(p, gamma_law_index); });
-    return {0.0, 0, xv | nd::to_shared(), (u0 * dv) | nd::to_shared()};
+    return {0, 1.0, xv | nd::to_shared(), (u0 * dv) | nd::to_shared()};
 }
 
 state_with_tasks_t initial_app_state(const mara::config_t& run_config)
@@ -202,10 +214,11 @@ state_t advance_rk(const mara::config_t& run_config, state_t state, dimensional:
     */
 
     using namespace std::placeholders;
-
+    // auto move = run_config.get_int("move");
     auto st = std::bind(srhd::spherical_geometry_source_terms, _1, _2, M_PI / 2, gamma_law_index);
     auto xh = geometric::unit_vector_on_axis(1);
     auto bf = srhd::flux(wind_profile(run_config, front(state.vertices), state.time), xh, gamma_law_index);
+    auto bv = dimensional::unit_velocity(0.0); //srhd::velocity_1(wind_profile(run_config, front(state.vertices), state.time));
     auto da = face_areas(state);
     auto dv = cell_volumes(state);
     auto dx = cell_spacing(state);
@@ -215,19 +228,18 @@ state_t advance_rk(const mara::config_t& run_config, state_t state, dimensional:
     auto gx = nd::zip(x0 | nd::adjacent_zip3(), p0 | nd::adjacent_zip3()) | nd::map(mara::plm_gradient(1.5)) | nd::extend_zeros() | nd::to_shared();
     auto pl = select(p0 + 0.5 * dx * gx, 0, 0, -1);
     auto pr = select(p0 - 0.5 * dx * gx, 0, 1);
-    auto vf = nd::map((pl + pr) * 0.5, srhd::velocity_1) * 0.0 | nd::to_shared();
-    auto pf = nd::zip(pl, pr);
 
-    auto f0 = nd::zip(pf, vf)
+    auto fv = nd::zip(pl, pr)
     | nd::map(riemann_solver_for(xh))
-    | nd::extend_uniform_lower(bf)
+    | nd::extend_uniform_lower(std::pair(bf, bv))
     | nd::extend_zero_gradient_upper()
-    | nd::multiply(da)
     | nd::to_shared();
 
-    auto df = f0 | nd::adjacent_diff() | nd::to_shared();
+    auto ff = fv | nd::map([] (auto a) { return std::get<0>(a); });
+    auto vf = fv | nd::map([] (auto a) { return std::get<1>(a); });
+    auto df = ff | nd::multiply(da) | nd::adjacent_diff() | nd::to_shared();
     auto q1 = state.conserved + (s0 - df) * dt | nd::to_shared();
-    auto x1 = state.vertices  + (vf * dt | nd::extend_zero_gradient()) | nd::to_shared();
+    auto x1 = state.vertices  + (vf * dt) | nd::to_shared();
 
     return {
         state.iteration + 1,
@@ -261,7 +273,7 @@ state_t advance(const mara::config_t& run_config, state_t state)
 
 control::task_t advance(const mara::config_t& run_config, control::task_t task, dimensional::unit_time time)
 {
-    return jump(task, time, 1.1);
+    return jump(task, time, 1.005);
 }
 
 state_with_tasks_t advance(const mara::config_t& run_config, state_with_tasks_t state_with_tasks)
@@ -319,9 +331,9 @@ auto side_effects(mara::config_t& run_config, timed_state_pair_t p)
 {
     if (control::this_state(p).second.count != control::last_state(p).second.count)
     {
-        write_diagnostics(control::this_state(p).first, control::last_state(p).second.count);
+        write_diagnostics(control::last_state(p).first, control::last_state(p).second.count);
     }
-    if (long(control::this_state(p).first.iteration) % 100 == 0)
+    if (long(control::this_state(p).first.iteration) % 1 == 0)
     {
         print_run_loop(p);            
     }
@@ -337,12 +349,12 @@ int main(int argc, const char* argv[])
     .create()
     .update(mara::argv_to_string_map(argc, argv));
 
+    mara::pretty_print(std::cout, "config", run_config);
+
     auto simulation = seq::generate(initial_app_state(run_config), advance(run_config))
     | seq::pair_with(control::time_point_sequence())
     | seq::window()
     | seq::take_while(should_continue(run_config));
-
-    mara::pretty_print(std::cout, "config", run_config);
 
     for (auto state_pair : simulation)
     {
