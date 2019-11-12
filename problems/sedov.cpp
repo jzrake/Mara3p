@@ -209,29 +209,20 @@ state_with_tasks_t initial_app_state(const mara::config_t& run_config)
 //=============================================================================
 state_t advance(const mara::config_t& run_config, state_t state, dimensional::unit_time dt)
 {
-    /*
-        p0  :=    x   x   x   x   x
-        s0  :=    x   x   x   x   x
-        gx  :=    o   x   x   x   o      (o = extend zeros)
-        pf  :=      |   |   |   |
-        vf  :=      |   |   |   |
-        f0  :=  :   |   |   |   |   ;    (: = extend-uniform-lower ; = extend-zero-gradient-upper)
-        df  :=    x   x   x   x   x
-    */
-
     using namespace std::placeholders;
     auto move = run_config.get_int("move");
     auto st = std::bind(srhd::spherical_geometry_source_terms, _1, _2, M_PI / 2, gamma_law_index);
     auto xh = geometric::unit_vector_on_axis(1);
     auto bf = srhd::flux(wind_profile(run_config, front(state.vertices), state.time), xh, gamma_law_index);
-    auto bv = move ? srhd::velocity_1(wind_profile(run_config, front(state.vertices), state.time)) : dimensional::unit_velocity(0.0);
+    // auto bv = move ? srhd::velocity_1(wind_profile(run_config, front(state.vertices), state.time)) : dimensional::unit_velocity(0.0);
+    auto bv = dimensional::unit_velocity(move ? 0.0 : 0.0);
     auto da = face_areas(state);
     auto dv = cell_volumes(state);
     auto dx = cell_spacing(state);
     auto x0 = cell_centers(state);
     auto p0 = state.conserved / dv | nd::map(recover_primitive()) | nd::to_shared();
     auto s0 = nd::zip(p0, x0) | nd::map(apply_to(st)) | nd::multiply(dv);
-    auto gx = nd::zip(x0 | nd::adjacent_zip3(), p0 | nd::adjacent_zip3()) | nd::map(mara::plm_gradient(1.5)) | nd::extend_zeros() | nd::to_shared();
+    auto gx = nd::zip(x0 | nd::adjacent_zip3(), p0 | nd::adjacent_zip3()) | nd::map(mara::plm_gradient(1.0)) | nd::extend_zeros() | nd::to_shared();
     auto pl = select(p0 + 0.5 * dx * gx, 0, 0, -1);
     auto pr = select(p0 - 0.5 * dx * gx, 0, 1);
 
@@ -327,7 +318,7 @@ auto side_effects(mara::config_t& run_config, timed_state_pair_t p)
     {
         write_diagnostics(control::last_state(p).first, control::last_state(p).second.count);
     }
-    if (long(control::this_state(p).first.iteration) % 100 == 0)
+    if (long(control::this_state(p).first.iteration) % 10 == 0)
     {
         print_run_loop(p);            
     }

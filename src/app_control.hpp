@@ -31,6 +31,7 @@
 #include <string>
 #include <tuple>
 #include "core_dimensional.hpp"
+#include "core_rational.hpp"
 #include "core_sequence.hpp"
 
 
@@ -147,9 +148,9 @@ inline auto time_point_sequence()
  * @brief      Advance a solution state using a common low-storage explicit
  *             Runge-Kutta scheme of order 1, 2, or 3.
  *
- * @param[in]  base               The base scheme (single step)
+ * @param[in]  u_plus_du          The base scheme (single step)
  * @param[in]  rk_order           The order
- * @param[in]  state              The solution state
+ * @param[in]  u0                 The solution state to step forward from
  *
  * @tparam     BaseSchemeType     The base scheme type
  * @tparam     SolutionStateType  The solutions state type
@@ -158,34 +159,31 @@ inline auto time_point_sequence()
  *
  * @note       SolutionStateType must define an overload of the weighted_sum
  *             function. For two states s0 and s1 this function must return b *
- *             s0 + (1 - b) * s1.
+ *             s0 + (1 - b) * s1, for a rational number b.
  */
 template<typename BaseSchemeType, typename SolutionStateType>
-auto advance_runge_kutta(BaseSchemeType base, unsigned rk_order, SolutionStateType state)
+auto advance_runge_kutta(BaseSchemeType u_plus_du, unsigned rk_order, SolutionStateType u0)
 {
     switch (rk_order)
     {
         case 1:
         {
-            return base(state);
+            return u_plus_du(u0);
         }
         case 2:
         {
-            auto b0 = rational::number(1, 2);
-            auto s1 = state;
-            s1 = base(state);
-            s1 = weighted_sum(state, base(s1), b0);
-            return s1;
+            auto u1 = u0;
+            u1 = u_plus_du(u0);
+            u1 = weighted_sum(u0, u_plus_du(u1), rational::number(1, 2));
+            return u1;
         }
         case 3:
         {
-            auto b0 = rational::number(3, 4);
-            auto b1 = rational::number(1, 3);
-            auto s1 = state;
-            s1 = base(state);
-            s1 = weighted_sum(state, base(s1), b0);
-            s1 = weighted_sum(state, base(s1), b1);
-            return s1;
+            auto u1 = u0;
+            u1 = u_plus_du(u0);
+            u1 = weighted_sum(u0, u_plus_du(u1), rational::number(3, 4));
+            u1 = weighted_sum(u0, u_plus_du(u1), rational::number(1, 3));
+            return u1;
         }
     }
     throw std::invalid_argument("sedov::advance (rk_order must be 1, 2, or 3)");

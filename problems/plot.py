@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 
 
-def plot_radial(ax1, ax2, filename):
+def plot_radial(ax1, ax2, filename, edges=False):
     h5f = h5py.File(filename, 'r')
     vertices   = h5f['vertices']
     density    = h5f['primitive'][...][:,0]
@@ -20,8 +20,9 @@ def plot_radial(ax1, ax2, filename):
     ax1.step(vertices[:-1], density)
     ax2.step(vertices[:-1], gamma_beta)
 
-    # for x in vertices:
-    #     ax2.axvline(x, c='k', lw=0.5)
+    if edges:
+        for x in vertices:
+            ax2.axvline(x, c='k', lw=0.5)
 
     for ax in [ax1, ax2]:
         ax.set_xlim(1.0, 1000.0)
@@ -63,6 +64,7 @@ if __name__ == "__main__":
     parser.add_argument("filenames", nargs='+')
     parser.add_argument("--movie", action='store_true')
     parser.add_argument("--output", default='output.mp4')
+    parser.add_argument("--edges", action='store_true')
     args = parser.parse_args()
 
     fig = plt.figure(figsize=[12, 9])
@@ -72,6 +74,6 @@ if __name__ == "__main__":
     else:
         ax1, ax2 = fig.subplots(nrows=2, ncols=1)
         for filename in args.filenames:
-            plot_radial(ax1, ax2, filename)
+            plot_radial(ax1, ax2, filename, edges=args.edges)
 
         plt.show()
