@@ -171,6 +171,27 @@ state_with_tasks_t initial_app_state(const mara::config_t& run_config)
 
 
 //=============================================================================
+state_t remesh(const mara::config_t& run_config, state_t state)
+{
+    if (front(state.vertices) > dimensional::unit_length(1.0 + 1.0 / run_config.get_int("nr")))
+    {
+        auto xv = nd::concat(nd::from(dimensional::unit_length(1.0)), state.vertices, 0) | nd::to_shared();
+        auto xc = spherical_mesh_geometry_t::cell_centers(xv);
+        auto dv = spherical_mesh_geometry_t::cell_volumes(xv);
+        auto bp = wind_profile(run_config, front(xc), state.time);
+        auto bu = srhd::conserved_density(bp, gamma_law_index) * front(dv);
+        auto u1 = nd::concat(nd::from(bu), state.conserved, 0) | nd::to_shared();
+
+        return {
+            state.iteration,
+            state.time,
+            xv,
+            u1,
+        };
+    }
+    return state;
+}
+
 state_t advance(const mara::config_t& run_config, state_t state)
 {
     auto base = [&run_config, dt = time_step(run_config, state)] (state_t s)
@@ -185,7 +206,7 @@ state_t advance(const mara::config_t& run_config, state_t state)
         });
         return mara::advance(s, dt, inner_boundary_prim, riemann_solver_for(xhat, move_cells), recover_primitive(), source_terms, mesh_geometry, 1.0);
     };
-    return control::advance_runge_kutta(base, run_config.get_int("rk_order"), state);
+    return remesh(run_config, control::advance_runge_kutta(base, run_config.get_int("rk_order"), state));
 }
 
 control::task_t advance(const mara::config_t& run_config, control::task_t task, dimensional::unit_time time)

@@ -136,9 +136,21 @@ auto operator+(quantity_t<N1, N2, N3, D1, D2, D3> a, quantity_t<N1, N2, N3, D1, 
 }
 
 template<long N1, long N2, long N3, unsigned long D1, unsigned long D2, unsigned long D3>
+auto& operator+=(quantity_t<N1, N2, N3, D1, D2, D3>& a, quantity_t<N1, N2, N3, D1, D2, D3> b)
+{
+    return a = a + b;
+}
+
+template<long N1, long N2, long N3, unsigned long D1, unsigned long D2, unsigned long D3>
 auto operator-(quantity_t<N1, N2, N3, D1, D2, D3> a, quantity_t<N1, N2, N3, D1, D2, D3> b)
 {
     return quantity_t<N1, N2, N3, D1, D2, D3>{a.value - b.value};
+}
+
+template<long N1, long N2, long N3, unsigned long D1, unsigned long D2, unsigned long D3>
+auto& operator-=(quantity_t<N1, N2, N3, D1, D2, D3>& a, quantity_t<N1, N2, N3, D1, D2, D3> b)
+{
+    return a = a - b;
 }
 
 template<

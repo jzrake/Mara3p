@@ -254,7 +254,7 @@ inline primitive_t recover_primitive(conserved_density_t u, double gamma_law_ind
         auto f  = d * e * (gm - 1.0) - p;
         auto g  = b2 * a2 - 1.0;
 
-        p = p - f / g;
+        p -= f / g;
 
         if (std::fabs(f.value) < error_tolerance)
         {
