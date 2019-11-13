@@ -171,34 +171,19 @@ state_with_tasks_t initial_app_state(const mara::config_t& run_config)
 
 
 //=============================================================================
-state_t advance(const mara::config_t& run_config, state_t state, dimensional::unit_time dt)
-{
-    auto move_cells          = run_config.get_int("move");
-    auto xhat                = geometric::unit_vector_on_axis(1);
-    auto inner_boundary_prim = wind_profile(run_config, state.vertices(0), state.time);
-    // auto inner_boundary_flux = srhd::flux(inner_boundary_prim);
-    auto mesh_geometry       = spherical_mesh_geometry_t();
-    auto source_terms        = util::apply_to([] (auto p, auto x)
-    {
-        return srhd::spherical_geometry_source_terms(p, x, M_PI / 2, gamma_law_index);
-    });
-
-    return mara::advance(
-        state,
-        dt,
-        inner_boundary_prim,
-        riemann_solver_for(xhat, move_cells),
-        recover_primitive(),
-        source_terms,
-        mesh_geometry,
-        1.0);
-}
-
 state_t advance(const mara::config_t& run_config, state_t state)
 {
     auto base = [&run_config, dt = time_step(run_config, state)] (state_t s)
     {
-        return advance(run_config, s, dt);
+        auto move_cells          = run_config.get_int("move");
+        auto xhat                = geometric::unit_vector_on_axis(1);
+        auto inner_boundary_prim = wind_profile(run_config, s.vertices(0), s.time);
+        auto mesh_geometry       = spherical_mesh_geometry_t();
+        auto source_terms        = util::apply_to([] (auto p, auto x)
+        {
+            return srhd::spherical_geometry_source_terms(p, x, M_PI / 2, gamma_law_index);
+        });
+        return mara::advance(s, dt, inner_boundary_prim, riemann_solver_for(xhat, move_cells), recover_primitive(), source_terms, mesh_geometry, 1.0);
     };
     return control::advance_runge_kutta(base, run_config.get_int("rk_order"), state);
 }
@@ -208,19 +193,14 @@ control::task_t advance(const mara::config_t& run_config, control::task_t task, 
     return jump(task, time, run_config.get_double("dfi"));
 }
 
-state_with_tasks_t advance(const mara::config_t& run_config, state_with_tasks_t state_with_tasks)
-{
-    return std::pair(
-        advance(run_config, state_with_tasks.first),
-        advance(run_config, state_with_tasks.second, state_with_tasks.first.time));
-}
-
 auto advance(const mara::config_t& run_config)
 {
-    return [run_config] (auto state)
+    return util::apply_to([run_config] (state_t state, control::task_t task)
     {
-        return advance(run_config, state);
-    };
+        return std::pair(
+            advance(run_config, state),
+            advance(run_config, task, state.time));
+    });
 }
 
 
@@ -231,7 +211,7 @@ void write_diagnostics(state_t state, unsigned long count)
 {
     char fname[1024];
     std::snprintf(fname, 1024, "sedov.%04lu.h5", count);
-    std::printf("Write checkpoint %s\n", fname);
+    std::printf("Write diagnostics %s\n", fname);
     auto dv = spherical_mesh_geometry_t::cell_volumes(state.vertices);
     auto primitive = (state.conserved / dv) | nd::map(recover_primitive());
     auto file = h5::File(fname, "w");
@@ -258,13 +238,10 @@ void print_run_loop(timed_state_pair_t p)
 auto side_effects(mara::config_t& run_config, timed_state_pair_t p)
 {
     if (control::this_state(p).second.count != control::last_state(p).second.count)
-    {
         write_diagnostics(control::last_state(p).first, control::last_state(p).second.count);
-    }
+
     if (long(control::this_state(p).first.iteration) % 10 == 0)
-    {
         print_run_loop(p);            
-    }
 }
 
 

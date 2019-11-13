@@ -27,6 +27,8 @@
 
 
 #pragma once
+#include "app_state_templates.hpp"
+#include "core_ndarray.hpp"
 #include "core_ndarray_ops.hpp"
 #include "scheme_plm_gradient.hpp"
 
@@ -69,7 +71,7 @@ state_with_vertices_t<ConservedType> advance(
     | nd::extend_zeros()
     | nd::to_shared();
 
-    auto [bf, bv] = riemann_solver(std::pair(inner_boundary_primitive, p0(0)));
+    auto [bf, bv] = riemann_solver(std::pair(inner_boundary_primitive, front(p0)));
     auto pl = select(p0 + 0.5 * dx * gx, 0, 0, -1);
     auto pr = select(p0 - 0.5 * dx * gx, 0, 1);
     auto fv = nd::zip(pl, pr)
@@ -81,8 +83,8 @@ state_with_vertices_t<ConservedType> advance(
     auto ff = fv | nd::map([] (auto a) { return std::get<0>(a); });
     auto vf = fv | nd::map([] (auto a) { return std::get<1>(a); });
     auto df = ff | nd::multiply(da) | nd::adjacent_diff() | nd::to_shared();
-    auto q1 = state.conserved + (s0 - df) * dt | nd::to_shared();
-    auto x1 = state.vertices  + (vf * dt) | nd::to_shared();
+    auto q1 = state.conserved + (s0 - df) * dt            | nd::to_shared();
+    auto x1 = state.vertices  + (vf * dt)                 | nd::to_shared();
 
     return {
         state.iteration + 1,
