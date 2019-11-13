@@ -27,43 +27,21 @@
 
 
 #pragma once
-#include "core_dimensional.hpp"
-#include "core_ndarray.hpp"
-#include "core_numeric_tuple.hpp"
-#include "core_rational.hpp"
 
 
 
 
 //=============================================================================
-namespace mara {
+namespace util {
 
 
 
 
 //=============================================================================
-template<typename ConservedType>
-struct state_with_vertices_t
+template<typename FunctionType>
+auto apply_to(FunctionType function)
 {
-    rational::number_t iteration = 0;
-    dimensional::unit_time time = 0.0;
-    nd::shared_array<dimensional::unit_length, 1> vertices;
-    nd::shared_array<ConservedType, 1> conserved;
-};
-
-
-
-
-//=============================================================================
-template<typename ConservedType>
-auto weighted_sum(state_with_vertices_t<ConservedType> s, state_with_vertices_t<ConservedType> t, rational::number_t b)
-{
-    return state_with_vertices_t<ConservedType>{
-        s.iteration *         b + t.iteration *       (1 - b),
-        s.time      * double(b) + t.time      * double(1 - b),
-        s.vertices  * double(b) + t.vertices  * double(1 - b) | nd::to_shared(),
-        s.conserved * double(b) + t.conserved * double(1 - b) | nd::to_shared(),
-    };
+    return [function] (auto t) { return std::apply(function, t); };
 }
 
-} // namespace mara
+} // namespace util

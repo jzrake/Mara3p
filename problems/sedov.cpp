@@ -32,13 +32,16 @@
 #include "app_hdf5.hpp"
 #include "app_hdf5_dimensional.hpp"
 #include "app_hdf5_ndarray.hpp"
-#include "app_hdf5_numeric_array.hpp"
 #include "app_hdf5_ndarray_dimensional.hpp"
+#include "app_hdf5_numeric_array.hpp"
 #include "app_state_templates.hpp"
 #include "core_ndarray.hpp"
 #include "core_ndarray_ops.hpp"
 #include "core_sequence.hpp"
+#include "core_util.hpp"
 #include "physics_srhd.hpp"
+#include "scheme_mesh_geometry.hpp"
+#include "scheme_moving_mesh.hpp"
 #include "scheme_plm_gradient.hpp"
 
 
@@ -49,16 +52,16 @@ auto config_template()
 {
     return mara::config_template()
     .item("nr",                   256)   // number of radial zones, per decade
-    .item("tfinal",               1.0)   // time to stop the simulation
+    .item("tfinal",              10.0)   // time to stop the simulation
     .item("dfi",                  1.5)   // output frequency (constant multiplier)
     .item("rk_order",               2)   // Runge-Kutta order (1 or 2)
     .item("cfl",                  0.5)   // courant number
-    .item("router",             100.0)   // outer boundary radius
-    .item("move",                   0)   // whether to move the cells
+    .item("router",               1e3)   // outer boundary radius
+    .item("move",                   1)   // whether to move the cells
     .item("ambient_medium_index", 2.0)   // index in A * (r / r0)^(-index)
     .item("ambient_medium_norm",  1.0)   //     A in A * (r / r0)^(-index)
     .item("rwind",                1.0)   // radius out to which an initial wind profile is set
-    .item("uwind",                2.0)   // radial gamma-beta of the wind
+    .item("uwind",               10.0)   // radial gamma-beta of the wind
     .item("twind",                1.0);  // time scale the wind lasts for
 }
 
@@ -72,66 +75,12 @@ static const auto temperature_floor = 1e-6;
 using state_t = mara::state_with_vertices_t<srhd::conserved_t>;
 using state_with_tasks_t = std::pair<state_t, control::task_t>;
 using timed_state_pair_t = control::timed_pair_t<state_with_tasks_t>;
+using mara::spherical_mesh_geometry_t;
 
 
 
 
 //=============================================================================
-template<typename FunctionType>
-auto apply_to(FunctionType function)
-{
-    return [function] (auto t) { return std::apply(function, t); };
-}
-
-
-
-
-//=============================================================================
-auto shell_volume(dimensional::unit_length r0, dimensional::unit_length r1)
-{
-    return (r1 * r1 * r1 - r0 * r0 * r0) / 3.0;
-}
-
-auto cell_centers(state_t state)
-{
-    return state.vertices | nd::adjacent_mean();
-}
-
-auto cell_spacing(state_t state)
-{
-    return state.vertices | nd::adjacent_diff();
-}
-
-auto cell_volumes(state_t state)
-{
-    return state.vertices | nd::adjacent_zip() | nd::map(apply_to(shell_volume));
-}
-
-auto face_areas(state_t state)
-{
-    return state.vertices | nd::map([] (auto r) { return r * r; });
-}
-
-auto time_step(const mara::config_t& run_config, state_t state)
-{
-    auto cfl = run_config.get_double("cfl");
-    return cfl * nd::min(state.vertices | nd::adjacent_diff()) / srhd::light_speed;
-}
-
-
-
-
-//=============================================================================
-auto initial_vertices(const mara::config_t& run_config)
-{
-    auto router     = run_config.get_double("router");
-    auto cell_count = run_config.get_int("nr") * int(std::log10(router));
-
-    return nd::linspace(0.0, std::log10(router), cell_count + 1)
-    | nd::map([] (auto log10r) { return std::pow(10.0, log10r); })
-    | nd::construct<dimensional::unit_length>();
-}
-
 auto wind_profile(const mara::config_t& run_config, dimensional::unit_length r, dimensional::unit_time t)
 {
     auto r0 = dimensional::unit_length(1.0);
@@ -168,16 +117,15 @@ auto initial_condition(const mara::config_t& run_config)
 
 auto riemann_solver_for(geometric::unit_vector_t nhat, bool move)
 {
-    return [nhat, move] (auto t)
+    return util::apply_to([nhat, move] (auto pl, auto pr)
     {
-        auto [pl, pr] = t;
-
         if (move)
         {
-            return srhd::riemann_solver(pl, pr, nhat, gamma_law_index, srhd::riemann_solver_mode_hllc_fluxes_across_contact_t());
+            auto mode = srhd::riemann_solver_mode_hllc_fluxes_across_contact_t();
+            return srhd::riemann_solver(pl, pr, nhat, gamma_law_index, mode);
         }
-        return std::make_pair(srhd::riemann_hllc(pl, pr, nhat, gamma_law_index), dimensional::unit_velocity(0.0));
-    };
+        return std::make_pair(srhd::riemann_hlle(pl, pr, nhat, gamma_law_index), dimensional::unit_velocity(0.0));
+    });
 }
 
 auto recover_primitive()
@@ -185,17 +133,33 @@ auto recover_primitive()
     return [] (auto u) { return srhd::recover_primitive(u, gamma_law_index, temperature_floor); };
 }
 
+auto time_step(const mara::config_t& run_config, state_t state)
+{
+    auto cfl = run_config.get_double("cfl");
+    return cfl * nd::min(state.vertices | nd::adjacent_diff()) / srhd::light_speed;
+}
+
 
 
 
 //=============================================================================
+auto initial_vertices(const mara::config_t& run_config)
+{
+    auto router     = run_config.get_double("router");
+    auto cell_count = run_config.get_int("nr") * int(std::log10(router));
+
+    return nd::linspace(0.0, std::log10(router), cell_count + 1)
+    | nd::map([] (auto log10r) { return std::pow(10.0, log10r); })
+    | nd::construct<dimensional::unit_length>();
+}
+
 state_t initial_solution_state(const mara::config_t& run_config)
 {
-    auto xv = initial_vertices(run_config);
-    auto dv = xv | nd::adjacent_zip() | nd::map(apply_to(shell_volume));
+    auto xv = initial_vertices(run_config) | nd::to_shared();
+    auto dv = spherical_mesh_geometry_t::cell_volumes(xv);
     auto p0 = xv | nd::adjacent_mean() | nd::map(initial_condition(run_config));
     auto u0 = p0 | nd::map([] (auto p) { return srhd::conserved_density(p, gamma_law_index); });
-    return {0, 1.0, xv | nd::to_shared(), (u0 * dv) | nd::to_shared()};
+    return {0, 1.0, xv, (u0 * dv) | nd::to_shared()};
 }
 
 state_with_tasks_t initial_app_state(const mara::config_t& run_config)
@@ -209,51 +173,33 @@ state_with_tasks_t initial_app_state(const mara::config_t& run_config)
 //=============================================================================
 state_t advance(const mara::config_t& run_config, state_t state, dimensional::unit_time dt)
 {
-    using namespace std::placeholders;
-    auto move = run_config.get_int("move");
-    auto st = std::bind(srhd::spherical_geometry_source_terms, _1, _2, M_PI / 2, gamma_law_index);
-    auto xh = geometric::unit_vector_on_axis(1);
-    auto bf = srhd::flux(wind_profile(run_config, front(state.vertices), state.time), xh, gamma_law_index);
-    // auto bv = move ? srhd::velocity_1(wind_profile(run_config, front(state.vertices), state.time)) : dimensional::unit_velocity(0.0);
-    auto bv = dimensional::unit_velocity(move ? 0.0 : 0.0);
-    auto da = face_areas(state);
-    auto dv = cell_volumes(state);
-    auto dx = cell_spacing(state);
-    auto x0 = cell_centers(state);
-    auto p0 = state.conserved / dv | nd::map(recover_primitive()) | nd::to_shared();
-    auto s0 = nd::zip(p0, x0) | nd::map(apply_to(st)) | nd::multiply(dv);
-    auto gx = nd::zip(x0 | nd::adjacent_zip3(), p0 | nd::adjacent_zip3()) | nd::map(mara::plm_gradient(1.0)) | nd::extend_zeros() | nd::to_shared();
-    auto pl = select(p0 + 0.5 * dx * gx, 0, 0, -1);
-    auto pr = select(p0 - 0.5 * dx * gx, 0, 1);
+    auto move_cells          = run_config.get_int("move");
+    auto xhat                = geometric::unit_vector_on_axis(1);
+    auto inner_boundary_flux = srhd::flux(wind_profile(run_config, state.vertices(0), state.time), xhat, gamma_law_index);
+    auto mesh_geometry       = spherical_mesh_geometry_t();
+    auto source_terms        = util::apply_to([] (auto p, auto x)
+    {
+        return srhd::spherical_geometry_source_terms(p, x, M_PI / 2, gamma_law_index);
+    });
 
-    auto fv = nd::zip(pl, pr)
-    | nd::map(riemann_solver_for(xh, move))
-    | nd::extend_uniform_lower(std::pair(bf, bv))
-    | nd::extend_zero_gradient_upper()
-    | nd::to_shared();
-
-    auto ff = fv | nd::map([] (auto a) { return std::get<0>(a); });
-    auto vf = fv | nd::map([] (auto a) { return std::get<1>(a); });
-    auto df = ff | nd::multiply(da) | nd::adjacent_diff() | nd::to_shared();
-    auto q1 = state.conserved + (s0 - df) * dt | nd::to_shared();
-    auto x1 = state.vertices  + (vf * dt) | nd::to_shared();
-
-    return {
-        state.iteration + 1,
-        state.time + dt,
-        x1,
-        q1,
-    };
+    return mara::advance(
+        state,
+        dt,
+        inner_boundary_flux,
+        riemann_solver_for(xhat, move_cells),
+        recover_primitive(),
+        source_terms,
+        mesh_geometry,
+        1.0);
 }
 
 state_t advance(const mara::config_t& run_config, state_t state)
 {
-    auto rk_order = run_config.get_int("rk_order");
     auto base = [&run_config, dt = time_step(run_config, state)] (state_t s)
     {
         return advance(run_config, s, dt);
     };
-    return control::advance_runge_kutta(base, rk_order, state);
+    return control::advance_runge_kutta(base, run_config.get_int("rk_order"), state);
 }
 
 control::task_t advance(const mara::config_t& run_config, control::task_t task, dimensional::unit_time time)
@@ -285,17 +231,13 @@ void write_diagnostics(state_t state, unsigned long count)
     char fname[1024];
     std::snprintf(fname, 1024, "sedov.%04lu.h5", count);
     std::printf("Write checkpoint %s\n", fname);
-    auto dv = cell_volumes(state);
+    auto dv = spherical_mesh_geometry_t::cell_volumes(state.vertices);
     auto primitive = (state.conserved / dv) | nd::map(recover_primitive());
     auto file = h5::File(fname, "w");
     h5::write(file, "vertices", state.vertices);
     h5::write(file, "primitive", primitive | nd::to_shared());
 }
 
-
-
-
-//=============================================================================
 auto should_continue(const mara::config_t& run_config)
 {
     return [tfinal = run_config.get_double("tfinal")] (timed_state_pair_t p)

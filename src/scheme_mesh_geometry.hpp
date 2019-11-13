@@ -28,9 +28,8 @@
 
 #pragma once
 #include "core_dimensional.hpp"
-#include "core_ndarray.hpp"
-#include "core_numeric_tuple.hpp"
-#include "core_rational.hpp"
+#include "core_ndarray_ops.hpp"
+#include "core_util.hpp"
 
 
 
@@ -42,28 +41,34 @@ namespace mara {
 
 
 //=============================================================================
-template<typename ConservedType>
-struct state_with_vertices_t
+struct spherical_mesh_geometry_t
 {
-    rational::number_t iteration = 0;
-    dimensional::unit_time time = 0.0;
-    nd::shared_array<dimensional::unit_length, 1> vertices;
-    nd::shared_array<ConservedType, 1> conserved;
+    using vertices_array_t = nd::shared_array<dimensional::unit_length, 1>;
+
+    static auto shell_volume(dimensional::unit_length r0, dimensional::unit_length r1)
+    {
+        return (r1 * r1 * r1 - r0 * r0 * r0) / 3.0;
+    }
+
+    static auto cell_centers(vertices_array_t vertices)
+    {
+        return vertices | nd::adjacent_mean();
+    }
+
+    static auto cell_spacing(vertices_array_t vertices)
+    {
+        return vertices | nd::adjacent_diff();
+    }
+
+    static auto cell_volumes(vertices_array_t vertices)
+    {
+        return vertices | nd::adjacent_zip() | nd::map(util::apply_to(shell_volume));
+    }
+
+    static auto face_areas(vertices_array_t vertices)
+    {
+        return vertices | nd::map([] (auto r) { return r * r; });
+    }
 };
-
-
-
-
-//=============================================================================
-template<typename ConservedType>
-auto weighted_sum(state_with_vertices_t<ConservedType> s, state_with_vertices_t<ConservedType> t, rational::number_t b)
-{
-    return state_with_vertices_t<ConservedType>{
-        s.iteration *         b + t.iteration *       (1 - b),
-        s.time      * double(b) + t.time      * double(1 - b),
-        s.vertices  * double(b) + t.vertices  * double(1 - b) | nd::to_shared(),
-        s.conserved * double(b) + t.conserved * double(1 - b) | nd::to_shared(),
-    };
-}
 
 } // namespace mara
