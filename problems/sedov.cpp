@@ -175,7 +175,8 @@ state_t advance(const mara::config_t& run_config, state_t state, dimensional::un
 {
     auto move_cells          = run_config.get_int("move");
     auto xhat                = geometric::unit_vector_on_axis(1);
-    auto inner_boundary_flux = srhd::flux(wind_profile(run_config, state.vertices(0), state.time), xhat, gamma_law_index);
+    auto inner_boundary_prim = wind_profile(run_config, state.vertices(0), state.time);
+    // auto inner_boundary_flux = srhd::flux(inner_boundary_prim);
     auto mesh_geometry       = spherical_mesh_geometry_t();
     auto source_terms        = util::apply_to([] (auto p, auto x)
     {
@@ -185,7 +186,7 @@ state_t advance(const mara::config_t& run_config, state_t state, dimensional::un
     return mara::advance(
         state,
         dt,
-        inner_boundary_flux,
+        inner_boundary_prim,
         riemann_solver_for(xhat, move_cells),
         recover_primitive(),
         source_terms,

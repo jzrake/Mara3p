@@ -41,7 +41,7 @@ namespace mara {
 //=============================================================================
 template<
     typename ConservedType,
-    typename FluxVectorType,
+    typename PrimitiveType,
     typename RiemannSolverType,
     typename RecoverPrimitiveType,
     typename SourceTermsType,
@@ -51,15 +51,13 @@ state_with_vertices_t<ConservedType> advance(
 
     state_with_vertices_t<ConservedType>       state,
     dimensional::unit_time                     dt,
-    FluxVectorType                             inner_boundary_flux,
+    PrimitiveType                              inner_boundary_primitive,
     RiemannSolverType                          riemann_solver,
     RecoverPrimitiveType                       recover_primitive,
     SourceTermsType                            source_terms,
     MeshGeometryType                           mesh_geometry,
     double                                     plm_theta)
 {
-    auto bf = inner_boundary_flux;
-    auto bv = dimensional::unit_velocity(0.0);
     auto da = mesh_geometry.face_areas(state.vertices);
     auto dv = mesh_geometry.cell_volumes(state.vertices);
     auto dx = mesh_geometry.cell_spacing(state.vertices);
@@ -71,6 +69,7 @@ state_with_vertices_t<ConservedType> advance(
     | nd::extend_zeros()
     | nd::to_shared();
 
+    auto [bf, bv] = riemann_solver(std::pair(inner_boundary_primitive, p0(0)));
     auto pl = select(p0 + 0.5 * dx * gx, 0, 0, -1);
     auto pr = select(p0 - 0.5 * dx * gx, 0, 1);
     auto fv = nd::zip(pl, pr)
