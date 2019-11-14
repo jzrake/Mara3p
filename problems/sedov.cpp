@@ -30,6 +30,7 @@
 #include "app_config.hpp"
 #include "app_control.hpp"
 #include "app_hdf5.hpp"
+#include "app_hdf5_config.hpp"
 #include "app_hdf5_dimensional.hpp"
 #include "app_hdf5_ndarray.hpp"
 #include "app_hdf5_ndarray_dimensional.hpp"
@@ -53,6 +54,7 @@ auto config_template()
     return mara::config_template()
     .item("nr",                   256)   // number of radial zones, per decade
     .item("tfinal",              10.0)   // time to stop the simulation
+    .item("print",                 10)   // the number of iterations between terminal outputs
     .item("dfi",                  1.5)   // output frequency (constant multiplier)
     .item("rk_order",               2)   // Runge-Kutta order (1 or 2)
     .item("cfl",                  0.5)   // courant number
@@ -228,16 +230,19 @@ auto advance(const mara::config_t& run_config)
 
 
 //=============================================================================
-void write_diagnostics(state_t state, unsigned long count)
+void write_diagnostics(const mara::config_t& run_config, state_t state, unsigned long count)
 {
-    char fname[1024];
-    std::snprintf(fname, 1024, "sedov.%04lu.h5", count);
-    std::printf("Write diagnostics %s\n", fname);
-    auto dv = spherical_mesh_geometry_t::cell_volumes(state.vertices);
-    auto primitive = (state.conserved / dv) | nd::map(recover_primitive());
-    auto file = h5::File(fname, "w");
+    auto fname     = util::format("sedov.%04lu.h5", count);
+    auto dv        = spherical_mesh_geometry_t::cell_volumes(state.vertices);
+    auto prim      = state.conserved | nd::divide(dv) | nd::map(recover_primitive()) | nd::to_shared();
+    auto file      = h5::File(fname, "w");
+
+    std::printf("Write diagnostics %s\n", fname.data());
+
     h5::write(file, "vertices", state.vertices);
-    h5::write(file, "primitive", primitive | nd::to_shared());
+    h5::write(file, "primitive", prim);
+    h5::write(file, "time", state.time);
+    h5::write(file, "run_config", run_config);
 }
 
 auto should_continue(const mara::config_t& run_config)
@@ -248,21 +253,26 @@ auto should_continue(const mara::config_t& run_config)
     };
 }
 
-void print_run_loop(timed_state_pair_t p)
+void print_run_loop(const mara::config_t& run_config, timed_state_pair_t p)
 {
-    auto nz = double(size(control::this_state(p).first.vertices));
+    auto nz = size(control::this_state(p).first.vertices);
     auto us = control::microseconds_separating(p);
     auto s = control::this_state(p);
-    std::printf("[%06lu] t=%6.5lf Mzps=%3.2lf\n", long(s.first.iteration), s.first.time.value, nz / us);
+    std::printf("[%07lu] t=%.3lf dt=%.2e zones=%lu Mzps=%.2lf\n",
+        long(s.first.iteration),
+        s.first.time.value,
+        time_step(run_config, s.first).value,
+        nz,
+        nz / us);
 }
 
-auto side_effects(mara::config_t& run_config, timed_state_pair_t p)
+auto side_effects(const mara::config_t& run_config, timed_state_pair_t p)
 {
     if (control::this_state(p).second.count != control::last_state(p).second.count)
-        write_diagnostics(control::last_state(p).first, control::last_state(p).second.count);
+        write_diagnostics(run_config, control::last_state(p).first, control::last_state(p).second.count);
 
-    if (long(control::this_state(p).first.iteration) % 10 == 0)
-        print_run_loop(p);            
+    if (long(control::this_state(p).first.iteration) % run_config.get_int("print") == 0)
+        print_run_loop(run_config, p);            
 }
 
 

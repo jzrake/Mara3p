@@ -44,6 +44,15 @@ auto multiply(ArrayType b)
     };
 }
 
+template<typename ArrayType>
+auto divide(ArrayType b)
+{
+    return [b] (auto a)
+    {
+        return a / b;
+    };
+}
+
 inline auto adjacent_zip(uint axis=0)
 {
     return [axis] (auto x)

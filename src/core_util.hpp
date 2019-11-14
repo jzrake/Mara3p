@@ -27,6 +27,7 @@
 
 
 #pragma once
+#include <string>
 
 
 
@@ -37,11 +38,48 @@ namespace util {
 
 
 
-//=============================================================================
+/**
+ * @brief      Helper function to turn a function f(a, b, ...) of several
+ *             variables into a function g(std::tuple(a, b, ...)) of a single
+ *             tuple. This enables constructs like zip(A, B) | map(apply_to([]
+ *             (auto a, auto b) { returh a + b; })), where zip turns functors A
+ *             = F<T> and B = F<U> into a functor of tuples F<std::tuple<T, U>>.
+ *
+ * @param[in]  function      The function f(a, b, ...)
+ *
+ * @tparam     FunctionType  The type of the function f
+ *
+ * @return     A function g(std::tuple(a, b, ...)) of a single tuple
+ */
 template<typename FunctionType>
 auto apply_to(FunctionType function)
 {
     return [function] (auto t) { return std::apply(function, t); };
+}
+
+
+
+
+/**
+ * @brief      Wrapper for the snprintf function.
+ *
+ * @param[in]  format_string  The c-style format string to use
+ * @param[in]  args           The arguments for the format string
+ *
+ * @tparam     Args           The argument types
+ *
+ * @return     A formatted std::string.
+ *
+ * @note       This function is not meant to format long strings; the length of
+ *             the result string is < 2048. Longer results are (safely)
+ *             truncated.
+ */
+template<typename... Args>
+std::string format(const char* format_string, Args... args)
+{
+    char result[2048];
+    std::snprintf(result, 2048, format_string, args...);
+    return result;
 }
 
 } // namespace util
