@@ -74,10 +74,20 @@ static const auto temperature_floor = 1e-6;
 
 
 //=============================================================================
-using state_t = mara::state_with_vertices_t<srhd::conserved_t>;
-using state_with_tasks_t = std::pair<state_t, control::task_t>;
-using timed_state_pair_t = control::timed_pair_t<state_with_tasks_t>;
+using solution_t            = mara::state_with_vertices_t<srhd::conserved_t>;
+using solution_with_tasks_t = std::pair<solution_t, control::task_t>;
+using timed_state_pair_t    = control::timed_pair_t<solution_with_tasks_t>;
 using mara::spherical_mesh_geometry_t;
+
+inline auto solution(solution_with_tasks_t p)
+{
+    return p.first;
+}
+
+inline auto tasks(solution_with_tasks_t p)
+{
+    return p.second;
+}
 
 
 
@@ -126,7 +136,7 @@ auto riemann_solver_for(geometric::unit_vector_t nhat, bool move)
             auto mode = srhd::riemann_solver_mode_hllc_fluxes_across_contact_t();
             return srhd::riemann_solver(pl, pr, nhat, gamma_law_index, mode);
         }
-        return std::make_pair(srhd::riemann_hlle(pl, pr, nhat, gamma_law_index), dimensional::unit_velocity(0.0));
+        return std::make_pair(srhd::riemann_hllc(pl, pr, nhat, gamma_law_index), dimensional::unit_velocity(0.0));
     });
 }
 
@@ -135,7 +145,7 @@ auto recover_primitive()
     return [] (auto u) { return srhd::recover_primitive(u, gamma_law_index, temperature_floor); };
 }
 
-auto time_step(const mara::config_t& run_config, state_t state)
+auto time_step(const mara::config_t& run_config, solution_t state)
 {
     auto cfl = run_config.get_double("cfl");
     return cfl * nd::min(state.vertices | nd::adjacent_diff()) / srhd::light_speed;
@@ -155,7 +165,7 @@ auto initial_vertices(const mara::config_t& run_config)
     | nd::construct<dimensional::unit_length>();
 }
 
-state_t initial_solution_state(const mara::config_t& run_config)
+solution_t initial_solution_state(const mara::config_t& run_config)
 {
     auto xv = initial_vertices(run_config) | nd::to_shared();
     auto dv = spherical_mesh_geometry_t::cell_volumes(xv);
@@ -164,7 +174,7 @@ state_t initial_solution_state(const mara::config_t& run_config)
     return {0, 1.0, xv, (u0 * dv) | nd::to_shared()};
 }
 
-state_with_tasks_t initial_app_state(const mara::config_t& run_config)
+solution_with_tasks_t initial_app_state(const mara::config_t& run_config)
 {
     return std::pair(initial_solution_state(run_config), control::task("write_diagnostics", 1.0));
 }
@@ -173,42 +183,42 @@ state_with_tasks_t initial_app_state(const mara::config_t& run_config)
 
 
 //=============================================================================
-state_t remesh(const mara::config_t& run_config, state_t state)
+solution_t remesh(const mara::config_t& run_config, solution_t solution)
 {
-    if (front(state.vertices) > dimensional::unit_length(1.0 + 1.0 / run_config.get_int("nr")))
+    if (front(solution.vertices) > dimensional::unit_length(1.0 + 1.0 / run_config.get_int("nr")))
     {
-        auto xv = nd::concat(nd::from(dimensional::unit_length(1.0)), state.vertices, 0) | nd::to_shared();
+        auto xv = nd::concat(nd::from(dimensional::unit_length(1.0)), solution.vertices, 0) | nd::to_shared();
         auto xc = spherical_mesh_geometry_t::cell_centers(xv);
         auto dv = spherical_mesh_geometry_t::cell_volumes(xv);
-        auto bp = wind_profile(run_config, front(xc), state.time);
+        auto bp = wind_profile(run_config, front(xc), solution.time);
         auto bu = srhd::conserved_density(bp, gamma_law_index) * front(dv);
-        auto u1 = nd::concat(nd::from(bu), state.conserved, 0) | nd::to_shared();
+        auto u1 = nd::concat(nd::from(bu), solution.conserved, 0) | nd::to_shared();
 
         return {
-            state.iteration,
-            state.time,
+            solution.iteration,
+            solution.time,
             xv,
             u1,
         };
     }
-    return state;
+    return solution;
 }
 
-state_t advance(const mara::config_t& run_config, state_t state)
+solution_t advance(const mara::config_t& run_config, solution_t solution)
 {
-    auto base = [&run_config, dt = time_step(run_config, state)] (state_t s)
+    auto base = [&run_config, dt = time_step(run_config, solution)] (solution_t soln)
     {
         auto move_cells          = run_config.get_int("move");
         auto xhat                = geometric::unit_vector_on_axis(1);
-        auto inner_boundary_prim = wind_profile(run_config, s.vertices(0), s.time);
+        auto inner_boundary_prim = wind_profile(run_config, soln.vertices(0), soln.time);
         auto mesh_geometry       = spherical_mesh_geometry_t();
         auto source_terms        = util::apply_to([] (auto p, auto x)
         {
             return srhd::spherical_geometry_source_terms(p, x, M_PI / 2, gamma_law_index);
         });
-        return mara::advance(s, dt, inner_boundary_prim, riemann_solver_for(xhat, move_cells), recover_primitive(), source_terms, mesh_geometry, 1.0);
+        return mara::advance(soln, dt, inner_boundary_prim, riemann_solver_for(xhat, move_cells), recover_primitive(), source_terms, mesh_geometry, 1.0);
     };
-    return remesh(run_config, control::advance_runge_kutta(base, run_config.get_int("rk_order"), state));
+    return remesh(run_config, control::advance_runge_kutta(base, run_config.get_int("rk_order"), solution));
 }
 
 control::task_t advance(const mara::config_t& run_config, control::task_t task, dimensional::unit_time time)
@@ -218,7 +228,7 @@ control::task_t advance(const mara::config_t& run_config, control::task_t task, 
 
 auto advance(const mara::config_t& run_config)
 {
-    return util::apply_to([run_config] (state_t state, control::task_t task)
+    return util::apply_to([run_config] (solution_t state, control::task_t task)
     {
         return std::pair(
             advance(run_config, state),
@@ -230,7 +240,7 @@ auto advance(const mara::config_t& run_config)
 
 
 //=============================================================================
-void write_diagnostics(const mara::config_t& run_config, state_t state, unsigned long count)
+void write_diagnostics(const mara::config_t& run_config, solution_t state, unsigned long count)
 {
     auto fname     = util::format("sedov.%04lu.h5", count);
     auto dv        = spherical_mesh_geometry_t::cell_volumes(state.vertices);
@@ -249,29 +259,35 @@ auto should_continue(const mara::config_t& run_config)
 {
     return [tfinal = run_config.get_double("tfinal")] (timed_state_pair_t p)
     {
-        return control::last_state(p).first.time <= dimensional::unit_time(tfinal);
+        return solution(control::last_state(p)).time <= dimensional::unit_time(tfinal);
     };
 }
 
 void print_run_loop(const mara::config_t& run_config, timed_state_pair_t p)
 {
-    auto nz = size(control::this_state(p).first.vertices);
+    auto soln = solution(control::this_state(p));
+    auto nz = size(soln.vertices);
     auto us = control::microseconds_separating(p);
-    auto s = control::this_state(p);
+
     std::printf("[%07lu] t=%.3lf dt=%.2e zones=%lu Mzps=%.2lf\n",
-        long(s.first.iteration),
-        s.first.time.value,
-        time_step(run_config, s.first).value,
+        long(soln.iteration),
+        soln.time.value,
+        time_step(run_config, soln).value,
         nz,
         nz / us);
 }
 
 auto side_effects(const mara::config_t& run_config, timed_state_pair_t p)
 {
-    if (control::this_state(p).second.count != control::last_state(p).second.count)
-        write_diagnostics(run_config, control::last_state(p).first, control::last_state(p).second.count);
+    auto this_soln = solution(control::this_state(p));
+    auto last_soln = solution(control::last_state(p));
+    auto this_task = tasks(control::this_state(p));
+    auto last_task = tasks(control::last_state(p));
 
-    if (long(control::this_state(p).first.iteration) % run_config.get_int("print") == 0)
+    if (this_task.count != last_task.count)
+        write_diagnostics(run_config, last_soln, last_task.count);
+
+    if (long(this_soln.iteration) % run_config.get_int("print") == 0)
         print_run_loop(run_config, p);            
 }
 
