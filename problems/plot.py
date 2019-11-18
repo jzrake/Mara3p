@@ -18,7 +18,7 @@ def directory_contents(directory):
     Return the contents of the given directory, sorted alphabetically, and with
     the directory name appended to each.
     """
-    return [os.path.join(directory, filename) for filename in sorted(os.listdir(directory))]
+    return filter(lambda f: f.endswith('.h5'), [os.path.join(directory, filename) for filename in sorted(os.listdir(directory))])
 
 
 
@@ -46,12 +46,12 @@ def configure_axes(ax1, ax2, ax3, filename, focus=0.0):
             ax.set_xlim(lc / (1 + focus), lc * (1 + 0.01))
             ax.set_yscale('log')
         else:
-            ax.set_xlim(1.0, 1000.0)
+            # ax.set_xlim(1.0, 1000.0)
             ax.set_xscale('log')
             ax.set_yscale('log')
 
-    ax1.set_ylim(1e-4, 1e2)
-    ax2.set_ylim(1e-8, 1e3)
+    # ax1.set_ylim(1e-4, 1e2)
+    # ax2.set_ylim(1e-8, 1e3)
     ax3.set_ylim(1e-2, 2e2)
     ax1.set_ylabel(r'$\rho$')
     ax2.set_ylabel(r'$p$')
@@ -71,6 +71,10 @@ def plot_variables(ax1, ax2, ax3, filename, edges=False):
     ax1.step(vertices[:-1], density)
     ax2.step(vertices[:-1], pressure)
     ax3.step(vertices[:-1], gamma_beta)
+
+    if edges:
+        for v in vertices[:-1]:
+            ax1 .axvline(v, ls='-', c='k', lw=0.5)
 
 
 
@@ -92,7 +96,7 @@ def make_movie(fig, directories, output, **kwargs):
     writer = FFMpegWriter(fps=10)
 
     with writer.saving(fig, output, dpi=200):
-        for filename_list in zip(filename_lists[0], filename_lists[1]):
+        for filename_list in zip(*filename_lists):
             print(list(filename_list))
             plot_radial(fig, filename_list, **kwargs)
             writer.grab_frame()

@@ -99,7 +99,6 @@ inline auto tasks(solution_with_tasks_t p)
 auto cold_power_law_medium(const mara::config_t& run_config)
 {
     return mara::cold_power_law_medium_t()
-    .with_inner_radius   (1.0)
     .with_density_index  (run_config.get_double("ambient_medium_index"))
     .with_density_at_base(run_config.get_double("ambient_medium_norm"));
 }
@@ -119,12 +118,12 @@ auto cold_wind(const mara::config_t& run_config)
 //=============================================================================
 auto wind_profile(const mara::config_t& run_config, dimensional::unit_length r, dimensional::unit_time t)
 {
-    return cold_wind(run_config).primitive_srhd(r, 1.0);
+    return cold_wind(run_config).primitive_srhd(r, t);
 }
 
 auto ambient_medium(const mara::config_t& run_config, dimensional::unit_length r, dimensional::unit_time t)
 {
-    return cold_power_law_medium(run_config).primitive_srhd(r, 1.0);
+    return cold_power_law_medium(run_config).primitive_srhd(r, t);
 }
 
 auto initial_condition(const mara::config_t& run_config, dimensional::unit_length r)
@@ -232,11 +231,11 @@ solution_t advance(const mara::config_t& run_config, solution_t solution)
         {
             return srhd::spherical_geometry_source_terms(p, x, M_PI / 2, gamma_law_index);
         });
-        return mara::advance(soln,
+        return mara::advance(
+            soln,
             dt,
             inner_boundary_prim,
-            riemann_solver_for(xhat,
-            move_cells),
+            riemann_solver_for(xhat, move_cells),
             recover_primitive(),
             source_terms,
             mesh_geometry,
