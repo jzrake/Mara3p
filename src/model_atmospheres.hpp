@@ -101,10 +101,10 @@ struct cold_power_law_medium_t
         return density_at_base * std::pow(r / inner_radius, -density_index);
     }
 
-    auto primitive_srhd(unit_length r, unit_time t, unit_scalar entropy=1e-3) const
+    auto primitive_srhd(unit_length r, unit_time t, unit_scalar entropy=1e-5) const
     {
         auto d = density_at(r, t);
-        auto p = std::pow(entropy, 4. / 3) * d * pow<2>(light_speed);
+        auto p = unit_energy_density(std::pow(d.value, 4. / 3) * std::exp(entropy));
         return numeric::tuple(d, unit_scalar(0.0), unit_scalar(0.0), unit_scalar(0.0), p);
     }
 
@@ -182,11 +182,11 @@ struct cold_wind_model_t
         return mass_loss_rate(t) / (solid_angle * r * r * gamma_beta(t) * light_speed);
     }
 
-    auto primitive_srhd(unit_length r, unit_time t, unit_scalar entropy=1e-3) const
+    auto primitive_srhd(unit_length r, unit_time t, unit_scalar entropy=1e-5) const
     {
         auto d = density_at(r, t);
         auto u = gamma_beta(t);
-        auto p = std::pow(entropy, 4. / 3) * d * pow<2>(light_speed);
+        auto p = unit_energy_density(std::pow(d.value, 4. / 3) * std::exp(entropy));
         return numeric::tuple(d, u, unit_scalar(0.0), unit_scalar(0.0), p);
     }
 
@@ -218,47 +218,47 @@ struct cold_wind_model_t
  *             = cloud_outer_boundary(t) = v_cloud * t. Thus u_cloud =
  *             u(m_envelop) and the cloud density decreases as r^-2.
  */
-struct cloud_and_envelop_model_t
+struct cloud_with_envelop_model_t
 {
 
 
     //=========================================================================
-    cloud_and_envelop_model_t with_inner_radius(unit_length r0) const
+    cloud_with_envelop_model_t with_inner_radius(unit_length r0) const
     {
         auto result = *this;
         result.inner_radius = r0;
         return result;
     }
 
-    cloud_and_envelop_model_t with_envelop_mass(unit_mass m) const
+    cloud_with_envelop_model_t with_envelop_mass(unit_mass m) const
     {
         auto result = *this;
         result.envelop_mass = m;
         return result;
     }
 
-    cloud_and_envelop_model_t with_fastest_shell_mass(unit_mass m) const
+    cloud_with_envelop_model_t with_fastest_shell_mass(unit_mass m) const
     {
         auto result = *this;
         result.fastest_shell_mass = m;
         return result;
     }
 
-    cloud_and_envelop_model_t with_fastest_gamma_beta(unit_scalar u) const
+    cloud_with_envelop_model_t with_fastest_gamma_beta(unit_scalar u) const
     {
         auto result = *this;
         result.fastest_gamma_beta = u;
         return result;
     }
 
-    cloud_and_envelop_model_t with_solid_angle(unit_scalar omega) const
+    cloud_with_envelop_model_t with_solid_angle(unit_scalar omega) const
     {
         auto result = *this;
         result.solid_angle = omega;
         return result;        
     }
 
-    cloud_and_envelop_model_t with_psi(double psi) const
+    cloud_with_envelop_model_t with_psi(double psi) const
     {
         auto result = *this;
         result.psi = psi;
@@ -385,11 +385,11 @@ struct cloud_and_envelop_model_t
 
 
     //=============================================================================
-    auto primitive_srhd(unit_length r, unit_time t, unit_scalar entropy=1e-3) const
+    auto primitive_srhd(unit_length r, unit_time t, unit_scalar entropy=1e-5) const
     {
         auto d = density_at(r, t);
         auto u = gamma_beta_at(r, t);
-        auto p = std::pow(entropy, 4. / 3) * d * pow<2>(light_speed);
+        auto p = unit_energy_density(std::pow(d.value, 4. / 3) * std::exp(entropy));
         return numeric::tuple(d, u, unit_scalar(0.0), unit_scalar(0.0), p);
     }
 

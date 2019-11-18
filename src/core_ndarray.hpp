@@ -354,6 +354,15 @@ auto front(const array_t<ProviderType, Rank>& array)
     return *begin(array);
 }
 
+template<typename ProviderType>
+auto back(const array_t<ProviderType, 1>& array)
+{
+    if (size(array) == 0)
+        throw std::out_of_range("nd::back (empty array)");
+
+    return array(shape(array, 0) - 1);
+}
+
 template<typename ProviderType, uint Rank>
 constexpr uint rank(array_t<ProviderType, Rank>)
 {

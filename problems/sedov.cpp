@@ -67,7 +67,9 @@ auto config_template()
     .item("Lwind",                1.0)   // wind luminosity at t=1
     .item("rwind",                1.0)   // radius out to which an initial wind profile is set
     .item("uwind",               10.0)   // radial gamma-beta of the wind
-    .item("twind",                1.0);  // time scale the wind lasts for
+    .item("twind",                1.0)   // time scale the wind lasts for
+    .item("envelop",                1)   // include a relativistic envelop as part of the ambient medium
+    .item("delay",               10.0);  // the delay time [inner boundary light-crossing time] of the cloud
 }
 
 static const auto gamma_law_index   = 4. / 3;
@@ -112,6 +114,11 @@ auto cold_wind(const mara::config_t& run_config)
     .with_solid_angle       (4 * M_PI);
 }
 
+auto cloud_with_envelop(const mara::config_t& run_config)
+{
+    return mara::cloud_with_envelop_model_t();
+}
+
 
 
 
@@ -123,7 +130,11 @@ auto wind_profile(const mara::config_t& run_config, dimensional::unit_length r, 
 
 auto ambient_medium(const mara::config_t& run_config, dimensional::unit_length r, dimensional::unit_time t)
 {
-    return cold_power_law_medium(run_config).primitive_srhd(r, t);
+    auto delay_time = dimensional::unit_time(run_config.get_double("delay"));
+
+    return run_config.get_int("envelop")
+    ? cloud_with_envelop   (run_config).primitive_srhd(r, t - dimensional::unit_time(1.0) + delay_time)
+    : cold_power_law_medium(run_config).primitive_srhd(r, t);
 }
 
 auto initial_condition(const mara::config_t& run_config, dimensional::unit_length r)
@@ -225,7 +236,8 @@ solution_t advance(const mara::config_t& run_config, solution_t solution)
         auto move_cells          = run_config.get_int("move");
         auto plm_theta           = run_config.get_double("plm_theta");
         auto xhat                = geometric::unit_vector_on_axis(1);
-        auto inner_boundary_prim = wind_profile(run_config, soln.vertices(0), soln.time);
+        auto inner_boundary_prim = wind_profile  (run_config, front(soln.vertices), soln.time);
+        auto outer_boundary_prim = ambient_medium(run_config, back (soln.vertices), soln.time);
         auto mesh_geometry       = spherical_mesh_geometry_t();
         auto source_terms        = util::apply_to([] (auto p, auto x)
         {
@@ -235,6 +247,7 @@ solution_t advance(const mara::config_t& run_config, solution_t solution)
             soln,
             dt,
             inner_boundary_prim,
+            outer_boundary_prim,
             riemann_solver_for(xhat, move_cells),
             recover_primitive(),
             source_terms,
@@ -325,6 +338,18 @@ int main(int argc, const char* argv[])
     .update(mara::argv_to_string_map(argc, argv));
 
     mara::pretty_print(std::cout, "config", run_config);
+
+
+    std::cout << "====================================================\n";
+    std::cout << "cloud parameters:\n\n";
+
+    auto cloud = cloud_with_envelop(run_config);
+    auto delay = run_config.get_double("delay");
+    std::cout << "\tcloud_velocity ............. " << cloud.cloud_velocity()             .value << std::endl;
+    std::cout << "\tcloud_outer_boundary ....... " << cloud.cloud_outer_boundary  (delay).value << std::endl;
+    std::cout << "\tenvelop_outer_boundary ..... " << cloud.envelop_outer_boundary(delay).value << std::endl;
+    std::cout << "\n";
+
 
     auto simulation = seq::generate(initial_app_state(run_config), advance(run_config))
     | seq::pair_with(control::time_point_sequence())

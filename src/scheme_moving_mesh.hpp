@@ -54,6 +54,7 @@ state_with_vertices_t<ConservedType> advance(
     state_with_vertices_t<ConservedType>       state,
     dimensional::unit_time                     dt,
     PrimitiveType                              inner_boundary_primitive,
+    PrimitiveType                              outer_boundary_primitive,
     RiemannSolverType                          riemann_solver,
     RecoverPrimitiveType                       recover_primitive,
     SourceTermsType                            source_terms,
@@ -71,13 +72,14 @@ state_with_vertices_t<ConservedType> advance(
     | nd::extend_zeros()
     | nd::to_shared();
 
-    auto [bf, bv] = riemann_solver(std::pair(inner_boundary_primitive, front(p0)));
+    auto [ibf, ibv] = riemann_solver(std::pair(inner_boundary_primitive, front(p0)));
+    auto [obf, obv] = riemann_solver(std::pair(back(p0), outer_boundary_primitive));
     auto pl = select(p0 + 0.5 * dx * gx, 0, 0, -1);
     auto pr = select(p0 - 0.5 * dx * gx, 0, 1);
     auto fv = nd::zip(pl, pr)
     | nd::map(riemann_solver)
-    | nd::extend_uniform_lower(std::pair(bf, bv))
-    | nd::extend_zero_gradient_upper()
+    | nd::extend_uniform_lower(std::pair(ibf, ibv))
+    | nd::extend_uniform_upper(std::pair(obf, obv))
     | nd::to_shared();
 
     auto ff = fv | nd::map([] (auto a) { return std::get<0>(a); });
