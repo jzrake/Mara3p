@@ -40,6 +40,7 @@
 #include "core_ndarray_ops.hpp"
 #include "core_sequence.hpp"
 #include "core_util.hpp"
+#include "model_atmospheres.hpp"
 #include "physics_srhd.hpp"
 #include "scheme_mesh_geometry.hpp"
 #include "scheme_moving_mesh.hpp"
@@ -58,10 +59,12 @@ auto config_template()
     .item("dfi",                  1.5)   // output frequency (constant multiplier)
     .item("rk_order",               2)   // Runge-Kutta order (1 or 2)
     .item("cfl",                  0.5)   // courant number
+    .item("plm_theta",            1.5)   // PLM parameter
     .item("router",               1e3)   // outer boundary radius
     .item("move",                   1)   // whether to move the cells
     .item("ambient_medium_index", 2.0)   // index in A * (r / r0)^(-index)
     .item("ambient_medium_norm",  1.0)   //     A in A * (r / r0)^(-index)
+    .item("Lwind",                1.0)   // wind luminosity at t=1
     .item("rwind",                1.0)   // radius out to which an initial wind profile is set
     .item("uwind",               10.0)   // radial gamma-beta of the wind
     .item("twind",                1.0);  // time scale the wind lasts for
@@ -93,30 +96,42 @@ inline auto tasks(solution_with_tasks_t p)
 
 
 //=============================================================================
+auto cold_power_law_medium(const mara::config_t& run_config)
+{
+    return mara::cold_power_law_medium_t()
+    .with_inner_radius   (1.0)
+    .with_density_index  (run_config.get_double("ambient_medium_index"))
+    .with_density_at_base(run_config.get_double("ambient_medium_norm"));
+}
+
+auto cold_wind(const mara::config_t& run_config)
+{
+    return mara::cold_wind_model_t()
+    .with_kinetic_luminosity(run_config.get_double("Lwind"))
+    .with_time_scale        (run_config.get_double("twind"))
+    .with_gamma_beta        (run_config.get_double("uwind"))
+    .with_solid_angle       (4 * M_PI);
+}
+
+
+
+
+//=============================================================================
 auto wind_profile(const mara::config_t& run_config, dimensional::unit_length r, dimensional::unit_time t)
 {
-    auto r0 = dimensional::unit_length(1.0);
-    auto tw = dimensional::unit_time(run_config.get_double("twind"));
-    auto t0 = dimensional::unit_time(1.0);
-    auto d_wind = dimensional::unit_mass_density(1.0) * std::pow(r / r0, -2.0);
-    auto u_wind = run_config.get_double("uwind") * std::exp(-(t - t0) / tw);
-    auto p_wind = d_wind * 1e-3 * dimensional::pow<2>(srhd::light_speed);
+    return cold_wind(run_config).primitive_srhd(r, 1.0);
+}
 
-    return srhd::primitive(d_wind, u_wind, 0.0, 0.0, p_wind);
+auto ambient_medium(const mara::config_t& run_config, dimensional::unit_length r, dimensional::unit_time t)
+{
+    return cold_power_law_medium(run_config).primitive_srhd(r, 1.0);
 }
 
 auto initial_condition(const mara::config_t& run_config, dimensional::unit_length r)
 {
-    if (r < dimensional::unit_length(run_config.get_double("rwind")))
-    {
-        return wind_profile(run_config, r, 1.0);        
-    }
-    auto A = run_config.get_double("ambient_medium_norm");
-    auto n = run_config.get_double("ambient_medium_index");
-    auto r0 = dimensional::unit_length(1.0);
-    auto d_upst = A * std::pow(r / r0, -n);
-    auto p_upst = 1e-2 * d_upst;
-    return srhd::primitive(d_upst, 0.0, 0.0, 0.0, p_upst);
+    return r < dimensional::unit_length(run_config.get_double("rwind"))
+    ? wind_profile  (run_config, r, 1.0)
+    : ambient_medium(run_config, r, 1.0);
 }
 
 auto initial_condition(const mara::config_t& run_config)
@@ -209,6 +224,7 @@ solution_t advance(const mara::config_t& run_config, solution_t solution)
     auto base = [&run_config, dt = time_step(run_config, solution)] (solution_t soln)
     {
         auto move_cells          = run_config.get_int("move");
+        auto plm_theta           = run_config.get_double("plm_theta");
         auto xhat                = geometric::unit_vector_on_axis(1);
         auto inner_boundary_prim = wind_profile(run_config, soln.vertices(0), soln.time);
         auto mesh_geometry       = spherical_mesh_geometry_t();
@@ -216,7 +232,15 @@ solution_t advance(const mara::config_t& run_config, solution_t solution)
         {
             return srhd::spherical_geometry_source_terms(p, x, M_PI / 2, gamma_law_index);
         });
-        return mara::advance(soln, dt, inner_boundary_prim, riemann_solver_for(xhat, move_cells), recover_primitive(), source_terms, mesh_geometry, 1.0);
+        return mara::advance(soln,
+            dt,
+            inner_boundary_prim,
+            riemann_solver_for(xhat,
+            move_cells),
+            recover_primitive(),
+            source_terms,
+            mesh_geometry,
+            plm_theta);
     };
     return remesh(run_config, control::advance_runge_kutta(base, run_config.get_int("rk_order"), solution));
 }

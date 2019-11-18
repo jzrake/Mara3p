@@ -48,7 +48,7 @@ DEP         := $(SRC:%.cpp=%.d)
 default: $(TARGETS)
 all: $(ALL_TARGETS)
 
-mara: src/main.o src/test_core.o src/test_app.o src/test_physics.o src/core_unit_test.o
+mara: src/main.o src/core_unit_test.o src/test_app.o src/test_core.o src/test_model.o src/test_physics.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 examples/euler1d: examples/euler1d.o

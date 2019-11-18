@@ -56,6 +56,13 @@ struct dimensions_t
 template<long N1, long N2, long N3, unsigned long D1=1, unsigned long D2=1, unsigned long D3=1>
 struct quantity_t
 {
+    static constexpr long Num1 = N1;
+    static constexpr long Num2 = N2;
+    static constexpr long Num3 = N3;
+    static constexpr unsigned long Den1 = D1;
+    static constexpr unsigned long Den2 = D2;
+    static constexpr unsigned long Den3 = D3;
+
     quantity_t() {}
     quantity_t(double value) : value(value) {}
 
@@ -69,6 +76,9 @@ struct quantity_t
     static constexpr auto dimensions = dimensions_t<N1, N2, N3, D1, D2, D3>{};
     static constexpr auto powers = std::tuple(double(N1) / D1, double(N2) / D2, double(N3) / D3);
 };
+
+template<typename Q>
+using inverse = quantity_t<-Q::Num1, -Q::Num2, -Q::Num3, Q::Den1, Q::Den2, Q::Den3>;
 
 
 
@@ -260,6 +270,8 @@ using unit_mass_density     = decltype(unit_mass{}     / unit_volume{});
 using unit_momentum_density = decltype(unit_momentum{} / unit_volume{});
 using unit_energy_density   = decltype(unit_energy{}   / unit_volume{});
 using unit_specific_energy  = decltype(unit_energy{}   / unit_mass{});
+using unit_power            = decltype(unit_energy{}   / unit_time{});
+using unit_mass_rate        = decltype(unit_mass{}     / unit_time{});
 
 } // namespace dimensional
 

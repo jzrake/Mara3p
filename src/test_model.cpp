@@ -27,27 +27,15 @@
 
 
 
-#include "core_unit_test.hpp"
-
-
-
-
-int test_app();
-int test_core();
-int test_model();
-int test_physics();
+#define DO_UNIT_TESTS
+#include "model_atmospheres.hpp"
 
 
 
 
 //=============================================================================
-int main()
+int test_model()
 {
-    start_unit_tests();
-    test_app();
-    test_core();
-    test_model();
-    test_physics();
-    report_test_results();
+    test_atmospheres();
     return 0;
 }
