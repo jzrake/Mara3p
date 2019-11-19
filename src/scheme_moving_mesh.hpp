@@ -61,39 +61,58 @@ state_with_vertices_t<ConservedType> advance(
     MeshGeometryType                           mesh_geometry,
     double                                     plm_theta)
 {
-    auto da = mesh_geometry.face_areas(state.vertices);
-    auto dv = mesh_geometry.cell_volumes(state.vertices);
-    auto dx = mesh_geometry.cell_spacing(state.vertices);
-    auto x0 = mesh_geometry.cell_centers(state.vertices);
-    auto p0 = state.conserved / dv | nd::map(recover_primitive) | nd::to_shared();
-    auto s0 = nd::zip(p0, x0) | nd::map(source_terms) | nd::multiply(dv);
-    auto gx = nd::zip(x0 | nd::adjacent_zip3(), p0 | nd::adjacent_zip3())
-    | nd::map(mara::plm_gradient(plm_theta))
-    | nd::extend_zeros()
-    | nd::to_shared();
+    try {
+        auto da = mesh_geometry.face_areas(state.vertices);
+        auto dv = mesh_geometry.cell_volumes(state.vertices);
+        auto dx = mesh_geometry.cell_spacing(state.vertices);
+        auto x0 = mesh_geometry.cell_centers(state.vertices);
+        auto p0 = state.conserved / dv | nd::map(recover_primitive) | nd::to_shared();
+        auto s0 = nd::zip(p0, x0) | nd::map(source_terms) | nd::multiply(dv);
+        auto gx = nd::zip(x0 | nd::adjacent_zip3(), p0 | nd::adjacent_zip3())
+        | nd::map(mara::plm_gradient(plm_theta))
+        | nd::extend_zeros()
+        | nd::to_shared();
 
-    auto [ibf, ibv] = riemann_solver(std::pair(inner_boundary_primitive, front(p0)));
-    auto [obf, obv] = riemann_solver(std::pair(back(p0), outer_boundary_primitive));
-    auto pl = select(p0 + 0.5 * dx * gx, 0, 0, -1);
-    auto pr = select(p0 - 0.5 * dx * gx, 0, 1);
-    auto fv = nd::zip(pl, pr)
-    | nd::map(riemann_solver)
-    | nd::extend_uniform_lower(std::pair(ibf, ibv))
-    | nd::extend_uniform_upper(std::pair(obf, obv))
-    | nd::to_shared();
+        auto [ibf, ibv] = riemann_solver(std::pair(inner_boundary_primitive, front(p0)));
+        auto [obf, obv] = riemann_solver(std::pair(back(p0), outer_boundary_primitive));
+        auto pl = select(p0 + 0.5 * dx * gx, 0, 0, -1);
+        auto pr = select(p0 - 0.5 * dx * gx, 0, 1);
+        auto fv = nd::zip(pl, pr)
+        | nd::map(riemann_solver)
+        | nd::extend_uniform_lower(std::pair(ibf, ibv))
+        | nd::extend_zero_gradient_upper() //nd::extend_uniform_upper(std::pair(obf, obv))
+        | nd::to_shared();
 
-    auto ff = fv | nd::map([] (auto a) { return std::get<0>(a); });
-    auto vf = fv | nd::map([] (auto a) { return std::get<1>(a); });
-    auto df = ff | nd::multiply(da) | nd::adjacent_diff() | nd::to_shared();
-    auto x1 = state.vertices  + (vf * dt)                 | nd::to_shared();
-    auto u1 = state.conserved + (s0 - df) * dt            | nd::to_shared();
+        auto ff = fv | nd::map([] (auto a) { return std::get<0>(a); });
+        auto vf = fv | nd::map([] (auto a) { return std::get<1>(a); });
+        auto df = ff | nd::multiply(da) | nd::adjacent_diff() | nd::to_shared();
+        auto x1 = state.vertices  + (vf * dt)                 | nd::to_shared();
+        auto u1 = state.conserved + (s0 - df) * dt            | nd::to_shared();
 
-    return {
-        state.iteration + 1,
-        state.time + dt,
-        x1,
-        u1,
-    };
+        return {
+            state.iteration + 1,
+            state.time + dt,
+            x1,
+            u1,
+        };
+    }
+    catch (const std::exception& e)
+    {
+        auto x0 = mesh_geometry.cell_centers(state.vertices);
+        auto dv = mesh_geometry.cell_volumes(state.vertices);
+
+        for (auto [x, u] : nd::zip(x0, state.conserved / dv))
+        {
+            try {
+                recover_primitive(u);
+            }
+            catch (const std::exception& f)
+            {
+                throw std::invalid_argument(std::string(f.what()) + " at r = " + std::to_string(x.value));
+            }
+        }
+        throw;
+    }
 }
 
 } // namespace mara

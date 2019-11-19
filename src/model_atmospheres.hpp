@@ -101,7 +101,7 @@ struct cold_power_law_medium_t
         return density_at_base * std::pow(r / inner_radius, -density_index);
     }
 
-    auto primitive_srhd(unit_length r, unit_time t, unit_scalar entropy=1e-5) const
+    auto primitive_srhd(unit_length r, unit_time t, unit_scalar entropy=-6.0) const
     {
         auto d = density_at(r, t);
         auto p = unit_energy_density(std::pow(d.value, 4. / 3) * std::exp(entropy));
@@ -182,7 +182,7 @@ struct cold_wind_model_t
         return mass_loss_rate(t) / (solid_angle * r * r * gamma_beta(t) * light_speed);
     }
 
-    auto primitive_srhd(unit_length r, unit_time t, unit_scalar entropy=1e-5) const
+    auto primitive_srhd(unit_length r, unit_time t, unit_scalar entropy=-6.0) const
     {
         auto d = density_at(r, t);
         auto u = gamma_beta(t);
@@ -385,11 +385,12 @@ struct cloud_with_envelop_model_t
 
 
     //=============================================================================
-    auto primitive_srhd(unit_length r, unit_time t, unit_scalar entropy=1e-5) const
+    auto primitive_srhd(unit_length r, unit_time t, unit_scalar entropy=-6.0) const
     {
         auto d = density_at(r, t);
         auto u = gamma_beta_at(r, t);
-        auto p = unit_energy_density(std::pow(d.value, 4. / 3) * std::exp(entropy));
+        auto p = unit_energy_density(1e-8);
+        // auto p = unit_energy_density(std::pow(d.value, 4. / 3) * std::exp(entropy));
         return numeric::tuple(d, u, unit_scalar(0.0), unit_scalar(0.0), p);
     }
 

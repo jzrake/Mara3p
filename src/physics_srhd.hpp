@@ -55,13 +55,13 @@ const static auto light_speed = dimensional::unit_velocity(1.0);
 //=============================================================================
 template<typename ExceptionType>
 #ifdef SRHD_NO_EXCEPTIONS
-void throw_or_abort(const char* message) noexcept
+void throw_or_abort(std::string message) noexcept
 {
-    std::printf("FATAL: %s\n", message);
+    std::printf("FATAL: %s\n", message.data());
     exit(1);
 }
 #else
-void throw_or_abort(const char* message)
+void throw_or_abort(std::string message)
 {
     throw ExceptionType(message);
 }

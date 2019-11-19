@@ -210,7 +210,7 @@ solution_with_tasks_t initial_app_state(const mara::config_t& run_config)
 //=============================================================================
 solution_t remesh(const mara::config_t& run_config, solution_t solution)
 {
-    if (front(solution.vertices) > dimensional::unit_length(1.0 + 1.0 / run_config.get_int("nr")))
+    if (front(solution.vertices) > dimensional::unit_length(1.0 + 10.0 / run_config.get_int("nr")))
     {
         auto xv = nd::concat(nd::from(dimensional::unit_length(1.0)), solution.vertices, 0) | nd::to_shared();
         auto xc = spherical_mesh_geometry_t::cell_centers(xv);
