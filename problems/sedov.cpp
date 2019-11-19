@@ -26,7 +26,7 @@
 
 
 
-#define SRHD_NO_EXCEPTIONS
+// #define SRHD_NO_EXCEPTIONS
 #include "app_config.hpp"
 #include "app_control.hpp"
 #include "app_hdf5.hpp"
@@ -73,7 +73,7 @@ auto config_template()
 }
 
 static const auto gamma_law_index   = 4. / 3;
-static const auto temperature_floor = 1e-6;
+static const auto temperature_floor = 0.0;
 
 
 
@@ -122,26 +122,84 @@ auto cloud_with_envelop(const mara::config_t& run_config)
 
 
 
+auto fast_rise_exponential_decay(dimensional::unit_time onset_time, dimensional::unit_time decay_time)
+{
+    return [=] (dimensional::unit_time t)
+    {
+        auto x = 2.0 * (t - onset_time) / decay_time;
+        return 1.0 / (4 * std::exp(-2)) * x * x * std::exp(-x) * (x < 0.0 ? 0.0 : 1.0);
+    };
+}
+
+
+
+
+auto envelop_mdot_index       = 4.0;
+auto envelop_gamma_beta_index = 0.22; // psi parameter
+auto envelop_nominal_time     = dimensional::unit_time(1.0);
+auto envelop_nominal_mdot     = dimensional::unit_mass_rate(1.0);
+auto envelop_nominal_mass     = dimensional::unit_mass(1.0);
+auto envelop_gamma_beta       = dimensional::unit_scalar(20.0);
+
+
+auto engine_gamma_beta     = dimensional::unit_scalar(20.0);
+auto engine_onset_time     = dimensional::unit_time(50.0);
+auto engine_duration       = dimensional::unit_time(10.0);
+
+
+
+
+auto wind_mass_loss_rate(const mara::config_t& run_config)
+{
+    return [] (auto t)
+    {
+        auto t0 = envelop_nominal_time;
+        auto al = envelop_mdot_index;
+        return t < engine_onset_time
+        ? dimensional::unit_mass_rate(1.0) * std::pow(t / t0, al)
+        : dimensional::unit_mass_rate(1e4);
+    };
+}
+
+auto wind_gamma_beta(const mara::config_t& run_config)
+{
+    auto integrated_envelop_mdot = [] (dimensional::unit_time t)
+    {
+        auto m0 = envelop_nominal_mass;
+        auto md = envelop_nominal_mdot;
+        auto t0 = envelop_nominal_time;
+        auto al = envelop_mdot_index;
+        return m0 + md * t * std::pow(t / t0, al) / (1 + al);
+    };
+
+    return [integrated_envelop_mdot] (auto t)
+    {
+        auto psi = envelop_gamma_beta_index;
+        auto m  = integrated_envelop_mdot(t);
+        auto m0 = integrated_envelop_mdot(envelop_nominal_time);
+        auto u0 = envelop_gamma_beta;
+
+        return t < engine_onset_time
+        ? u0 * std::pow(m / m0, -psi)
+        : engine_gamma_beta * fast_rise_exponential_decay(engine_onset_time, engine_duration)(t);
+    };
+}
+
+
+
+
 //=============================================================================
 auto wind_profile(const mara::config_t& run_config, dimensional::unit_length r, dimensional::unit_time t)
 {
-    return cold_wind(run_config).primitive_srhd(r, t);
-}
-
-auto ambient_medium(const mara::config_t& run_config, dimensional::unit_length r, dimensional::unit_time t)
-{
-    auto delay_time = dimensional::unit_time(run_config.get_double("delay"));
-
-    return run_config.get_int("envelop")
-    ? cloud_with_envelop   (run_config).primitive_srhd(r, t - dimensional::unit_time(1.0) + delay_time)
-    : cold_power_law_medium(run_config).primitive_srhd(r, t);
+    return mara::time_varying_cold_wind_t()
+    .with_mass_loss_rate(wind_mass_loss_rate(run_config))
+    .with_gamma_beta    (wind_gamma_beta    (run_config))
+    .primitive_srhd(r, t);
 }
 
 auto initial_condition(const mara::config_t& run_config, dimensional::unit_length r)
 {
-    return r < dimensional::unit_length(run_config.get_double("rwind"))
-    ? wind_profile  (run_config, r, 1.0)
-    : ambient_medium(run_config, r, 1.0);
+    return wind_profile(run_config, r, 1.0);
 }
 
 auto initial_condition(const mara::config_t& run_config)
@@ -210,7 +268,7 @@ solution_with_tasks_t initial_app_state(const mara::config_t& run_config)
 //=============================================================================
 solution_t remesh(const mara::config_t& run_config, solution_t solution)
 {
-    if (front(solution.vertices) > dimensional::unit_length(1.0 + 10.0 / run_config.get_int("nr")))
+    if (front(solution.vertices) > dimensional::unit_length(1.0 + 1.0 / run_config.get_int("nr")))
     {
         auto xv = nd::concat(nd::from(dimensional::unit_length(1.0)), solution.vertices, 0) | nd::to_shared();
         auto xc = spherical_mesh_geometry_t::cell_centers(xv);
@@ -236,8 +294,8 @@ solution_t advance(const mara::config_t& run_config, solution_t solution)
         auto move_cells          = run_config.get_int("move");
         auto plm_theta           = run_config.get_double("plm_theta");
         auto xhat                = geometric::unit_vector_on_axis(1);
-        auto inner_boundary_prim = wind_profile  (run_config, front(soln.vertices), soln.time);
-        auto outer_boundary_prim = ambient_medium(run_config, back (soln.vertices), soln.time);
+        auto inner_boundary_prim = wind_profile     (run_config, front(soln.vertices), soln.time);
+        auto outer_boundary_prim = initial_condition(run_config, back (soln.vertices));
         auto mesh_geometry       = spherical_mesh_geometry_t();
         auto source_terms        = util::apply_to([] (auto p, auto x)
         {
@@ -259,7 +317,8 @@ solution_t advance(const mara::config_t& run_config, solution_t solution)
 
 control::task_t advance(const mara::config_t& run_config, control::task_t task, dimensional::unit_time time)
 {
-    return jump(task, time, run_config.get_double("dfi"));
+    auto reference_time = time < engine_onset_time ? dimensional::unit_time(0.0) : engine_onset_time;
+    return jump(task, time, run_config.get_double("dfi"), reference_time);
 }
 
 auto advance(const mara::config_t& run_config)

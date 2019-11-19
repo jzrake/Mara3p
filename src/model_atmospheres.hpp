@@ -202,6 +202,73 @@ struct cold_wind_model_t
 
 
 
+//=============================================================================
+struct time_varying_cold_wind_t
+{
+
+
+    //=========================================================================
+    using mass_loss_rate_function_t = std::function<unit_mass_rate(unit_time)>;
+    using gamma_beta_function_t     = std::function<unit_scalar(unit_time)>;
+
+
+    //=========================================================================
+    auto with_solid_angle(unit_scalar new_solid_angle) const
+    -> time_varying_cold_wind_t
+    {
+        return {new_solid_angle, light_speed, mass_loss_rate, gamma_beta};
+    }
+
+    auto with_mass_loss_rate(mass_loss_rate_function_t new_mass_loss_rate) const
+    -> time_varying_cold_wind_t
+    {
+        return {solid_angle, light_speed, new_mass_loss_rate, gamma_beta};
+    }
+
+    auto with_gamma_beta(gamma_beta_function_t new_gamma_beta) const
+    -> time_varying_cold_wind_t
+    {
+        return {solid_angle, light_speed, mass_loss_rate, new_gamma_beta};
+    }
+
+
+    //=========================================================================
+    unit_scalar lorentz_factor(unit_time t) const
+    {
+        return std::sqrt(1.0 + pow<2>(gamma_beta(t)));
+    }
+
+    unit_power kinetic_luminosity(unit_time t) const
+    {
+        return lorentz_factor(t) * mass_loss_rate(t) * pow<2>(light_speed);
+    }
+
+
+    //=========================================================================
+    unit_mass_density density_at(unit_length r, unit_time t) const
+    {
+        return mass_loss_rate(t) / (solid_angle * r * r * gamma_beta(t) * light_speed);
+    }
+
+    auto primitive_srhd(unit_length r, unit_time t, unit_scalar log10_temperature=-6.0) const
+    {
+        auto d = density_at(r, t);
+        auto u = gamma_beta(t);
+        auto p = d * pow<2>(light_speed) * std::pow(10.0, log10_temperature);
+        return numeric::tuple(d, u, unit_scalar(0.0), unit_scalar(0.0), p);
+    }
+
+
+    //=========================================================================
+    unit_scalar   solid_angle = 4 * M_PI;
+    unit_velocity light_speed = 1.0;
+    mass_loss_rate_function_t mass_loss_rate;
+    gamma_beta_function_t     gamma_beta;
+};
+
+
+
+
 /**
  * @brief      A model describing an expanding gas cloud, with power-law density
  *             profile, surrounded by a relativistic envelop. The envelop is an

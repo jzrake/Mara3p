@@ -80,7 +80,7 @@ state_with_vertices_t<ConservedType> advance(
         auto fv = nd::zip(pl, pr)
         | nd::map(riemann_solver)
         | nd::extend_uniform_lower(std::pair(ibf, ibv))
-        | nd::extend_zero_gradient_upper() //nd::extend_uniform_upper(std::pair(obf, obv))
+        | nd::extend_uniform_upper(std::pair(obf, obv))
         | nd::to_shared();
 
         auto ff = fv | nd::map([] (auto a) { return std::get<0>(a); });

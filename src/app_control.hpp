@@ -71,12 +71,12 @@ inline auto jump(task_t task, dimensional::unit_time time, dimensional::unit_tim
     return task;
 }
 
-inline auto jump(task_t task, dimensional::unit_time time, double factor)
+inline auto jump(task_t task, dimensional::unit_time time, double factor, dimensional::unit_time reference_time=0.0)
 {
     if (time >= task.next_time)
     {
         task.count += 1;
-        task.next_time = task.next_time * factor;
+        task.next_time = (task.next_time - reference_time) * factor + reference_time;
     }
     return task;
 }
