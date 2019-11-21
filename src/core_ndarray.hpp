@@ -740,6 +740,18 @@ auto max(array_t<ProviderType, Rank> array)
 }
 
 template<typename ProviderType, uint Rank>
+auto argmin(array_t<ProviderType, Rank> array)
+{
+    return front(where(array == min(array)));
+}
+
+template<typename ProviderType, uint Rank>
+auto argmax(array_t<ProviderType, Rank> array)
+{
+    return front(where(array == max(array)));
+}
+
+template<typename ProviderType, uint Rank>
 bool any(array_t<ProviderType, Rank> array)
 {
     for (auto x : array)
