@@ -141,10 +141,9 @@ auto envelop_nominal_mdot     = dimensional::unit_mass_rate(1.0);
 auto envelop_nominal_mass     = dimensional::unit_mass(1.0);
 auto envelop_gamma_beta       = dimensional::unit_scalar(20.0);
 
-
 auto engine_gamma_beta     = dimensional::unit_scalar(20.0);
 auto engine_onset_time     = dimensional::unit_time(50.0);
-auto engine_duration       = dimensional::unit_time(10.0);
+auto engine_duration       = dimensional::unit_time(100.0);
 
 
 
@@ -153,6 +152,7 @@ auto wind_mass_loss_rate(const mara::config_t& run_config)
 {
     return [] (auto t)
     {
+        // auto m0 = envelop_nominal_mass;
         auto t0 = envelop_nominal_time;
         auto al = envelop_mdot_index;
         return t < engine_onset_time
@@ -170,6 +170,7 @@ auto wind_gamma_beta(const mara::config_t& run_config)
         auto t0 = envelop_nominal_time;
         auto al = envelop_mdot_index;
         return m0 + md * t * std::pow(t / t0, al) / (1 + al);
+        // return m0 * (1.0 + std::erf(t / t0 - 1.0));
     };
 
     return [integrated_envelop_mdot] (auto t)
@@ -197,35 +198,26 @@ auto wind_profile(const mara::config_t& run_config, dimensional::unit_length r, 
     .primitive_srhd(r, t);
 }
 
-auto initial_condition(const mara::config_t& run_config, dimensional::unit_length r)
-{
-    return wind_profile(run_config, r, 1.0);
-}
-
 auto initial_condition(const mara::config_t& run_config)
 {
-    return [run_config] (dimensional::unit_length r)
-    {
-        return initial_condition(run_config, r);
-    };
-}
-
-auto riemann_solver_for(geometric::unit_vector_t nhat, bool move)
-{
-    return util::apply_to([nhat, move] (auto pl, auto pr)
-    {
-        if (move)
-        {
-            auto mode = srhd::riemann_solver_mode_hllc_fluxes_across_contact_t();
-            return srhd::riemann_solver(pl, pr, nhat, gamma_law_index, mode);
-        }
-        return std::make_pair(srhd::riemann_hllc(pl, pr, nhat, gamma_law_index), dimensional::unit_velocity(0.0));
-    });
+    return [run_config] (dimensional::unit_length r) { return wind_profile(run_config, r, 1.0); };
 }
 
 auto recover_primitive()
 {
     return [] (auto u) { return srhd::recover_primitive(u, gamma_law_index, temperature_floor); };
+}
+
+auto riemann_solver_for(geometric::unit_vector_t nhat, bool move)
+{
+    auto contact_mode = srhd::riemann_solver_mode_hllc_fluxes_across_contact_t();
+
+    return util::apply_to([nhat, move, contact_mode] (auto pl, auto pr)
+    {
+        return move
+        ? srhd::riemann_solver(pl, pr, nhat, gamma_law_index, contact_mode)
+        : std::make_pair(srhd::riemann_hllc(pl, pr, nhat, gamma_law_index), dimensional::unit_velocity(0.0));
+    });
 }
 
 auto time_step(const mara::config_t& run_config, solution_t state)
@@ -295,7 +287,7 @@ solution_t advance(const mara::config_t& run_config, solution_t solution)
         auto plm_theta           = run_config.get_double("plm_theta");
         auto xhat                = geometric::unit_vector_on_axis(1);
         auto inner_boundary_prim = wind_profile     (run_config, front(soln.vertices), soln.time);
-        auto outer_boundary_prim = initial_condition(run_config, back (soln.vertices));
+        auto outer_boundary_prim = initial_condition(run_config)(back (soln.vertices));
         auto mesh_geometry       = spherical_mesh_geometry_t();
         auto source_terms        = util::apply_to([] (auto p, auto x)
         {
@@ -364,12 +356,18 @@ void print_run_loop(const mara::config_t& run_config, timed_state_pair_t p)
     auto nz = size(soln.vertices);
     auto us = control::microseconds_separating(p);
 
-    std::printf("[%07lu] t=%.3lf dt=%.2e zones=%lu Mzps=%.2lf\n",
+    std::printf("[%07lu] t=%.3lf dt=%.2e zones=%lu Mzps=%.2lf ",
         long(soln.iteration),
         soln.time.value,
         time_step(run_config, soln).value,
         nz,
         nz / us);
+
+    auto dr = soln.vertices | nd::adjacent_diff();
+
+    std::printf("| min(dr)=%.2e @ %lu max(dr)=%.2e @ %lu\n",
+        nd::min(dr).value, nd::argmin(dr)[0],
+        nd::max(dr).value, nd::argmax(dr)[0]);
 }
 
 auto side_effects(const mara::config_t& run_config, timed_state_pair_t p)
@@ -397,18 +395,6 @@ int main(int argc, const char* argv[])
     .update(mara::argv_to_string_map(argc, argv));
 
     mara::pretty_print(std::cout, "config", run_config);
-
-
-    std::cout << "====================================================\n";
-    std::cout << "cloud parameters:\n\n";
-
-    auto cloud = cloud_with_envelop(run_config);
-    auto delay = run_config.get_double("delay");
-    std::cout << "\tcloud_velocity ............. " << cloud.cloud_velocity()             .value << std::endl;
-    std::cout << "\tcloud_outer_boundary ....... " << cloud.cloud_outer_boundary  (delay).value << std::endl;
-    std::cout << "\tenvelop_outer_boundary ..... " << cloud.envelop_outer_boundary(delay).value << std::endl;
-    std::cout << "\n";
-
 
     auto simulation = seq::generate(initial_app_state(run_config), advance(run_config))
     | seq::pair_with(control::time_point_sequence())
