@@ -52,6 +52,12 @@ auto zip_tuples(std::tuple<Ts...> t, std::tuple<Us...> u)
     return zip_tuple_impl(t, u, std::make_index_sequence<sizeof...(Ts)>());
 }
 
+template<typename T, std::size_t S>
+auto as_tuple(std::array<T, S> t)
+{
+    return std::apply([] (auto... args) { return std::tuple(args...); }, t);
+}
+
 template<typename FunctionType, typename... Ts>
 auto map(std::tuple<Ts...> t, FunctionType f)
 {
@@ -207,6 +213,15 @@ uivec_t<Rank> next(uivec_t<Rank> index, uivec_t<Rank> shape)
         index[n] = 0; --n; ++index[n];
     }
     return index;
+}
+
+template<typename FunctionType>
+auto indexing(FunctionType function)
+{
+    return [function] (auto index)
+    {
+        return std::apply(function, detail::as_tuple(index.impl));
+    };
 }
 
 
@@ -484,7 +499,7 @@ inline auto range(long i0, long i1)
     if (i0 > i1)
         throw std::invalid_argument("nd::range (lower index larger than upper index)");
 
-    return make_array([=] (auto i) { return i0 + get<0>(i); }, uivec(i1 - i0));
+    return make_array(indexing([=] (auto i) { return i0 + i; }), uivec(i1 - i0));
 }
 
 inline auto range(long i1)
@@ -495,7 +510,7 @@ inline auto range(long i1)
 inline auto linspace(double x0, double x1, uint count)
 {
     return make_array(
-        [=] (auto i) { return x0 + get<0>(i) * (x1 - x0) / (count - 1); },
+        indexing([=] (auto i) { return x0 + i * (x1 - x0) / (count - 1); }),
         uivec(count));
 }
 
@@ -518,13 +533,13 @@ auto indexes(const array_t<ProviderType, Rank>& array)
 template<typename... ProviderTypes>
 auto cartesian_product(array_t<ProviderTypes, 1>... arrays)
 {
-    auto f = [array_tuple = std::tuple(arrays...)] (uivec_t<sizeof...(arrays)> i)
+    auto f = indexing([array_tuple = std::tuple(arrays...)] (auto... is)
     {
         return std::apply([] (auto... args)
         {
             return std::tuple(std::get<0>(args)(std::get<1>(args))...);
-        }, detail::zip_tuples(array_tuple, i.impl));
-    };
+        }, detail::zip_tuples(array_tuple, std::tuple(is...)));
+    });
     return make_array(f, uivec(size(arrays)...));
 }
 
