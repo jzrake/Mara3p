@@ -55,7 +55,7 @@ struct spherical_mesh_geometry_t
         return vertices | nd::adjacent_mean();
     }
 
-    static auto cell_spacing(vertices_array_t vertices)
+    static auto cell_spacings(vertices_array_t vertices)
     {
         return vertices | nd::adjacent_diff();
     }

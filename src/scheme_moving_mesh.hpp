@@ -62,10 +62,10 @@ state_with_vertices_t<ConservedType> advance(
     double                                     plm_theta)
 {
     try {
-        auto da = mesh_geometry.face_areas(state.vertices);
-        auto dv = mesh_geometry.cell_volumes(state.vertices);
-        auto dx = mesh_geometry.cell_spacing(state.vertices);
-        auto x0 = mesh_geometry.cell_centers(state.vertices);
+        auto da = mesh_geometry.face_areas   (state.vertices);
+        auto dv = mesh_geometry.cell_volumes (state.vertices);
+        auto dx = mesh_geometry.cell_spacings(state.vertices);
+        auto x0 = mesh_geometry.cell_centers (state.vertices);
         auto p0 = state.conserved / dv | nd::map(recover_primitive) | nd::to_shared();
         auto s0 = nd::zip(p0, x0) | nd::map(source_terms) | nd::multiply(dv);
         auto gx = nd::zip(x0 | nd::adjacent_zip3(), p0 | nd::adjacent_zip3())

@@ -59,6 +59,7 @@ auto config_template()
     .item("dfi",                  1.5)   // output frequency (constant multiplier)
     .item("rk_order",               2)   // Runge-Kutta order (1 or 2)
     .item("cfl",                  0.5)   // courant number
+    .item("mindr",               1e-3)   // courant number
     .item("plm_theta",            1.5)   // PLM parameter
     .item("router",               1e3)   // outer boundary radius
     .item("move",                   1)   // whether to move the cells
@@ -126,8 +127,8 @@ auto fast_rise_exponential_decay(dimensional::unit_time onset_time, dimensional:
 {
     return [=] (dimensional::unit_time t)
     {
-        auto x = 2.0 * (t - onset_time) / decay_time;
-        return 1.0 / (4 * std::exp(-2)) * x * x * std::exp(-x) * (x < 0.0 ? 0.0 : 1.0);
+        auto x = (t - onset_time) / decay_time;
+        return std::sqrt(0.5 * x) * std::exp(-(x + 0.5));
     };
 }
 
@@ -140,10 +141,9 @@ auto envelop_nominal_time     = dimensional::unit_time(1.0);
 auto envelop_nominal_mdot     = dimensional::unit_mass_rate(1.0);
 auto envelop_nominal_mass     = dimensional::unit_mass(1.0);
 auto envelop_gamma_beta       = dimensional::unit_scalar(20.0);
-
-auto engine_gamma_beta     = dimensional::unit_scalar(20.0);
-auto engine_onset_time     = dimensional::unit_time(50.0);
-auto engine_duration       = dimensional::unit_time(100.0);
+auto engine_gamma_beta        = dimensional::unit_scalar(50.0);
+auto engine_onset_time        = dimensional::unit_time(50.0);
+auto engine_duration          = dimensional::unit_time(100.0);
 
 
 
@@ -152,7 +152,6 @@ auto wind_mass_loss_rate(const mara::config_t& run_config)
 {
     return [] (auto t)
     {
-        // auto m0 = envelop_nominal_mass;
         auto t0 = envelop_nominal_time;
         auto al = envelop_mdot_index;
         return t < engine_onset_time
@@ -170,7 +169,6 @@ auto wind_gamma_beta(const mara::config_t& run_config)
         auto t0 = envelop_nominal_time;
         auto al = envelop_mdot_index;
         return m0 + md * t * std::pow(t / t0, al) / (1 + al);
-        // return m0 * (1.0 + std::erf(t / t0 - 1.0));
     };
 
     return [integrated_envelop_mdot] (auto t)
@@ -258,13 +256,13 @@ solution_with_tasks_t initial_app_state(const mara::config_t& run_config)
 
 
 //=============================================================================
-solution_t remesh(const mara::config_t& run_config, solution_t solution)
+solution_t add_inner_cell(const mara::config_t& run_config, solution_t solution)
 {
     if (front(solution.vertices) > dimensional::unit_length(1.0 + 1.0 / run_config.get_int("nr")))
     {
-        auto xv = nd::concat(nd::from(dimensional::unit_length(1.0)), solution.vertices, 0) | nd::to_shared();
-        auto xc = spherical_mesh_geometry_t::cell_centers(xv);
-        auto dv = spherical_mesh_geometry_t::cell_volumes(xv);
+        auto x1 = nd::concat(nd::from(dimensional::unit_length(1.0)), solution.vertices, 0) | nd::to_shared();
+        auto xc = spherical_mesh_geometry_t::cell_centers(x1);
+        auto dv = spherical_mesh_geometry_t::cell_volumes(x1);
         auto bp = wind_profile(run_config, front(xc), solution.time);
         auto bu = srhd::conserved_density(bp, gamma_law_index) * front(dv);
         auto u1 = nd::concat(nd::from(bu), solution.conserved, 0) | nd::to_shared();
@@ -272,10 +270,37 @@ solution_t remesh(const mara::config_t& run_config, solution_t solution)
         return {
             solution.iteration,
             solution.time,
-            xv,
+            x1,
             u1,
         };
     }
+    return solution;
+}
+
+solution_t remove_smallest_cell(const mara::config_t& run_config, solution_t solution)
+{
+    auto mindr = dimensional::unit_length(run_config.get_double("mindr"));
+    auto dr    = spherical_mesh_geometry_t::cell_spacings(solution.vertices);
+    auto imin  = nd::argmin(dr)[0];
+
+    if (imin > 0 && imin < size(solution.conserved) && dr(imin) < mindr)
+    {
+        auto [x1, u1] = nd::remove_partition(solution.vertices, solution.conserved, imin);
+
+        return {
+            solution.iteration,
+            solution.time,
+            x1 | nd::to_shared(),
+            u1 | nd::to_shared(),
+        };
+    }
+    return solution;
+}
+
+solution_t remesh(const mara::config_t& run_config, solution_t solution)
+{
+    solution = add_inner_cell      (run_config, solution);
+    solution = remove_smallest_cell(run_config, solution);
     return solution;
 }
 
@@ -286,8 +311,8 @@ solution_t advance(const mara::config_t& run_config, solution_t solution)
         auto move_cells          = run_config.get_int("move");
         auto plm_theta           = run_config.get_double("plm_theta");
         auto xhat                = geometric::unit_vector_on_axis(1);
-        auto inner_boundary_prim = wind_profile     (run_config, front(soln.vertices), soln.time);
-        auto outer_boundary_prim = initial_condition(run_config)(back (soln.vertices));
+        auto inner_boundary_prim = wind_profile(run_config, front(soln.vertices), soln.time);
+        auto outer_boundary_prim = wind_profile(run_config, back (soln.vertices), 1.0);
         auto mesh_geometry       = spherical_mesh_geometry_t();
         auto source_terms        = util::apply_to([] (auto p, auto x)
         {
