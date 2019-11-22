@@ -30,6 +30,7 @@
 #define DO_UNIT_TESTS
 #include "physics_euler.hpp"
 #include "physics_srhd.hpp"
+#include "physics_mhd.hpp"
 
 
 
@@ -39,5 +40,6 @@ int test_physics()
 {
     test_euler();
     test_srhd();
+    test_mhd();
     return 0;
 }

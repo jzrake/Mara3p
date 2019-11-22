@@ -259,19 +259,19 @@ using unit_scalar           = quantity_t<0, 0, 0>;
 using unit_mass             = quantity_t<1, 0, 0>;
 using unit_length           = quantity_t<0, 1, 0>;
 using unit_time             = quantity_t<0, 0, 1>;
-using unit_velocity         = decltype(unit_length{}   / unit_time{});
-using unit_acceleration     = decltype(unit_velocity{} / unit_time{});
-using unit_momentum         = decltype(unit_velocity{} * unit_mass{});
-using unit_force            = decltype(unit_momentum{} / unit_time{});
-using unit_energy           = decltype(unit_force{}    * unit_length{});
-using unit_area             = decltype(unit_length{}   * unit_length{});
-using unit_volume           = decltype(unit_length{}   * unit_length{} * unit_length{});
-using unit_mass_density     = decltype(unit_mass{}     / unit_volume{});
-using unit_momentum_density = decltype(unit_momentum{} / unit_volume{});
-using unit_energy_density   = decltype(unit_energy{}   / unit_volume{});
-using unit_specific_energy  = decltype(unit_energy{}   / unit_mass{});
-using unit_power            = decltype(unit_energy{}   / unit_time{});
-using unit_mass_rate        = decltype(unit_mass{}     / unit_time{});
+using unit_velocity         = decltype(unit_length()   / unit_time());
+using unit_acceleration     = decltype(unit_velocity() / unit_time());
+using unit_momentum         = decltype(unit_velocity() * unit_mass());
+using unit_force            = decltype(unit_momentum() / unit_time());
+using unit_energy           = decltype(unit_force()    * unit_length());
+using unit_area             = decltype(unit_length()   * unit_length());
+using unit_volume           = decltype(unit_length()   * unit_length() * unit_length());
+using unit_mass_density     = decltype(unit_mass()     / unit_volume());
+using unit_momentum_density = decltype(unit_momentum() / unit_volume());
+using unit_energy_density   = decltype(unit_energy()   / unit_volume());
+using unit_specific_energy  = decltype(unit_energy()   / unit_mass());
+using unit_power            = decltype(unit_energy()   / unit_time());
+using unit_mass_rate        = decltype(unit_mass()     / unit_time());
 
 } // namespace dimensional
 

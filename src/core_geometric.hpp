@@ -97,7 +97,7 @@ inline unit_vector_t unit_vector_on_axis(unsigned axis)
 
 //=============================================================================
 template<typename T, typename U>
-auto dot(euclidean_vector_t<T> a, euclidean_vector_t<T> b)
+auto dot(euclidean_vector_t<T> a, euclidean_vector_t<U> b)
 {
     return sum(a.impl * b.impl);
 }
@@ -118,6 +118,12 @@ template<typename T>
 auto length_squared(euclidean_vector_t<T> a)
 {
     return sum(a.impl * a.impl);
+}
+
+template<typename T, typename U>
+auto cross(euclidean_vector_t<T> b, euclidean_vector_t<U> a)
+{
+    return euclidean_vector(a.impl[1] * b.impl[2], a.impl[2] * b.impl[0], a.impl[0] * b.impl[1]);
 }
 
 

@@ -45,8 +45,8 @@ namespace euler {
 using namespace dimensional;
 using primitive_t = numeric::tuple_t<unit_mass_density, unit_velocity, unit_velocity, unit_velocity, unit_energy_density>;
 using conserved_t = numeric::tuple_t<unit_mass, unit_momentum, unit_momentum, unit_momentum, unit_energy>;
-using conserved_density_t = decltype(conserved_t{} / unit_volume{});
-using flux_vector_t       = decltype(conserved_density_t{} * unit_velocity{});
+using conserved_density_t = decltype(conserved_t() / unit_volume());
+using flux_vector_t       = decltype(conserved_density_t() * unit_velocity());
 
 
 

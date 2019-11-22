@@ -45,8 +45,8 @@ namespace srhd {
 using namespace dimensional;
 using primitive_t = numeric::tuple_t<unit_mass_density, unit_scalar, unit_scalar, unit_scalar, unit_energy_density>;
 using conserved_t = numeric::tuple_t<unit_mass, unit_momentum, unit_momentum, unit_momentum, unit_energy>;
-using conserved_density_t = decltype(conserved_t{} / unit_volume{});
-using flux_vector_t       = decltype(conserved_density_t{} * unit_velocity{});
+using conserved_density_t = decltype(conserved_t() / unit_volume());
+using flux_vector_t       = decltype(conserved_density_t() * unit_velocity());
 const static auto light_speed = dimensional::unit_velocity(1.0);
 
 
