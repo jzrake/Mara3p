@@ -214,6 +214,50 @@ auto remove_partition(array_t<ProviderType1, 1> edge_array, array_t<ProviderType
     return std::pair(new_edge_array, new_mass_array);
 }
 
+
+
+
+/**
+ * @brief      Evaluate the algebraic steps involved in computing the
+ *             area-integrated curl of a vector field, discretized on a 3D,
+ *             logically cartesian staggered mesh. The argument arrays are the
+ *             line-integrals E.dl for some vector field E, on the 1d edges of
+ *             the corresponding logical axes. This function then evaluates the
+ *             surface-integral of curl(E).dA on the mesh faces.
+ *
+ * @param[in]  ei    E.dl on the x-oriented edges
+ * @param[in]  ej    E.dl on the y-oriented edges
+ * @param[in]  ek    E.dl on the z-oriented edges
+ *
+ * @tparam     T     The provider type of the arrays
+ *
+ * @return     A tuple of three arrays, containing the surface-integral of
+ *             curl(E).dA, computed on the faces of the corresponding logical
+ *             axes.
+ */
+template<typename T>
+auto stokes_integral(nd::array_t<T, 3> ei, nd::array_t<T, 3> ej, nd::array_t<T, 3> ek)
+{
+    auto ni = shape(ei, 0);
+    auto nj = shape(ej, 1);
+    auto nk = shape(ek, 2);
+
+    if (remove(shape(ei), 0) != uivec(nj, nk) ||
+        remove(shape(ej), 1) != uivec(ni, nk) ||
+        remove(shape(ek), 2) != uivec(ni, nj))
+        throw std::invalid_argument("nd::stokes_integral (wrong shape for line integral arrays)");
+
+    auto fi = indexing([ej, ek] (auto i, auto j, auto k) { return ej(i, j, k + 1) - ej(i, j, k) + ek(i, j + 1, k) - ek(i, j, k); });
+    auto fj = indexing([ek, ei] (auto i, auto j, auto k) { return ek(i + 1, j, k) - ek(i, j, k) + ei(i, j, k + 1) - ei(i, j, k); });
+    auto fk = indexing([ei, ej] (auto i, auto j, auto k) { return ei(i, j + 1, k) - ei(i, j, k) + ej(i + 1, j, k) - ej(i, j, k); });
+
+    auto si = uivec(ni + 1, nj, nk);
+    auto sj = uivec(ni, nj + 1, nk);
+    auto sk = uivec(ni, nj, nk + 1);
+
+    return std::tuple(make_array(fi, si), make_array(fj, sj), make_array(fk, sk));
+}
+
 } // namespace nd
 
 
