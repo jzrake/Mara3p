@@ -28,7 +28,7 @@
 
 
 #define DO_UNIT_TESTS
-#include "model_atmospheres.hpp"
+#include "model_wind.hpp"
 
 
 
@@ -36,6 +36,6 @@
 //=============================================================================
 int test_model()
 {
-    test_atmospheres();
+    test_wind();
     return 0;
 }

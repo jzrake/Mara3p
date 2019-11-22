@@ -142,6 +142,6 @@ inline auto fast_rise_exponential_decay(dimensional::unit_time onset_time, dimen
 
 
 //=============================================================================
-inline void test_atmospheres()
+inline void test_wind()
 {
 }
