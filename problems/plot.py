@@ -29,9 +29,8 @@ def light_pulse_position(h5f):
     interface at t=1 (the start of the simulation).
     """
     t = h5f['time'][()]
-    rwind = h5f['run_config']['rwind'][()]
-    return rwind + (t - 1.0)
-
+    engine_onset = h5f['run_config']['engine_onset'][()]
+    return t - engine_onset + 1.0
 
 
 
@@ -46,7 +45,7 @@ def configure_axes(ax1, ax2, ax3, filename, focus=0.0):
             ax.set_xlim(lc / (1 + focus), lc * (1 + 0.01))
             ax.set_yscale('log')
         else:
-            # ax.set_xlim(1.0, 1000.0)
+            ax.set_xlim(1.0, 1000.0)
             ax.set_xscale('log')
             ax.set_yscale('log')
 
@@ -57,20 +56,21 @@ def configure_axes(ax1, ax2, ax3, filename, focus=0.0):
     ax2.set_ylabel(r'$p$')
     ax3.set_ylabel(r'$\Gamma \beta$')
     ax3.set_xlabel(r'Radius $(r / r_{\rm inner})$')
+    ax1.set_title(r'$t = {0:.1f}$'.format(h5f['time'][()]))
 
 
 
 
-def plot_variables(ax1, ax2, ax3, filename, edges=False):
+def plot_variables(ax1, ax2, ax3, filename, edges=False, **kwargs):
     h5f = h5py.File(filename, 'r')
     vertices   = h5f['vertices']
     density    = h5f['primitive'][...][:,0]
     gamma_beta = h5f['primitive'][...][:,1]
     pressure   = h5f['primitive'][...][:,4]
 
-    ax1.step(vertices[:-1], density)
-    ax2.step(vertices[:-1], pressure)
-    ax3.step(vertices[:-1], gamma_beta)
+    ax1.step(vertices[:-1], density, **kwargs)
+    ax2.step(vertices[:-1], pressure, **kwargs)
+    ax3.step(vertices[:-1], gamma_beta, **kwargs)
 
     if edges:
         for v in vertices[:-1]:
@@ -79,26 +79,40 @@ def plot_variables(ax1, ax2, ax3, filename, edges=False):
 
 
 
-def plot_radial(fig, filenames, focus=0.0, edges=False):
+def plot_radial_profile(fig, filenames, focus=0.0, edges=False):
     ax1, ax2, ax3 = fig.subplots(nrows=3, ncols=1)
 
     for filename in filenames:
-        plot_variables(ax1, ax2, ax3, filename, edges=edges)
+        plot_variables(ax1, ax2, ax3, filename, edges=edges, label=filename)
 
         if filename is filenames[0]:
             configure_axes(ax1, ax2, ax3, filename, focus=focus)
+    ax1.legend()
 
 
 
 
-def make_movie(fig, directories, output, **kwargs):
+def plot_cell_size_histogram(fig, filenames, **kwargs):
+    for filename in filenames:
+
+        h5f = h5py.File(filename, 'r')
+        vertices = h5f['vertices']
+        dr = np.diff(vertices)
+
+        ax1 = fig.subplots(nrows=1, ncols=1)
+        ax1.hist(np.log10(dr), bins=200, histtype='step')
+
+
+
+
+def make_movie(fig, directories, output, plot_function, **kwargs):
     filename_lists = [directory_contents(d) for d in directories]
     writer = FFMpegWriter(fps=10)
 
     with writer.saving(fig, output, dpi=200):
         for filename_list in zip(*filename_lists):
             print(list(filename_list))
-            plot_radial(fig, filename_list, **kwargs)
+            plot_function(fig, filename_list, **kwargs)
             writer.grab_frame()
             fig.clf()
 
@@ -113,18 +127,21 @@ if __name__ == "__main__":
     2. Program generates a movie by zipping the contents of each of the
        directory arguments, plotting corresponding files on the same frame
     """
+    plots = dict(profile=plot_radial_profile, cells=plot_cell_size_histogram)
+
     parser = argparse.ArgumentParser()
     parser.add_argument("filenames", nargs='+')
     parser.add_argument("--output", default='output.mp4')
     parser.add_argument("--edges", action='store_true')
     parser.add_argument("--focus", type=float, default=0.0)
+    parser.add_argument("--plot", choices=plots.keys(), default='profile')
     args = parser.parse_args()
 
     fig = plt.figure(figsize=[12, 9])
 
     if all([os.path.isdir(p) for p in args.filenames]):
-        make_movie(fig, args.filenames, args.output, focus=args.focus)
+        make_movie(fig, args.filenames, args.output, plots[args.plot], focus=args.focus)
 
     else:
-        plot_radial(fig, args.filenames, edges=args.edges, focus=args.focus)
+        plots[args.plot](fig, args.filenames, edges=args.edges, focus=args.focus)
         plt.show()
