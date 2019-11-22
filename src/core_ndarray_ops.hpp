@@ -178,7 +178,23 @@ auto construct()
 
 
 
-//=============================================================================
+/**
+ * @brief      Remove a partition from a pair of bin edges and corresponding
+ *             masses. This operation removes the edge at index i, and combines
+ *             the masses in bins i - 1 and i. The size of the edge array must
+ *             be one larger than that of the mass array, and the first and last
+ *             edges cannot be removed.
+ *
+ * @param[in]  edge_array     The array of bin edges
+ * @param[in]  mass_array     The array of bin masses
+ * @param[in]  edge_index     The edge index to remove
+ *
+ * @tparam     ProviderType1  The type of the edge_array provider
+ * @tparam     ProviderType2  The type of the mass_array provider
+ *
+ * @return     A pair (new_edge_array, new_mass_array), each shortened by a
+ *             single element.
+ */
 template<typename ProviderType1, typename ProviderType2>
 auto remove_partition(array_t<ProviderType1, 1> edge_array, array_t<ProviderType2, 1> mass_array, uint edge_index)
 {
