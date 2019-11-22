@@ -554,7 +554,7 @@ auto map(array_t<ProviderType, Rank> array, FunctionType function)
 }
 
 template<typename ProviderType1, typename ProviderType2, uint Rank>
-auto concat(array_t<ProviderType1, Rank> array1, array_t<ProviderType2, Rank> array2, uint axis)
+auto concat(array_t<ProviderType1, Rank> array1, array_t<ProviderType2, Rank> array2, uint axis=0)
 {
     if (axis >= Rank)
         throw std::invalid_argument("nd::concat (axis must be smaller than array rank)");
@@ -610,7 +610,7 @@ auto select(array_t<ProviderType, Rank> array, uint axis, long start_s, long fin
     if (start > final)
         throw std::invalid_argument("nd::select (lower index larger than upper index)");
 
-    if (start >= shape(array, axis) || final > shape(array, axis))
+    if (start > shape(array, axis) || final > shape(array, axis))
         throw std::out_of_range("nd::select (selection out of range)");
 
     return make_array(
@@ -677,7 +677,7 @@ auto map(FunctionType f)
 }
 
 template<typename ProviderType, uint Rank>
-inline auto concat(array_t<ProviderType, Rank> b, uint axis)
+inline auto concat(array_t<ProviderType, Rank> b, uint axis=0)
 {
     return [=] (auto a) { return concat(a, b, axis); };
 }

@@ -35,6 +35,7 @@
 #include "core_geometric.hpp"
 #include "core_linked_list.hpp"
 #include "core_ndarray.hpp"
+#include "core_ndarray_ops.hpp"
 #include "core_numeric_array.hpp"
 #include "core_numeric_optional.hpp"
 #include "core_numeric_tuple.hpp"
@@ -55,6 +56,7 @@ int test_core()
     test_geometric();
     test_linked_list();
     test_ndarray();
+    test_ndarray_ops();
     test_numeric_array();
     test_numeric_optional();
     test_numeric_tuple();

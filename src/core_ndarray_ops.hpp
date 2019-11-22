@@ -35,6 +35,10 @@
 //=============================================================================
 namespace nd {
 
+
+
+
+//=============================================================================
 template<typename ArrayType>
 auto multiply(ArrayType b)
 {
@@ -171,4 +175,55 @@ auto construct()
     };
 }
 
+
+
+
+//=============================================================================
+template<typename ProviderType1, typename ProviderType2>
+auto remove_partition(array_t<ProviderType1, 1> edge_array, array_t<ProviderType2, 1> mass_array, uint edge_index)
+{
+    if (size(edge_array) != size(mass_array) + 1)
+        throw std::invalid_argument("nd::remove_partition (size(edge_array) != size(mass_array) + 1)");
+
+    if (edge_index == 0 || edge_index >= size(edge_array) - 1)
+        throw std::out_of_range("nd::remove_partition (edge_index out of range)");
+
+    auto new_edge_array = select(edge_array, 0, 0, edge_index)
+    | concat(select(edge_array, 0, edge_index + 1));
+
+    auto new_mass_array = select(mass_array, 0, 0, edge_index - 1)
+    | concat(nd::from(mass_array(edge_index - 1) + mass_array(edge_index)))
+    | concat(select(mass_array, 0, edge_index + 1));
+
+    return std::pair(new_edge_array, new_mass_array);
+}
+
 } // namespace nd
+
+
+
+
+//=============================================================================
+#ifdef DO_UNIT_TESTS
+#include "core_unit_test.hpp"
+
+
+
+
+//=============================================================================
+inline void test_ndarray_ops()
+{
+    {
+        auto [e, m] = nd::remove_partition(nd::range(4), nd::from(1.0, 2.0, 3.0), 1);
+        require(all(e == nd::from(0, 2, 3)));
+        require(all(m == nd::from(3.0, 3.0)));
+    }
+
+    {
+        auto [e, m] = nd::remove_partition(nd::range(4), nd::from(1.0, 2.0, 3.0), 2);
+        require(all(e == nd::from(0, 1, 3)));
+        require(all(m == nd::from(1.0, 5.0)));
+    }
+}
+
+#endif // DO_UNIT_TESTS
