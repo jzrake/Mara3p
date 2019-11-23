@@ -155,6 +155,11 @@ inline auto magnetic_vector(primitive_t p)
         magnetic_field_3(p));
 }
 
+inline auto electric_vector(primitive_t p)
+{
+    return -cross(velocity_vector(p), magnetic_vector(p));
+}
+
 inline auto enthalpy_density(primitive_t p, double gamma_law_index)
 {
     return gas_pressure(p) * (1.0 + 1.0 / (gamma_law_index - 1.0));
@@ -303,23 +308,36 @@ inline flux_vector_t flux(primitive_t p, geometric::unit_vector_t nhat, double g
     return vn * conserved_density(p, gamma_law_index) + pressure_term + maxwell_term;
 }
 
+inline auto induction(primitive_t p, geometric::unit_vector_t nhat)
+{
+    return -cross(nhat, electric_vector(p));
+}
+
 
 
 
 //=============================================================================
-inline flux_vector_t riemann_hlle(primitive_t pl, primitive_t pr, geometric::unit_vector_t face_normal, double gamma_law_index)
+inline auto riemann_hlle(primitive_t pl, primitive_t pr, geometric::unit_vector_t nhat, double gamma_law_index)
 {
     auto ul = conserved_density(pl, gamma_law_index);
     auto ur = conserved_density(pr, gamma_law_index);
-    auto fl = flux(pl, face_normal, gamma_law_index);
-    auto fr = flux(pr, face_normal, gamma_law_index);
+    auto fl = flux(pl, nhat, gamma_law_index);
+    auto fr = flux(pr, nhat, gamma_law_index);
 
-    auto [alm, alp] = outer_wavespeeds(pl, face_normal, gamma_law_index);
-    auto [arm, arp] = outer_wavespeeds(pr, face_normal, gamma_law_index);
+    auto bl = magnetic_vector(pl);
+    auto br = magnetic_vector(pr);
+    auto il = induction(pl, nhat);
+    auto ir = induction(pr, nhat);
+
+    auto [alm, alp] = outer_wavespeeds(pl, nhat, gamma_law_index);
+    auto [arm, arp] = outer_wavespeeds(pr, nhat, gamma_law_index);
     auto ap = std::max(unit_velocity(0), std::max(alp, arp));
     auto am = std::min(unit_velocity(0), std::min(alm, arm));
 
-    return (ap * fl - am * fr - (ul - ur) * ap * am) / (ap - am);
+    auto hll_induction = (ap * il - am * ir - (bl - br) * ap * am) / (ap - am);
+    auto hll_flux      = (ap * fl - am * fr - (ul - ur) * ap * am) / (ap - am);
+
+    return std::pair(hll_flux, hll_induction);
 }
 
 } // namespace mhd
