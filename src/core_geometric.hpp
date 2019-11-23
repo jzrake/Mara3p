@@ -51,6 +51,12 @@ struct euclidean_vector_t
     numeric::array_t<CoordinateType, 3> impl;
 };
 
+template<typename T>
+struct is_euclidean_vector : std::false_type {};
+
+template<typename T>
+struct is_euclidean_vector<geometric::euclidean_vector_t<T>> : std::true_type {};
+
 
 
 
@@ -75,12 +81,6 @@ euclidean_vector_t<T> euclidean_vector(T x, T y, T z)
     return {numeric::array(x, y, z)};
 }
 
-template<typename T>
-euclidean_vector_t<T> euclidean_vector(numeric::array_t<T, 3> v)
-{
-    return {v};
-}
-
 inline unit_vector_t unit_vector_on_axis(unsigned axis)
 {
     switch (axis)
@@ -103,15 +103,15 @@ auto dot(euclidean_vector_t<T> a, euclidean_vector_t<U> b)
 }
 
 template<typename T>
-auto dot(unit_vector_t a, euclidean_vector_t<T> b)
+auto dot(unit_vector_t n, euclidean_vector_t<T> a)
 {
-    return sum(a.impl * b.impl);
+    return sum(n.impl * a.impl);
 }
 
 template<typename T>
-auto dot(euclidean_vector_t<T> b, unit_vector_t a)
+auto dot(euclidean_vector_t<T> a, unit_vector_t n)
 {
-    return sum(a.impl * b.impl);
+    return sum(a.impl * n.impl);
 }
 
 template<typename T>
@@ -121,30 +121,48 @@ auto length_squared(euclidean_vector_t<T> a)
 }
 
 template<typename T, typename U>
-auto cross(euclidean_vector_t<T> b, euclidean_vector_t<U> a)
+auto cross(euclidean_vector_t<T> a, euclidean_vector_t<U> b)
 {
-    return euclidean_vector(a.impl[1] * b.impl[2], a.impl[2] * b.impl[0], a.impl[0] * b.impl[1]);
+    return euclidean_vector(
+        a.impl[1] * b.impl[2] - a.impl[2] * b.impl[1],
+        a.impl[2] * b.impl[0] - a.impl[0] * b.impl[2],
+        a.impl[0] * b.impl[1] - a.impl[1] * b.impl[0]);
+}
+
+template<typename T>
+auto cross(unit_vector_t n, euclidean_vector_t<T> a)
+{
+    return cross(euclidean_vector_t<double>{n.impl}, a);
+}
+
+template<typename T>
+auto cross(euclidean_vector_t<T> a, unit_vector_t n)
+{
+    return cross(a, euclidean_vector_t<double>{n.impl});
 }
 
 
 
 
 //=============================================================================
-template<typename T, typename U> auto operator+(euclidean_vector_t<T> a, euclidean_vector_t<U> b) { return euclidean_vector(a.impl + b.impl); }
-template<typename T, typename U> auto operator-(euclidean_vector_t<T> a, euclidean_vector_t<U> b) { return euclidean_vector(a.impl - b.impl); }
-template<typename T, typename U> auto operator*(euclidean_vector_t<T> a, euclidean_vector_t<U> b) { return euclidean_vector(a.impl * b.impl); }
-template<typename T, typename U> auto operator/(euclidean_vector_t<T> a, euclidean_vector_t<U> b) { return euclidean_vector(a.impl / b.impl); }
-template<typename T, typename U> auto operator*(euclidean_vector_t<T> a, U b) { return euclidean_vector(a.impl * b); }
-template<typename T, typename U> auto operator/(euclidean_vector_t<T> a, U b) { return euclidean_vector(a.impl / b); }
-template<typename T, typename U> auto operator*(U b, euclidean_vector_t<T> a) { return euclidean_vector(b * a.impl); }
-template<typename T, typename U> auto operator/(U b, euclidean_vector_t<T> a) { return euclidean_vector(b / a.impl); }
-template<typename T, typename U> auto operator+(euclidean_vector_t<T> a) { return euclidean_vector(+a.impl); }
-template<typename T, typename U> auto operator-(euclidean_vector_t<T> a) { return euclidean_vector(-a.impl); }
+template<typename T> euclidean_vector_t<T> __evec(numeric::array_t<T, 3> v) { return {v}; }
+template<typename T, typename U> auto operator+(euclidean_vector_t<T> a, euclidean_vector_t<U> b) { return __evec(a.impl + b.impl); }
+template<typename T, typename U> auto operator-(euclidean_vector_t<T> a, euclidean_vector_t<U> b) { return __evec(a.impl - b.impl); }
+template<typename T, typename U> auto operator*(euclidean_vector_t<T> a, euclidean_vector_t<U> b) { return __evec(a.impl * b.impl); }
+template<typename T, typename U> auto operator/(euclidean_vector_t<T> a, euclidean_vector_t<U> b) { return __evec(a.impl / b.impl); }
+template<typename T, typename U> auto operator*(euclidean_vector_t<T> a, U b) { return __evec(a.impl * b); }
+template<typename T, typename U> auto operator/(euclidean_vector_t<T> a, U b) { return __evec(a.impl / b); }
+template<typename T, typename U> auto operator*(U b, euclidean_vector_t<T> a) { return __evec(b * a.impl); }
+template<typename T, typename U> auto operator/(U b, euclidean_vector_t<T> a) { return __evec(b / a.impl); }
 template<typename T, typename U> auto operator==(euclidean_vector_t<T> a, euclidean_vector_t<U> b) { return a.impl == b.impl; }
 template<typename T, typename U> auto operator!=(euclidean_vector_t<T> a, euclidean_vector_t<U> b) { return a.impl != b.impl; }
+template<typename T> auto operator+(euclidean_vector_t<T> a) { return __evec(+a.impl); }
+template<typename T> auto operator-(euclidean_vector_t<T> a) { return __evec(-a.impl); }
 
-template<typename T> auto operator*(unit_vector_t a, T b) { return euclidean_vector(a.impl * b); }
-template<typename T> auto operator*(T a, unit_vector_t b) { return euclidean_vector(a * b.impl); }
+template<typename T> auto operator*(unit_vector_t a, T b) { return __evec(a.impl * b); }
+template<typename T> auto operator*(T a, unit_vector_t b) { return __evec(a * b.impl); }
+template<typename T> auto operator+(unit_vector_t a) { return unit_vector_t{+a.impl}; }
+template<typename T> auto operator-(unit_vector_t a) { return unit_vector_t{-a.impl}; }
 
 } // namespace geometric
 

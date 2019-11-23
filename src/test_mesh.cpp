@@ -27,29 +27,15 @@
 
 
 
-#include "core_unit_test.hpp"
-
-
-
-
-int test_app();
-int test_core();
-int test_mesh();
-int test_model();
-int test_physics();
+#define DO_UNIT_TESTS
+#include "mesh_cartesian_3d.hpp"
 
 
 
 
 //=============================================================================
-int main()
+int test_mesh()
 {
-    start_unit_tests();
-    test_app();
-    test_core();
-    test_mesh();
-    test_model();
-    test_physics();
-    report_test_results();
+    test_mesh_cartesian_3d();
     return 0;
 }
