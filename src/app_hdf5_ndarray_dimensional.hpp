@@ -43,7 +43,7 @@ struct h5::hdf5_conversion_to_hdf5_writable<nd::shared_array<numeric::tuple_t<di
 {
     using type = nd::shared_array<numeric::array_t<double, sizeof...(N1)>, Rank>;
 
-    auto operator()(const nd::shared_array<numeric::tuple_t<dimensional::quantity_t<N1, N2, N3, D1, D2, D3>...>, 1>& value) const
+    auto operator()(const nd::shared_array<numeric::tuple_t<dimensional::quantity_t<N1, N2, N3, D1, D2, D3>...>, Rank>& value) const
     {
         return map(value, [] (auto q)
         {

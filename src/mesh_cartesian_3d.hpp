@@ -126,6 +126,55 @@ auto face_positions(nd::array_t<P, 3> vertices)
 
 
 /**
+ * @brief      { function_description }
+ *
+ * @param[in]  vertices   The vertices
+ *
+ * @tparam     P          { description }
+ * @tparam     T          { description }
+ * @tparam     <unnamed>  { description }
+ *
+ * @return     { description_of_the_return_value }
+ */
+template<typename P,
+    typename T = typename nd::array_t<P, 3>::value_type,
+    typename = std::enable_if_t<geometric::is_euclidean_vector<T>::value>>
+auto cell_positions(nd::array_t<P, 3> vertices)
+{
+    auto a1 = nd::adjacent_mean(0);
+    auto a2 = nd::adjacent_mean(1);
+    auto a3 = nd::adjacent_mean(2);
+    return vertices | a1 | a2 | a3;
+}
+
+
+
+
+/**
+ * @brief      { function_description }
+ *
+ * @param[in]  b1    The b 1
+ * @param[in]  b2    The b 2
+ * @param[in]  b3    The b 3
+ *
+ * @tparam     P     { description }
+ * @tparam     T     { description }
+ *
+ * @return     { description_of_the_return_value }
+ */
+template<typename P, typename T = typename nd::array_t<P, 3>::value_type>
+auto face_to_cell(nd::array_t<P, 3> b1, nd::array_t<P, 3> b2, nd::array_t<P, 3> b3)
+{
+    auto a1 = nd::adjacent_mean(0);
+    auto a2 = nd::adjacent_mean(1);
+    auto a3 = nd::adjacent_mean(2);
+    return nd::zip(b1 | a1, b2 | a2, b3 | a3) | nd::map(util::apply_to(geometric::euclidean_vector<T>));
+}
+
+
+
+
+/**
  * @brief      Evaluate the area-integrated curl of a vector field, discretized
  *             on a 3D, logically cartesian staggered mesh. The argument arrays
  *             are the line-integrals E.dl of some vector field E, on the mesh

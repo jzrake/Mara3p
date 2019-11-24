@@ -67,12 +67,11 @@ using conserved_t = numeric::tuple_t<
     unit_momentum,
     unit_energy>;
 
-using conserved_density_t = decltype(conserved_t() / unit_volume());
-using flux_vector_t       = decltype(conserved_density_t() * unit_velocity());
-
-// using unit_electric_charge       = decltype(sqrt(unit_energy() * unit_distance()));
-// using unit_electric_field        = decltype(unit_force() / unit_charge());
-// using unit_voltage               = decltype(unit_electric_field() * unit_length());
+using conserved_density_t   = decltype(conserved_t() / unit_volume());
+using flux_vector_t         = decltype(conserved_density_t() * unit_velocity());
+using unit_electric_field   = decltype(unit_magnetic_flux_density() * unit_velocity());
+using unit_vector_potential = decltype(unit_magnetic_flux_density() * unit_length());
+using vector_potential_t    = geometric::euclidean_vector_t<unit_vector_potential>;
 
 
 

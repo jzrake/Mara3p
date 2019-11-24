@@ -61,6 +61,26 @@ auto apply_to(FunctionType function)
 
 
 /**
+ * @brief      Return the functional composition of two functions f and g.
+ *
+ * @param[in]  f              The outer function
+ * @param[in]  g              The inner function
+ *
+ * @tparam     FunctionType1  The type of f
+ * @tparam     FunctionType2  The type of g
+ *
+ * @return     f compose g
+ */
+template<typename FunctionType1, typename FunctionType2>
+auto compose(FunctionType1 f, FunctionType2 g)
+{
+    return [f, g] (auto x) { return f(g(x)); };
+}
+
+
+
+
+/**
  * @brief      Wrapper for the snprintf function.
  *
  * @param[in]  format_string  The c-style format string to use

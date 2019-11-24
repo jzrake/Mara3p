@@ -43,7 +43,7 @@ namespace h5 {
 template<typename T, std::size_t S>
 struct hdf5_datatype_creation<numeric::array_t<T, S>>
 {
-    auto operator()(const numeric::array_t<T, S>& value) const
+    auto operator()(const numeric::array_t<T, S>&) const
     {
         return make_datatype_for(T()).as_array(S);
     }

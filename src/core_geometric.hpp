@@ -92,6 +92,24 @@ inline unit_vector_t unit_vector_on_axis(unsigned axis)
     throw std::invalid_argument("geometric::unit_vector_on_axis (axis must be 1, 2, or 3)");
 }
 
+inline auto component(unsigned axis)
+{
+    if (axis < 1 || axis > 3)
+    {
+        throw std::invalid_argument("geometric::unit_vector_on_axis (axis must be 1, 2, or 3)");  
+    }
+    return [axis] (auto v)
+    {
+        switch (axis)
+        {
+            case 1: return v.component_1();
+            case 2: return v.component_2();
+            case 3: return v.component_3();
+            default: return v.component_1();
+        }
+    };
+}
+
 
 
 
