@@ -28,6 +28,7 @@ ALL_TARGETS = mara \
 	examples/euler1d \
 	examples/euler1d_moving_mesh \
 	examples/euler1d_moving_mesh_plm \
+	examples/mhd3d \
 	problems/sedov
 TARGETS = $(ALL_TARGETS)
 
@@ -48,7 +49,7 @@ DEP         := $(SRC:%.cpp=%.d)
 default: $(TARGETS)
 all: $(ALL_TARGETS)
 
-mara: src/main.o src/core_unit_test.o src/test_app.o src/test_core.o src/test_model.o src/test_physics.o
+mara: src/main.o src/core_unit_test.o src/test_app.o src/test_core.o src/test_mesh.o src/test_model.o src/test_physics.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 examples/euler1d: examples/euler1d.o
@@ -58,6 +59,9 @@ examples/euler1d_moving_mesh: examples/euler1d_moving_mesh.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 examples/euler1d_moving_mesh_plm: examples/euler1d_moving_mesh_plm.o
+	$(CXX) -o $@ $^ $(LDFLAGS)
+
+examples/mhd3d: examples/mhd3d.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 problems/sedov: problems/sedov.o

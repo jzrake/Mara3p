@@ -45,10 +45,18 @@ namespace mhd {
 
 //=============================================================================
 using namespace dimensional;
+using conserved_t                = numeric::tuple_t< unit_mass, unit_momentum, unit_momentum, unit_momentum, unit_energy>;
+using conserved_density_t        = decltype(conserved_t() / unit_volume());
+
+using flux_vector_t              = decltype(conserved_density_t() * unit_velocity());
 using unit_magnetic_flux_density = decltype(sqrt(unit_energy_density()));
 using unit_magnetic_flux         = decltype(unit_magnetic_flux_density() * unit_area());
+using unit_electric_field        = decltype(unit_magnetic_flux_density() * unit_velocity());
+using unit_vector_potential      = decltype(unit_magnetic_flux_density() * unit_length());
+
 using velocity_vector_t          = geometric::euclidean_vector_t<unit_velocity>;
 using magnetic_field_vector_t    = geometric::euclidean_vector_t<unit_magnetic_flux_density>;
+using vector_potential_t         = geometric::euclidean_vector_t<unit_vector_potential>;
 
 using primitive_t = numeric::tuple_t<
     unit_mass_density,
@@ -59,19 +67,6 @@ using primitive_t = numeric::tuple_t<
     unit_magnetic_flux_density,
     unit_magnetic_flux_density,
     unit_magnetic_flux_density>;
-
-using conserved_t = numeric::tuple_t<
-    unit_mass,
-    unit_momentum,
-    unit_momentum,
-    unit_momentum,
-    unit_energy>;
-
-using conserved_density_t   = decltype(conserved_t() / unit_volume());
-using flux_vector_t         = decltype(conserved_density_t() * unit_velocity());
-using unit_electric_field   = decltype(unit_magnetic_flux_density() * unit_velocity());
-using unit_vector_potential = decltype(unit_magnetic_flux_density() * unit_length());
-using vector_potential_t    = geometric::euclidean_vector_t<unit_vector_potential>;
 
 
 
@@ -146,7 +141,7 @@ inline auto velocity_vector(primitive_t p)
         velocity_3(p));
 }
 
-inline auto magnetic_vector(primitive_t p)
+inline auto magnetic_field_vector(primitive_t p)
 {
     return geometric::euclidean_vector(
         magnetic_field_1(p),
@@ -154,9 +149,9 @@ inline auto magnetic_vector(primitive_t p)
         magnetic_field_3(p));
 }
 
-inline auto electric_vector(primitive_t p)
+inline auto electric_field_vector(primitive_t p)
 {
-    return -cross(velocity_vector(p), magnetic_vector(p));
+    return -cross(velocity_vector(p), magnetic_field_vector(p));
 }
 
 inline auto enthalpy_density(primitive_t p, double gamma_law_index)
@@ -185,12 +180,12 @@ inline auto sound_speed_squared(primitive_t p, double gamma_law_index)
 
 inline auto alfven_speed_squared(primitive_t p)
 {
-    return length_squared(magnetic_vector(p)) / mass_density(p);
+    return length_squared(magnetic_field_vector(p)) / mass_density(p);
 }
 
 inline auto alfven_speed_squared(primitive_t p, geometric::unit_vector_t nhat)
 {
-    return length_squared(dot(magnetic_vector(p), nhat) * nhat) / mass_density(p);
+    return length_squared(dot(magnetic_field_vector(p), nhat) * nhat) / mass_density(p);
 }
 
 inline auto fast_speed_squared(primitive_t p, geometric::unit_vector_t nhat, double gamma_law_index)
@@ -267,7 +262,7 @@ inline conserved_density_t conserved_density(primitive_t p, double gamma_law_ind
 {
     auto d = mass_density(p);
     auto v = velocity_vector(p);
-    auto B = magnetic_vector(p);
+    auto B = magnetic_field_vector(p);
     auto E = 0.5 * d * length_squared(v) + gas_pressure(p) / (gamma_law_index - 1.0) + magnetic_energy_density(B);
 
     return numeric::tuple(
@@ -285,7 +280,7 @@ inline conserved_density_t conserved_density(primitive_t p, double gamma_law_ind
 inline flux_vector_t flux(primitive_t p, geometric::unit_vector_t nhat, double gamma_law_index)
 {
     auto v = velocity_vector(p);
-    auto B = magnetic_vector(p);
+    auto B = magnetic_field_vector(p);
     auto Bn = dot(B, nhat);
     auto vn = dot(v, nhat);
     auto pt = gas_pressure(p) + 0.5 * magnetic_energy_density(B);
@@ -309,7 +304,7 @@ inline flux_vector_t flux(primitive_t p, geometric::unit_vector_t nhat, double g
 
 inline auto induction(primitive_t p, geometric::unit_vector_t nhat)
 {
-    return -cross(nhat, electric_vector(p));
+    return -cross(nhat, electric_field_vector(p));
 }
 
 
@@ -323,8 +318,8 @@ inline auto riemann_hlle(primitive_t pl, primitive_t pr, geometric::unit_vector_
     auto fl = flux(pl, nhat, gamma_law_index);
     auto fr = flux(pr, nhat, gamma_law_index);
 
-    auto bl = magnetic_vector(pl);
-    auto br = magnetic_vector(pr);
+    auto bl = magnetic_field_vector(pl);
+    auto br = magnetic_field_vector(pr);
     auto il = induction(pl, nhat);
     auto ir = induction(pr, nhat);
 
@@ -359,7 +354,7 @@ inline void test_mhd()
     auto require_cons_to_prim = [] (mhd::primitive_t p0)
     {
         auto u0 = conserved_density(p0, 5. / 3);
-        auto B0 = magnetic_vector(p0);
+        auto B0 = magnetic_field_vector(p0);
         auto p1 = recover_primitive(u0, B0, 5. / 3);
         require(all(map(p1 - p0, [] (auto x) { return std::abs(x.value) < 1e-10; })));
     };
