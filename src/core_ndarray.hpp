@@ -286,7 +286,7 @@ template<typename ProviderType, uint Rank>
 struct array_t
 {
     using provider_type = ProviderType;
-    using value_type = std::invoke_result_t<ProviderType, uivec_t<Rank>>;
+    using value_type = std::decay_t<std::invoke_result_t<ProviderType, uivec_t<Rank>>>;
     static constexpr uint rank = Rank;
 
     //=========================================================================
@@ -699,8 +699,8 @@ inline auto concat(array_t<ProviderType, Rank> b, uint axis=0)
 
 inline auto freeze    (uint a, uint i)         { return [=] (auto array) { return freeze     (array, a, i); }; }
 inline auto new_axis  (uint a)                 { return [=] (auto array) { return new_axis   (array, a); }; }
-inline auto select    (uint a, long s, long f) { return [=] (auto array) { return select     (array, s, f); }; }
-inline auto select    (uint a, long s)         { return [=] (auto array) { return select     (array, s); }; }
+inline auto select    (uint a, long s, long f) { return [=] (auto array) { return select     (array, a, s, f); }; }
+inline auto select    (uint a, long s)         { return [=] (auto array) { return select     (array, a, s); }; }
 inline auto to_shared ()                       { return [ ] (auto array) { return to_shared  (array); }; }
 inline auto to_dynamic()                       { return [ ] (auto array) { return to_dynamic (array); }; }
 
