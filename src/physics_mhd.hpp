@@ -212,6 +212,12 @@ inline auto outer_wavespeeds(primitive_t p, geometric::unit_vector_t nhat, doubl
     return std::pair(vn - cf, vn + cf);
 }
 
+inline auto fastest_speed(primitive_t p, double gamma_law_index)
+{
+    auto [wm, wp] = outer_wavespeeds(p, direction(magnetic_field_vector(p)), gamma_law_index);
+    return std::max(abs(wm), abs(wp));
+}
+
 
 
 

@@ -27,6 +27,7 @@
 
 
 #pragma once
+#include <cmath>
 #include "core_numeric_array.hpp"
 
 
@@ -157,6 +158,13 @@ template<typename T>
 auto cross(euclidean_vector_t<T> a, unit_vector_t n)
 {
     return cross(a, euclidean_vector_t<double>{n.impl});
+}
+
+template<typename T>
+unit_vector_t direction(euclidean_vector_t<T> a)
+{
+    auto b = a / sqrt(length_squared(a));
+    return {b.impl[0], b.impl[1], b.impl[2]};
 }
 
 

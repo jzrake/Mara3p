@@ -249,13 +249,13 @@ solution_t advance(solution_t solution)
     auto dl = pow<1>(dimensional::unit_length(1.0) / double(N));
     auto da = pow<2>(dimensional::unit_length(1.0) / double(N));
     auto dv = pow<3>(dimensional::unit_length(1.0) / double(N));
-    auto dt = 0.02 * dl / dimensional::unit_velocity(1.0);
 
     auto [mf1, mf2, mf3] = magnetic_flux(solution);
     auto [bf1, bf2, bf3] = std::tuple(mf1 / da, mf2 / da, mf3 / da);
     auto uc = conserved(solution);
-    auto bc = mesh::face_to_cell(mf1, mf2, mf3);
-    auto pc = zip(uc / dv, bc / da) | nd::map(c2p) | nd::to_shared();
+    auto bc = mesh::face_to_cell(bf1, bf2, bf3);
+    auto pc = zip(uc / dv, bc) | nd::map(c2p) | nd::to_shared();
+    auto dt = 0.33 * dl / max(pc | nd::map(std::bind(mhd::fastest_speed, _1, gamma_law_index)));
 
     auto [ff1, ff2, ff3, ef1, ef2, ef3] = godunov_fluxes(pc, bf1, bf2, bf3);
     auto [ee1, ee2, ee3] = edge_emf_from_face(ef1, ef2, ef3);
@@ -311,11 +311,10 @@ void print_run_loop(timed_state_pair_t p)
     auto nz = size(soln.conserved);
     auto us = control::microseconds_separating(p);
 
-    std::printf("[%07lu] t=%.3lf dt=%.2e zones=%lu Mzps=%.2lf\n",
+    std::printf("[%07lu] t=%.3lf dt=%.2e Mzps=%.2lf\n",
         long(soln.iteration),
         soln.time.value,
         0.2,
-        nz,
         nz / us);
 }
 
