@@ -192,8 +192,8 @@ auto face_to_cell(nd::array_t<P, 3> b1, nd::array_t<P, 3> b2, nd::array_t<P, 3> 
  *             curl(E).dA, computed on the faces of the corresponding logical
  *             axes.
  */
-template<typename T>
-auto solenoidal_difference(nd::array_t<T, 3> e1, nd::array_t<T, 3> e2, nd::array_t<T, 3> e3)
+template<typename P>
+auto solenoidal_difference(nd::array_t<P, 3> e1, nd::array_t<P, 3> e2, nd::array_t<P, 3> e3)
 {
     auto d1 = nd::adjacent_diff(0);
     auto d2 = nd::adjacent_diff(1);
@@ -215,17 +215,31 @@ auto solenoidal_difference(nd::array_t<T, 3> e1, nd::array_t<T, 3> e2, nd::array
  * @param[in]  f2    The F.dA on the y-oriented faces
  * @param[in]  f3    The F.dA on the z-oriented faces
  *
- * @tparam     T     The provider type of the arrays
+ * @tparam     P     The provider type of the arrays
  *
  * @return     A single 3D array
  */
-template<typename T>
-auto divergence_difference(nd::array_t<T, 3> f1, nd::array_t<T, 3> f2, nd::array_t<T, 3> f3)
+template<typename P>
+auto divergence_difference(nd::array_t<P, 3> f1, nd::array_t<P, 3> f2, nd::array_t<P, 3> f3)
 {
     auto d1 = nd::adjacent_diff(0);
     auto d2 = nd::adjacent_diff(1);
     auto d3 = nd::adjacent_diff(2);
     return d1(f1) + d2(f2) + d3(f3);
+}
+
+
+
+
+template<typename P>
+auto extend_periodic(nd::array_t<P, 3> p, nd::uint count)
+{
+    return p | nd::extend_periodic(0, count) | nd::extend_periodic(1, count) | nd::extend_periodic(2, count);
+}
+
+auto inline extend_periodic(nd::uint count)
+{
+    return [count] (auto p) { return extend_periodic(p, count); };
 }
 
 } // namespace mesh

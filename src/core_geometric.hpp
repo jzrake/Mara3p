@@ -46,7 +46,7 @@ struct euclidean_vector_t
     CoordinateType component_1() const { return impl[0]; }
     CoordinateType component_2() const { return impl[1]; }
     CoordinateType component_3() const { return impl[2]; }
-    CoordinateType component(unsigned axis) const { return impl.at(axis - 1); }
+    CoordinateType component(unsigned direction) const { return impl.at(direction - 1); }
 
     numeric::array_t<CoordinateType, 3> impl;
 };
@@ -66,7 +66,7 @@ struct unit_vector_t
     double component_1() const { return impl[0]; }
     double component_2() const { return impl[1]; }
     double component_3() const { return impl[2]; }
-    double component(unsigned axis) const { return impl.at(axis - 1); }
+    double component(unsigned direction) const { return impl.at(direction - 1); }
 
     numeric::array_t<double, 3> impl;
 };
@@ -81,26 +81,26 @@ euclidean_vector_t<T> euclidean_vector(T x, T y, T z)
     return {numeric::array(x, y, z)};
 }
 
-inline unit_vector_t unit_vector_on_axis(unsigned axis)
+inline unit_vector_t unit_vector_on(unsigned direction)
 {
-    switch (axis)
+    switch (direction)
     {
         case 1: return unit_vector_t{{1.0, 0.0, 0.0}};
         case 2: return unit_vector_t{{0.0, 1.0, 0.0}};
         case 3: return unit_vector_t{{0.0, 0.0, 1.0}};
     }
-    throw std::invalid_argument("geometric::unit_vector_on_axis (axis must be 1, 2, or 3)");
+    throw std::invalid_argument("geometric::unit_vector_on_axis (direction must be 1, 2, or 3)");
 }
 
-inline auto component(unsigned axis)
+inline auto component(unsigned direction)
 {
-    if (axis < 1 || axis > 3)
+    if (direction < 1 || direction > 3)
     {
-        throw std::invalid_argument("geometric::unit_vector_on_axis (axis must be 1, 2, or 3)");  
+        throw std::invalid_argument("geometric::unit_vector_on_axis (direction must be 1, 2, or 3)");  
     }
-    return [axis] (auto v)
+    return [direction] (auto v)
     {
-        switch (axis)
+        switch (direction)
         {
             case 1: return v.component_1();
             case 2: return v.component_2();
@@ -201,6 +201,12 @@ inline void test_geometric()
     require(geometric::euclidean_vector(1, 2, 3).component_2() == 2);
     require(geometric::euclidean_vector(1, 2, 3) + geometric::euclidean_vector(1, 2, 3) == geometric::euclidean_vector(2, 4, 6));
     require(geometric::euclidean_vector(1, 2, 3) * 2.0 == geometric::euclidean_vector(2, 4, 6));
+
+    auto x = magnetic_field_vector_t{1.0, 2.0, 3.0};
+    auto nhat1 = geometric::unit_vector_on(1);
+    auto nhat2 = geometric::unit_vector_t{1.0 / std::sqrt(3), 1.0 / std::sqrt(3), 1.0 / std::sqrt(3)};
+    require(length_squared(dot(x, nhat1) * nhat1) == pow<2>(dot(x, nhat1)));
+    require(length_squared(dot(x, nhat2) * nhat2) == pow<2>(dot(x, nhat2)));
 }
 
 #endif // DO_UNIT_TESTS

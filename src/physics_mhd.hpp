@@ -45,7 +45,7 @@ namespace mhd {
 
 //=============================================================================
 using namespace dimensional;
-using conserved_t                = numeric::tuple_t< unit_mass, unit_momentum, unit_momentum, unit_momentum, unit_energy>;
+using conserved_t                = numeric::tuple_t<unit_mass, unit_momentum, unit_momentum, unit_momentum, unit_energy>;
 using conserved_density_t        = decltype(conserved_t() / unit_volume());
 
 using flux_vector_t              = decltype(conserved_density_t() * unit_velocity());
@@ -185,7 +185,7 @@ inline auto alfven_speed_squared(primitive_t p)
 
 inline auto alfven_speed_squared(primitive_t p, geometric::unit_vector_t nhat)
 {
-    return length_squared(dot(magnetic_field_vector(p), nhat) * nhat) / mass_density(p);
+    return pow<2>(dot(magnetic_field_vector(p), nhat)) / mass_density(p);
 }
 
 inline auto fast_speed_squared(primitive_t p, geometric::unit_vector_t nhat, double gamma_law_index)
@@ -236,26 +236,26 @@ inline auto kinetic_energy_density(conserved_density_t u)
     return 0.5 * length_squared(momentum_density_vector(u)) / conserved_mass_density(u);
 }
 
-inline auto magnetic_energy_density(magnetic_field_vector_t B)
+inline auto magnetic_energy_density(magnetic_field_vector_t b)
 {
-    return 0.5 * length_squared(B);
+    return 0.5 * length_squared(b);
 }
 
-inline auto internal_energy_density(conserved_density_t u, magnetic_field_vector_t B)
+inline auto internal_energy_density(conserved_density_t u, magnetic_field_vector_t b)
 {
-    return conserved_energy_density(u) - kinetic_energy_density(u) - magnetic_energy_density(B);
+    return conserved_energy_density(u) - kinetic_energy_density(u) - magnetic_energy_density(b);
 }
 
 
 
 
 //=============================================================================
-inline primitive_t recover_primitive(conserved_density_t u, magnetic_field_vector_t B, double gamma_law_index)
+inline primitive_t recover_primitive(conserved_density_t u, magnetic_field_vector_t b, double gamma_law_index)
 {
     auto d = conserved_mass_density(u);
     auto v = momentum_density_vector(u) / d;
-    auto p = internal_energy_density(u, B) * (gamma_law_index - 1);
-    return primitive(d, v, p, B);
+    auto p = internal_energy_density(u, b) * (gamma_law_index - 1);
+    return primitive(d, v, p, b);
 }
 
 inline conserved_density_t conserved_density(primitive_t p, double gamma_law_index)
@@ -328,10 +328,13 @@ inline auto riemann_hlle(primitive_t pl, primitive_t pr, geometric::unit_vector_
     auto ap = std::max(unit_velocity(0), std::max(alp, arp));
     auto am = std::min(unit_velocity(0), std::min(alm, arm));
 
-    auto hll_induction = (ap * il - am * ir - (bl - br) * ap * am) / (ap - am);
     auto hll_flux      = (ap * fl - am * fr - (ul - ur) * ap * am) / (ap - am);
+    auto hll_induction = (ap * il - am * ir - (bl - br) * ap * am) / (ap - am);
 
-    return std::pair(hll_flux, hll_induction);
+    // F(B) = -n x E
+    // n x F(B) = -n x (n x E) = -n (n.E) + E (n.n) = -E_parallel + E = E_trans
+
+    return std::pair(hll_flux, cross(nhat, hll_induction));
 }
 
 } // namespace mhd
@@ -340,7 +343,7 @@ inline auto riemann_hlle(primitive_t pl, primitive_t pr, geometric::unit_vector_
 
 
 //=============================================================================
-#define DO_UNIT_TESTS
+#ifdef DO_UNIT_TESTS
 #include "core_unit_test.hpp"
 
 
@@ -365,3 +368,5 @@ inline void test_mhd()
     require_cons_to_prim(primitive(5.7, {1.0, 2.0, 3.0}, 5.0, {0.0, 0.0, 0.0}));
     require_cons_to_prim(primitive(5.7, {1.0, 2.0, 3.0}, 5.0, {3.0, 2.0, 1.0}));
 }
+
+#endif // DO_UNIT_TESTS

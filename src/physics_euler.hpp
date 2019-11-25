@@ -251,7 +251,7 @@ inline flux_vector_t riemann_hlle(primitive_t pl, primitive_t pr, geometric::uni
 
 
 //=============================================================================
-#define DO_UNIT_TESTS
+#ifdef DO_UNIT_TESTS
 #include "core_unit_test.hpp"
 
 
@@ -271,3 +271,5 @@ inline void test_euler()
     require_cons_to_prim(euler::primitive(1.0, 0.0, 0.0, 0.0, 1.0));
     require_cons_to_prim(euler::primitive(5.7, 1.0, 2.0, 3.0, 5.0));
 }
+
+#endif // DO_UNIT_TESTS

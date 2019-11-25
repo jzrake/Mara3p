@@ -494,7 +494,7 @@ inline flux_vector_t riemann_hllc(primitive_t pl, primitive_t pr, geometric::uni
 
 
 //=============================================================================
-#define DO_UNIT_TESTS
+#ifdef DO_UNIT_TESTS
 #include "core_unit_test.hpp"
 
 
@@ -516,18 +516,20 @@ inline void test_srhd()
     require_cons_to_prim(primitive(1.0, 0.0, 0.0, 0.0, 1.0));
     require_cons_to_prim(primitive(5.7, 1.0, 2.0, 3.0, 5.0));
 
-    auto require_contact_speed = [] (unsigned axis)
+    auto require_contact_speed = [] (unsigned dir)
     {
-        auto xh = geometric::unit_vector_on_axis(axis);
-        auto pl = primitive(1.0, 0.5 * (axis == 1), 0.6 * (axis == 2), 0.7 * (axis == 3), 10.0);
-        auto pr = primitive(4.0, 0.5 * (axis == 1), 0.6 * (axis == 2), 0.7 * (axis == 3), 10.0);
+        auto xh = geometric::unit_vector_on(dir);
+        auto pl = primitive(1.0, 0.5 * (dir == 1), 0.6 * (dir == 2), 0.7 * (dir == 3), 10.0);
+        auto pr = primitive(4.0, 0.5 * (dir == 1), 0.6 * (dir == 2), 0.7 * (dir == 3), 10.0);
         auto contact_speed = riemann_solver(pl, pr, xh, 4. / 3, riemann_solver_mode_contact_speed_t());
         auto fc = riemann_solver(pl, pr, xh, 4. / 3, riemann_solver_mode_hllc_fluxes_moving_face_t{contact_speed});
 
-        require(abs(contact_speed - velocity_vector(pl).component(axis)).value < 1e-12);
+        require(abs(contact_speed - velocity_vector(pl).component(dir)).value < 1e-12);
         require(abs(conserved_mass_density(fc)).value < 1e-12);
     };
     require_contact_speed(1);
     require_contact_speed(2);
     require_contact_speed(3);
 }
+
+#endif // DO_UNIT_TESTS

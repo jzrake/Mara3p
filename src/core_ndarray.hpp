@@ -560,6 +560,19 @@ auto get(array_t<ProviderType, Rank> array)
     return map(array, [] (auto x) { return get<Index>(x); });
 }
 
+template<typename ProviderType, uint Rank, std::size_t... Is>
+auto unzip_impl(array_t<ProviderType, Rank> array, std::index_sequence<Is...>)
+{
+    return std::tuple(get<Is>(array)...);
+}
+
+template<typename ProviderType, uint Rank,
+    typename T = typename array_t<ProviderType, Rank>::value_type>
+auto unzip(array_t<ProviderType, Rank> array)
+{
+    return unzip_impl(array, std::make_index_sequence<std::tuple_size_v<T>>());
+}
+
 template<typename ProviderType, uint Rank, typename FunctionType>
 auto map(array_t<ProviderType, Rank> array, FunctionType function)
 {
