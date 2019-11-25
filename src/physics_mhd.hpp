@@ -49,14 +49,15 @@ using conserved_t                = numeric::tuple_t<unit_mass, unit_momentum, un
 using conserved_density_t        = decltype(conserved_t() / unit_volume());
 
 using flux_vector_t              = decltype(conserved_density_t() * unit_velocity());
-using unit_magnetic_flux_density = decltype(sqrt(unit_energy_density()));
-using unit_magnetic_flux         = decltype(unit_magnetic_flux_density() * unit_area());
-using unit_electric_field        = decltype(unit_magnetic_flux_density() * unit_velocity());
-using unit_vector_potential      = decltype(unit_magnetic_flux_density() * unit_length());
+using unit_magnetic_flux         = decltype(sqrt(unit_energy_density()) * unit_area());
+using unit_magnetic_field        = decltype(sqrt(unit_energy_density()));
+using unit_electric_field        = decltype(unit_magnetic_field() * unit_velocity());
+using unit_vector_potential      = decltype(unit_magnetic_field() * unit_length());
 
-using velocity_vector_t          = geometric::euclidean_vector_t<unit_velocity>;
-using magnetic_field_vector_t    = geometric::euclidean_vector_t<unit_magnetic_flux_density>;
+using magnetic_field_vector_t    = geometric::euclidean_vector_t<unit_magnetic_field>;
+using electric_field_vector_t    = geometric::euclidean_vector_t<unit_electric_field>;
 using vector_potential_t         = geometric::euclidean_vector_t<unit_vector_potential>;
+using velocity_vector_t          = geometric::euclidean_vector_t<unit_velocity>;
 
 using primitive_t = numeric::tuple_t<
     unit_mass_density,
@@ -64,9 +65,9 @@ using primitive_t = numeric::tuple_t<
     unit_velocity,
     unit_velocity,
     unit_energy_density,
-    unit_magnetic_flux_density,
-    unit_magnetic_flux_density,
-    unit_magnetic_flux_density>;
+    unit_magnetic_field,
+    unit_magnetic_field,
+    unit_magnetic_field>;
 
 
 
@@ -302,7 +303,7 @@ inline flux_vector_t flux(primitive_t p, geometric::unit_vector_t nhat, double g
     return vn * conserved_density(p, gamma_law_index) + pressure_term + maxwell_term;
 }
 
-inline auto induction(primitive_t p, geometric::unit_vector_t nhat)
+inline electric_field_vector_t induction(primitive_t p, geometric::unit_vector_t nhat)
 {
     return -cross(nhat, electric_field_vector(p));
 }

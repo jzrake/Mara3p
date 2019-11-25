@@ -215,12 +215,14 @@ auto solenoidal_difference(nd::array_t<P, 3> e1, nd::array_t<P, 3> e2, nd::array
  * @param[in]  f2    The F.dA on the y-oriented faces
  * @param[in]  f3    The F.dA on the z-oriented faces
  *
- * @tparam     P     The provider type of the arrays
+ * @tparam     P1    The provider type of the array 1
+ * @tparam     P2    The provider type of the array 2
+ * @tparam     P3    The provider type of the array 3
  *
  * @return     A single 3D array
  */
-template<typename P>
-auto divergence_difference(nd::array_t<P, 3> f1, nd::array_t<P, 3> f2, nd::array_t<P, 3> f3)
+template<typename P1, typename P2, typename P3>
+auto divergence_difference(nd::array_t<P1, 3> f1, nd::array_t<P2, 3> f2, nd::array_t<P3, 3> f3)
 {
     auto d1 = nd::adjacent_diff(0);
     auto d2 = nd::adjacent_diff(1);
@@ -231,16 +233,51 @@ auto divergence_difference(nd::array_t<P, 3> f1, nd::array_t<P, 3> f2, nd::array
 
 
 
-template<typename P>
-auto extend_periodic(nd::array_t<P, 3> p, nd::uint count)
+//=============================================================================
+auto extend_periodic = [] (nd::uint count)
 {
-    return p | nd::extend_periodic(0, count) | nd::extend_periodic(1, count) | nd::extend_periodic(2, count);
-}
+    return [count] (auto p)
+    {
+        return p | nd::extend_periodic(0, count) | nd::extend_periodic(1, count) | nd::extend_periodic(2, count);
+    };
+};
 
-auto inline extend_periodic(nd::uint count)
+
+
+
+//=============================================================================
+auto remove_transverse_i = [] (nd::uint count)
 {
-    return [count] (auto p) { return extend_periodic(p, count); };
-}
+    return [c=count] (auto x)
+    {
+        return nd::make_array(nd::indexing([x] (auto i, auto j, auto k)
+        {
+            return x(i, j + 1, k + 1);
+        }), nd::uivec(shape(x, 0), shape(x, 1) - 2 * c, shape(x, 2) - 2 * c));
+    };
+};
+
+auto remove_transverse_j = [] (nd::uint count)
+{
+    return [c=count] (auto x)
+    {
+        return nd::make_array(nd::indexing([x] (auto i, auto j, auto k)
+        {
+            return x(i + 1, j, k + 1);
+        }), nd::uivec(shape(x, 0) - 2 * c, shape(x, 1), shape(x, 2) - 2 * c));
+    };
+};
+
+auto remove_transverse_k = [] (nd::uint count)
+{
+    return [c=count] (auto x)
+    {
+        return nd::make_array(nd::indexing([x] (auto i, auto j, auto k)
+        {
+            return x(i + 1, j + 1, k);
+        }), nd::uivec(shape(x, 0) - 2 * c, shape(x, 1) - 2 * c, shape(x, 2)));
+    };
+};
 
 } // namespace mesh
 
