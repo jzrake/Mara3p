@@ -305,7 +305,7 @@ inline flux_vector_t flux(primitive_t p, geometric::unit_vector_t nhat, double g
 
 inline electric_field_vector_t induction(primitive_t p, geometric::unit_vector_t nhat)
 {
-    return -cross(nhat, electric_field_vector(p));
+    return cross(nhat, electric_field_vector(p));
 }
 
 
@@ -332,10 +332,10 @@ inline auto riemann_hlle(primitive_t pl, primitive_t pr, geometric::unit_vector_
     auto hll_flux      = (ap * fl - am * fr - (ul - ur) * ap * am) / (ap - am);
     auto hll_induction = (ap * il - am * ir - (bl - br) * ap * am) / (ap - am);
 
-    // F(B) = -n x E
-    // n x F(B) = -n x (n x E) = -n (n.E) + E (n.n) = -E_parallel + E = E_trans
+    // -n x F(B) = -n x (n x E) = -n (n.E) + E (n.n) = -E_parallel + E = E_trans
+    auto hll_electric_field = -cross(nhat, hll_induction);
 
-    return std::pair(hll_flux, cross(nhat, hll_induction));
+    return std::pair(hll_flux, hll_electric_field);
 }
 
 } // namespace mhd
@@ -368,6 +368,14 @@ inline void test_mhd()
     require_cons_to_prim(primitive(1.0, {0.0, 0.0, 0.0}, 1.0, {0.0, 0.0, 0.0}));
     require_cons_to_prim(primitive(5.7, {1.0, 2.0, 3.0}, 5.0, {0.0, 0.0, 0.0}));
     require_cons_to_prim(primitive(5.7, {1.0, 2.0, 3.0}, 5.0, {3.0, 2.0, 1.0}));
+
+    auto n1 = geometric::unit_vector_on(1);
+    auto n2 = geometric::unit_vector_on(2);
+    auto n3 = geometric::unit_vector_on(3);
+    auto p = mhd::primitive(1.0, {1.0, 0.0, 0.0}, 1.0, {0.0, 1.0, 0.0});
+    require(-cross(n1, mhd::induction(p, n1)) == electric_field_vector(p));
+    require(-cross(n2, mhd::induction(p, n2)) == electric_field_vector(p));
+    require(-cross(n3, mhd::induction(p, n3)) == electric_field_vector(p) * 0.0);
 }
 
 #endif // DO_UNIT_TESTS

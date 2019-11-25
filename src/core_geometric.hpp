@@ -189,6 +189,7 @@ template<typename T> auto operator-(unit_vector_t a) { return unit_vector_t{-a.i
 
 //=============================================================================
 #ifdef DO_UNIT_TESTS
+#include <cmath>
 #include "core_unit_test.hpp"
 
 
@@ -202,11 +203,11 @@ inline void test_geometric()
     require(geometric::euclidean_vector(1, 2, 3) + geometric::euclidean_vector(1, 2, 3) == geometric::euclidean_vector(2, 4, 6));
     require(geometric::euclidean_vector(1, 2, 3) * 2.0 == geometric::euclidean_vector(2, 4, 6));
 
-    auto x = magnetic_field_vector_t{1.0, 2.0, 3.0};
+    auto x = geometric::euclidean_vector(1.0, 2.0, 3.0);
     auto nhat1 = geometric::unit_vector_on(1);
     auto nhat2 = geometric::unit_vector_t{1.0 / std::sqrt(3), 1.0 / std::sqrt(3), 1.0 / std::sqrt(3)};
-    require(length_squared(dot(x, nhat1) * nhat1) == pow<2>(dot(x, nhat1)));
-    require(length_squared(dot(x, nhat2) * nhat2) == pow<2>(dot(x, nhat2)));
+    require(length_squared(dot(x, nhat1) * nhat1) == std::pow(dot(x, nhat1), 2));
+    require(length_squared(dot(x, nhat2) * nhat2) == std::pow(dot(x, nhat2), 2));
 }
 
 #endif // DO_UNIT_TESTS
