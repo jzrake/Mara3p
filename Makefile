@@ -61,7 +61,7 @@ examples/euler1d_moving_mesh: examples/euler1d_moving_mesh.o
 examples/euler1d_moving_mesh_plm: examples/euler1d_moving_mesh_plm.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
-examples/mhd3d: examples/mhd3d.o
+examples/mhd3d: examples/mhd3d.o src/scheme_mhd.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 problems/sedov: problems/sedov.o
