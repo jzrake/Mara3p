@@ -52,12 +52,6 @@ auto zip_tuples(std::tuple<Ts...> t, std::tuple<Us...> u)
     return zip_tuple_impl(t, u, std::make_index_sequence<sizeof...(Ts)>());
 }
 
-template<typename T, std::size_t S>
-auto as_tuple(std::array<T, S> t)
-{
-    return std::apply([] (auto... args) { return std::tuple(args...); }, t);
-}
-
 template<typename FunctionType, typename... Ts>
 auto map(std::tuple<Ts...> t, FunctionType f)
 {
@@ -220,7 +214,7 @@ auto indexing(FunctionType function)
 {
     return [function] (auto index)
     {
-        return std::apply(function, detail::as_tuple(index.impl));
+        return std::apply(function, index.impl);
     };
 }
 
