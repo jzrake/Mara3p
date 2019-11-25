@@ -46,7 +46,7 @@
 
 
 //=============================================================================
-static const unsigned zone_count = 16;
+static const unsigned zone_count = 64;
 static const double gamma_law_index = 5. / 3;
 
 
@@ -96,7 +96,7 @@ void print_shape(const char* label, nd::array_t<P, 3> a)
 //=============================================================================
 namespace h5 {
 
-void write(const Group& group, std::string name, const solution_t& solution)
+void write(const Group& group, const solution_t& solution)
 {
     write(group, "iteration", solution.iteration);
     write(group, "time", solution.time);
@@ -114,7 +114,11 @@ void write(const Group& group, std::string name, const solution_t& solution)
 //=============================================================================
 mhd::primitive_t initial_primitive(position_t x, mhd::magnetic_field_vector_t b)
 {
-    return mhd::primitive(1.0, {}, 1.0, b);
+    auto x0 = geometric::euclidean_vector<dimensional::unit_length>(0.5, 0.5, 0.5);
+    auto R = sqrt(length_squared(x - x0));
+    auto d = R < dimensional::unit_length(0.125) ? 1.0 : 0.1;
+    auto p = R < dimensional::unit_length(0.125) ? 1.0 : 0.125;
+    return mhd::primitive(d, {}, p, b);
 }
 
 mhd::vector_potential_t initial_vector_potential(position_t x)
@@ -231,6 +235,7 @@ solution_t advance(solution_t solution)
     auto c2p = apply_to(std::bind(mhd::recover_primitive, _1, _2, gamma_law_index));
     auto N = zone_count;
 
+    auto ev = nd::to_shared();
     auto dl = pow<1>(dimensional::unit_length(1.0) / double(N));
     auto da = pow<2>(dimensional::unit_length(1.0) / double(N));
     auto dv = pow<3>(dimensional::unit_length(1.0) / double(N));
@@ -243,8 +248,8 @@ solution_t advance(solution_t solution)
 
     auto [ff1, ff2, ff3, ef1, ef2, ef3] = godunov_fluxes(pc);
     auto [ee1, ee2, ee3] = edge_emf_from_face(ef1, ef2, ef3);
-    auto [cf1, cf2, cf3] = mesh::solenoidal_difference(ee1|rl1, ee2|rl2, ee3|rl3);
-    auto dc              = mesh::divergence_difference(ff1|rt1, ff2|rt2, ff3|rt3);
+    auto [cf1, cf2, cf3] = mesh::solenoidal_difference(ee1|rl1|ev, ee2|rl2|ev, ee3|rl3|ev);
+    auto dc              = mesh::divergence_difference(ff1|rt1|ev, ff2|rt2|ev, ff3|rt3|ev);
 
     auto uc_  = uc  - dc  * da * dt;
     auto mf1_ = mf1 - cf1 * dl * dt;
@@ -263,12 +268,12 @@ solution_t advance(solution_t solution)
 
 solution_with_tasks_t advance_app_state(solution_with_tasks_t state)
 {
-    return std::pair(advance(solution(state)), tasks(state));
+    return std::pair(advance(solution(state)), jump(tasks(state), solution(state).time, dimensional::unit_time(0.1)));
 }
 
 solution_with_tasks_t initial_app_state(const mara::config_t& run_config)
 {
-    return std::pair(initial_solution(), control::task("write_diagnostics", 1.0));
+    return std::pair(initial_solution(), control::task("write_checkpoint", 0.0));
 }
 
 bool should_continue(timed_state_pair_t state_pair)
@@ -278,7 +283,18 @@ bool should_continue(timed_state_pair_t state_pair)
     return long(this_soln.iteration) < 100;
 }
 
-void side_effects(timed_state_pair_t p)
+
+
+
+//=============================================================================
+void write_checkpoint(solution_t solution, long count)
+{
+    auto fname = util::format("mhd3d.%04lu.h5", count);
+    std::printf("Write checkpoint %s\n", fname.data());
+    write(h5::File(fname, "w"), solution);
+}
+
+void print_run_loop(timed_state_pair_t p)
 {
     auto soln = solution(control::this_state(p));
     auto nz = size(soln.conserved);
@@ -290,6 +306,19 @@ void side_effects(timed_state_pair_t p)
         0.2,
         nz,
         nz / us);
+}
+
+void side_effects(timed_state_pair_t p)
+{
+    auto this_soln = solution(control::this_state(p));
+    auto last_soln = solution(control::last_state(p));
+    auto this_task = tasks(control::this_state(p));
+    auto last_task = tasks(control::last_state(p));
+
+    if (this_task.count != last_task.count)
+        write_checkpoint(last_soln, last_task.count);
+
+    print_run_loop(p);
 }
 
 

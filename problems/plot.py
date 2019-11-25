@@ -34,6 +34,7 @@ def light_pulse_position(h5f):
 
 
 
+
 def configure_axes(ax1, ax2, ax3, filename, focus=0.0):
     h5f = h5py.File(filename, 'r')
     lc = light_pulse_position(h5f)
