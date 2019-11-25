@@ -123,7 +123,7 @@ mhd::primitive_t initial_primitive(position_t x, mhd::magnetic_field_vector_t b)
 
 mhd::vector_potential_t initial_vector_potential(position_t x)
 {
-    return mhd::vector_potential_t{};
+    return mhd::vector_potential_t{0.0, x.component_1().value * 4.0, 0.0};
 }
 
 
@@ -164,9 +164,9 @@ solution_t initial_solution()
 
 
 // These are riemann solver functions for each of the three axes.
-auto rs1 = apply_to(std::bind(mhd::riemann_hlle, _1, _2, unit_vector_on(1), gamma_law_index));
-auto rs2 = apply_to(std::bind(mhd::riemann_hlle, _1, _2, unit_vector_on(2), gamma_law_index));
-auto rs3 = apply_to(std::bind(mhd::riemann_hlle, _1, _2, unit_vector_on(3), gamma_law_index));
+auto rs1 = apply_to(std::bind(mhd::riemann_hlle, _1, _2, _3, unit_vector_on(1), gamma_law_index));
+auto rs2 = apply_to(std::bind(mhd::riemann_hlle, _1, _2, _3, unit_vector_on(2), gamma_law_index));
+auto rs3 = apply_to(std::bind(mhd::riemann_hlle, _1, _2, _3, unit_vector_on(3), gamma_law_index));
 
 
 
@@ -178,6 +178,8 @@ auto rt2 = mesh::remove_transverse_j(1);
 auto rt3 = mesh::remove_transverse_k(1);
 
 
+
+
 // These are "remove-longitudinal" functions; they remove a layer of zones from
 // the ends of a 3D array along a given axis.
 auto rl1 = nd::select(0, 1, -1);
@@ -187,15 +189,23 @@ auto rl3 = nd::select(2, 1, -1);
 
 
 
-template<typename P>
-auto godunov_fluxes(nd::array_t<P, 3> primitive_array)
+template<typename P, typename Q>
+auto godunov_fluxes(nd::array_t<P, 3> primitive_array, nd::array_t<Q, 3> bf1, nd::array_t<Q, 3> bf2, nd::array_t<Q, 3> bf3)
 {
+    auto bf1_ = bf1 | nd::extend_periodic(1) | nd::extend_periodic(2);
+    auto bf2_ = bf2 | nd::extend_periodic(2) | nd::extend_periodic(0);
+    auto bf3_ = bf3 | nd::extend_periodic(0) | nd::extend_periodic(1);
+
     auto p0 = primitive_array | mesh::extend_periodic(1) | nd::to_shared();
 
-    auto [ff1, ef1] = nd::unzip(p0 | nd::adjacent_zip(0) | nd::map(rs1) | nd::to_shared());
-    auto [ff2, ef2] = nd::unzip(p0 | nd::adjacent_zip(1) | nd::map(rs2) | nd::to_shared());
-    auto [ff3, ef3] = nd::unzip(p0 | nd::adjacent_zip(2) | nd::map(rs3) | nd::to_shared());
- 
+    auto pf1 = nd::zip(p0 | nd::select(0, 0, -1), p0 | nd::select(0, 1), bf1_);
+    auto pf2 = nd::zip(p0 | nd::select(1, 0, -1), p0 | nd::select(1, 1), bf2_);
+    auto pf3 = nd::zip(p0 | nd::select(2, 0, -1), p0 | nd::select(2, 1), bf3_);
+
+    auto [ff1, ef1] = nd::unzip(pf1 | nd::map(rs1) | nd::to_shared());
+    auto [ff2, ef2] = nd::unzip(pf2 | nd::map(rs2) | nd::to_shared());
+    auto [ff3, ef3] = nd::unzip(pf3 | nd::map(rs3) | nd::to_shared());
+
     return std::tuple(ff1, ff2, ff3, ef1, ef2, ef3);
 }
 
@@ -239,14 +249,15 @@ solution_t advance(solution_t solution)
     auto dl = pow<1>(dimensional::unit_length(1.0) / double(N));
     auto da = pow<2>(dimensional::unit_length(1.0) / double(N));
     auto dv = pow<3>(dimensional::unit_length(1.0) / double(N));
-    auto dt = 0.20 * dl / dimensional::unit_velocity(1.0);
+    auto dt = 0.02 * dl / dimensional::unit_velocity(1.0);
 
     auto [mf1, mf2, mf3] = magnetic_flux(solution);
+    auto [bf1, bf2, bf3] = std::tuple(mf1 / da, mf2 / da, mf3 / da);
     auto uc = conserved(solution);
     auto bc = mesh::face_to_cell(mf1, mf2, mf3);
     auto pc = zip(uc / dv, bc / da) | nd::map(c2p) | nd::to_shared();
 
-    auto [ff1, ff2, ff3, ef1, ef2, ef3] = godunov_fluxes(pc);
+    auto [ff1, ff2, ff3, ef1, ef2, ef3] = godunov_fluxes(pc, bf1, bf2, bf3);
     auto [ee1, ee2, ee3] = edge_emf_from_face(ef1, ef2, ef3);
     auto [cf1, cf2, cf3] = mesh::solenoidal_difference(ee1|rl1|ev, ee2|rl2|ev, ee3|rl3|ev);
     auto dc              = mesh::divergence_difference(ff1|rt1|ev, ff2|rt2|ev, ff3|rt3|ev);
@@ -268,7 +279,7 @@ solution_t advance(solution_t solution)
 
 solution_with_tasks_t advance_app_state(solution_with_tasks_t state)
 {
-    return std::pair(advance(solution(state)), jump(tasks(state), solution(state).time, dimensional::unit_time(0.1)));
+    return std::pair(advance(solution(state)), jump(tasks(state), solution(state).time, dimensional::unit_time(0.01)));
 }
 
 solution_with_tasks_t initial_app_state(const mara::config_t& run_config)
