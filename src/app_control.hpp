@@ -189,4 +189,13 @@ auto advance_runge_kutta(BaseSchemeType u_plus_du, unsigned rk_order, SolutionSt
     throw std::invalid_argument("sedov::advance (rk_order must be 1, 2, or 3)");
 }
 
+template<typename BaseSchemeType>
+auto advance_runge_kutta(BaseSchemeType u_plus_du, unsigned rk_order)
+{
+    return [u_plus_du, rk_order] (auto u0)
+    {
+        return advance_runge_kutta(u_plus_du, rk_order, u0);
+    };
+}
+
 } // namespace control

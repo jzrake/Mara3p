@@ -57,7 +57,7 @@ auto config_template()
     .item("tfinal",              10.0)   // time to stop the simulation
     .item("print",                 10)   // the number of iterations between terminal outputs
     .item("dfi",                  1.5)   // output interval (constant multiplier)
-    .item("rk_order",               2)   // Runge-Kutta order (1 or 2)
+    .item("rk_order",               2)   // Runge-Kutta order (1, 2, or 3)
     .item("cfl",                  0.5)   // courant number
     .item("mindr",               1e-3)   // minimum cell length to impose in remeshing
     .item("plm_theta",            1.5)   // PLM parameter

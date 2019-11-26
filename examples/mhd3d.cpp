@@ -54,8 +54,8 @@ auto config_template()
     .item("block_size",            64)   // number of cells on each axis
     .item("tfinal",              10.0)   // time to stop the simulation
     .item("cpi",                  0.1)   // checkpoint (output) interval
-    .item("rk_order",               2)   // Runge-Kutta order (1 or 2)
-    .item("cfl",                  0.5)   // courant number
+    .item("rk_order",               2)   // Runge-Kutta order (1, 2, or 3)
+    .item("cfl",                 0.33)   // courant number
     .item("plm_theta",            1.5)   // PLM parameter
     .item("setup",  std::string("spherical-blast"));
 }
@@ -73,6 +73,18 @@ struct solution_t
     nd::shared_array<mhd::unit_magnetic_field, 3> magnetic_flux_2;
     nd::shared_array<mhd::unit_magnetic_field, 3> magnetic_flux_3;
 };
+
+solution_t weighted_sum(solution_t s, solution_t t, rational::number_t b)
+{
+    return {
+        s.iteration *         b + t.iteration *       (1 - b),
+        s.time      * double(b) + t.time      * double(1 - b),
+        s.conserved * double(b) + t.conserved * double(1 - b) | nd::to_shared(),
+        s.magnetic_flux_1 * double(b) + t.magnetic_flux_1 * double(1 - b) | nd::to_shared(),
+        s.magnetic_flux_2 * double(b) + t.magnetic_flux_2 * double(1 - b) | nd::to_shared(),
+        s.magnetic_flux_3 * double(b) + t.magnetic_flux_3 * double(1 - b) | nd::to_shared(),
+    };
+}
 
 
 
@@ -130,7 +142,7 @@ std::tuple<mara::primitive_function_t, mara::vector_potential_function_t> initia
         };
         auto iv = [] (position_t x)
         {
-            return mhd::vector_potential_t{0.0, x.component_1().value * 4.0, 0.0};
+            return mhd::vector_potential_t{0.0, 0.5 * x.component_3().value, 0.0};
         };
         return std::tuple(ip, iv);
     }
@@ -144,8 +156,9 @@ std::tuple<mara::primitive_function_t, mara::vector_potential_function_t> initia
 auto advance_solution(const mara::config_t& cfg)
 {
     auto cfl = cfg.get_double("cfl");
+    auto dl  = dimensional::unit_length(1.0) / double(cfg.get_int("block_size"));
 
-    return [cfl] (solution_t solution, dimensional::unit_length dl) -> solution_t
+    return [cfl, dl] (solution_t solution) -> solution_t
     {
         auto [bf1, bf2, bf3] = magnetic_flux(solution);
         auto bc = mara::local_periodic_boundary_extension();
@@ -157,14 +170,14 @@ auto advance_solution(const mara::config_t& cfg)
 
 auto advance_app_state(const mara::config_t& cfg)
 {
-    auto cpi          = dimensional::unit_time  (1.0) * cfg.get_double("cpi");
-    auto cell_size    = dimensional::unit_length(1.0) / double(cfg.get_int("block_size"));
-    auto advance_soln = advance_solution(cfg);
+    auto cpi          = dimensional::unit_time(1.0) * cfg.get_double("cpi");
+    auto rk_order     = cfg.get_int("rk_order");
+    auto advance_rk   = control::advance_runge_kutta(advance_solution(cfg), rk_order);
 
-    return [cpi, cell_size, advance_soln] (solution_with_tasks_t state)
+    return [cpi, advance_rk] (solution_with_tasks_t state)
     {
         return std::pair(
-            advance_soln(solution(state), cell_size),
+            advance_rk(solution(state)),
             jump(tasks(state), solution(state).time, cpi));
     };
 }

@@ -28,6 +28,7 @@
 
 #pragma once
 #include <cmath>
+#include <string>
 #include "core_dimensional.hpp"
 #include "core_dimensional_math.hpp"
 #include "core_geometric.hpp"
@@ -214,8 +215,14 @@ inline auto outer_wavespeeds(primitive_t p, geometric::unit_vector_t nhat, doubl
 
 inline auto fastest_speed(primitive_t p, double gamma_law_index)
 {
-    auto [wm, wp] = outer_wavespeeds(p, direction(magnetic_field_vector(p)), gamma_law_index);
-    return std::max(abs(wm), abs(wp));
+    auto [wm1, wp1] = outer_wavespeeds(p, geometric::unit_vector_on(1), gamma_law_index);
+    auto [wm2, wp2] = outer_wavespeeds(p, geometric::unit_vector_on(2), gamma_law_index);
+    auto [wm3, wp3] = outer_wavespeeds(p, geometric::unit_vector_on(3), gamma_law_index);
+
+    return std::max(std::max(
+        std::max(abs(wm1), abs(wp1)),
+        std::max(abs(wm2), abs(wp2))),
+        std::max(abs(wm3), abs(wp3)));
 }
 
 
@@ -262,6 +269,13 @@ inline primitive_t recover_primitive(conserved_density_t u, magnetic_field_vecto
     auto d = conserved_mass_density(u);
     auto v = momentum_density_vector(u) / d;
     auto p = internal_energy_density(u, b) * (gamma_law_index - 1);
+
+    if (d < unit_mass_density(0.0))
+        throw std::invalid_argument("mhd::recover_primitive (negative density)");
+
+    if (p < unit_energy_density(0.0))
+        throw std::invalid_argument("mhd::recover_primitive (negative pressure log10(|p|) = " + std::to_string(std::log10(-p.value)) + ")");
+
     return primitive(d, v, p, b);
 }
 
