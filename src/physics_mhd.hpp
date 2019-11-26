@@ -156,6 +156,27 @@ inline auto electric_field_vector(primitive_t p)
     return -cross(velocity_vector(p), magnetic_field_vector(p));
 }
 
+inline auto magnetic_pressure(magnetic_field_vector_t b)
+{
+    return 0.5 * length_squared(b);
+}
+
+inline auto with_longitudinal_field(primitive_t p, geometric::unit_vector_t nhat, unit_magnetic_field b_longitudinal)
+{
+    auto b = magnetic_field_vector(p);
+    auto b_perp = b - dot(b, nhat) * nhat;
+
+    return primitive(
+        mass_density(p),
+        velocity_vector(p),
+        gas_pressure(p),
+        b_perp + b_longitudinal * nhat);
+}
+
+
+
+
+//=============================================================================
 inline auto enthalpy_density(primitive_t p, double gamma_law_index)
 {
     return gas_pressure(p) * (1.0 + 1.0 / (gamma_law_index - 1.0));
@@ -304,7 +325,7 @@ inline flux_vector_t flux(primitive_t p, geometric::unit_vector_t nhat, double g
     auto B = magnetic_field_vector(p);
     auto Bn = dot(B, nhat);
     auto vn = dot(v, nhat);
-    auto pt = gas_pressure(p) + 0.5 * magnetic_energy_density(B);
+    auto pt = gas_pressure(p) + magnetic_pressure(B);
 
     auto pressure_term = numeric::tuple(
         unit_mass_density() * unit_velocity(),
