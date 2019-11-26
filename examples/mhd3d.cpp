@@ -48,7 +48,6 @@
 
 //=============================================================================
 static const unsigned zone_count = 64;
-static const double gamma_law_index = 5. / 3;
 
 
 
@@ -128,32 +127,8 @@ mhd::vector_potential_t initial_vector_potential(position_t x)
 //=============================================================================
 solution_t initial_solution()
 {
-    auto N = zone_count;
-
-    auto dl = pow<1>(dimensional::unit_length(1.0) / double(N));
-    auto da = pow<2>(dimensional::unit_length(1.0) / double(N));
-
-    auto A = [] (unsigned dir) { return compose(component(dir), initial_vector_potential); };
-    auto p2c = std::bind(mhd::conserved_density, _1, gamma_law_index);
-
-    auto xv = mesh::unit_lattice<dimensional::unit_length>(N + 1, N + 1, N + 1);
-    auto xc = mesh::cell_positions(xv);
-    auto [xe1, xe2, xe3] = mesh::edge_positions(xv);
-    auto [ae1, ae2, ae3] = std::tuple(xe1 | nd::map(A(1)), xe2 | nd::map(A(2)), xe3 | nd::map(A(3)));
-    auto [mf1, mf2, mf3] = mesh::solenoidal_difference(ae1 * dl, ae2 * dl, ae3 * dl);
-    auto [bf1, bf2, bf3] = std::tuple(mf1 / da, mf2 / da, mf3 / da);
-    auto bc = mesh::face_to_cell(bf1, bf2, bf3);
-    auto pc = nd::zip(xc, bc) | nd::map(apply_to(initial_primitive));
-    auto uc = pc | nd::map(p2c);
-
-    return {
-        rational::number(0),
-        dimensional::unit_time(0.0),
-        uc  | nd::to_shared(),
-        bf1 | nd::to_shared(),
-        bf2 | nd::to_shared(),
-        bf3 | nd::to_shared(),
-    };
+    auto [uc, bf1, bf2, bf3] = mara::construct_conserved(initial_primitive, initial_vector_potential, zone_count);
+    return {rational::number(0), dimensional::unit_time(0.0), uc, bf1, bf2, bf3};
 }
 
 
@@ -163,18 +138,11 @@ solution_t initial_solution()
 solution_t advance(solution_t solution)
 {
     auto [bf1, bf2, bf3] = magnetic_flux(solution);
+    auto bc = mara::local_periodic_boundary_extension();
     auto uc = conserved(solution);
     auto dl = dimensional::unit_length(1.0) / double(zone_count);
-    auto up = advance(solution.time, uc, bf1, bf2, bf3, dl);
-
-    return {
-        solution.iteration + 1,
-        std::get<0>(up),
-        std::get<1>(up),
-        std::get<2>(up),
-        std::get<3>(up),
-        std::get<4>(up),
-    };
+    auto [t_, uc_, bf1_, bf2_, bf3_] = mara::advance(solution.time, uc, bf1, bf2, bf3, dl, *bc);
+    return {solution.iteration + 1, t_, uc_, bf1_, bf2_, bf3_};
 }
 
 solution_with_tasks_t advance_app_state(solution_with_tasks_t state)
@@ -212,11 +180,12 @@ void print_run_loop(timed_state_pair_t p)
     auto soln = solution(control::this_state(p));
     auto nz = size(soln.conserved);
     auto us = control::microseconds_separating(p);
+    auto dt = soln.time - solution(control::last_state(p)).time;
 
     std::printf("[%07lu] t=%.6lf dt=%.2e Mzps=%.2lf\n",
         long(soln.iteration),
         soln.time.value,
-        0.2,
+        dt.value,
         nz / us);
 }
 

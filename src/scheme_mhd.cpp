@@ -117,7 +117,38 @@ static auto godunov_fluxes(nd::array_t<P, 3> pc, nd::array_t<Q, 3> bf1, nd::arra
 
 
 //=============================================================================
-nd::shared_array<mhd::primitive_t, 3> primitive_array(
+struct local_periodic_boundary_extension_t : mara::mhd_boundary_extension
+{
+    primitive_array extend_primitive(primitive_array pc) const override
+    {
+        return pc | mesh::extend_periodic(1) | nd::to_shared();
+    }
+    magnetic_array extend_magnetic1(magnetic_array bf1) const override
+    {
+        return bf1 | nd::extend_periodic(1) | nd::extend_periodic(2) | nd::to_shared();
+    }
+    magnetic_array extend_magnetic2(magnetic_array bf2) const override
+    {
+        return bf2 | nd::extend_periodic(2) | nd::extend_periodic(0) | nd::to_shared();
+    }
+    magnetic_array extend_magnetic3(magnetic_array bf3) const override
+    {
+        return bf3 | nd::extend_periodic(0) | nd::extend_periodic(1) | nd::to_shared();
+    }
+};
+
+std::shared_ptr<mara::mhd_boundary_extension> mara::local_periodic_boundary_extension()
+{
+    return std::make_shared<local_periodic_boundary_extension_t>();
+}
+
+
+
+
+//=============================================================================
+nd::shared_array<mhd::primitive_t, 3>
+
+mara::primitive_array(
     nd::shared_array<mhd::conserved_density_t, 3> uc,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf1,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf2,
@@ -139,7 +170,8 @@ std::tuple<
     nd::shared_array<mhd::unit_electric_field, 3>,
     nd::shared_array<mhd::unit_electric_field, 3>,
     nd::shared_array<mhd::unit_electric_field, 3>>
-flux_arrays(
+
+mara::flux_arrays(
     nd::shared_array<mhd::primitive_t, 3> pc,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf1,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf2,
@@ -161,19 +193,22 @@ std::tuple<
     nd::shared_array<mhd::unit_magnetic_field, 3>,
     nd::shared_array<mhd::unit_magnetic_field, 3>,
     nd::shared_array<mhd::unit_magnetic_field, 3>>
-advance(dimensional::unit_time time,
-        nd::shared_array<mhd::conserved_density_t, 3> uc,
-        nd::shared_array<mhd::unit_magnetic_field, 3> bf1,
-        nd::shared_array<mhd::unit_magnetic_field, 3> bf2,
-        nd::shared_array<mhd::unit_magnetic_field, 3> bf3,
-        dimensional::unit_length dl)
+
+mara::advance(
+    dimensional::unit_time time,
+    nd::shared_array<mhd::conserved_density_t, 3> uc,
+    nd::shared_array<mhd::unit_magnetic_field, 3> bf1,
+    nd::shared_array<mhd::unit_magnetic_field, 3> bf2,
+    nd::shared_array<mhd::unit_magnetic_field, 3> bf3,
+    dimensional::unit_length dl,
+    const mhd_boundary_extension& boundary_extension)
 {
     auto pc = primitive_array(uc, bf1, bf2, bf3, gamma_law_index);
 
-    auto pce  = pc  | mesh::extend_periodic(1) | nd::to_shared();
-    auto bf1e = bf1 | nd::extend_periodic(1) | nd::extend_periodic(2) | nd::to_shared();
-    auto bf2e = bf2 | nd::extend_periodic(2) | nd::extend_periodic(0) | nd::to_shared();
-    auto bf3e = bf3 | nd::extend_periodic(0) | nd::extend_periodic(1) | nd::to_shared();
+    auto pce  = boundary_extension.extend_primitive(pc);
+    auto bf1e = boundary_extension.extend_magnetic1(bf1);
+    auto bf2e = boundary_extension.extend_magnetic2(bf2);
+    auto bf3e = boundary_extension.extend_magnetic3(bf3);
 
     auto [ff1, ff2, ff3, ee1, ee2, ee3] = flux_arrays(pce, bf1e, bf2e, bf3e);
     auto [cf1, cf2, cf3] = mesh::solenoidal_difference(ee1, ee2, ee3);
@@ -191,4 +226,47 @@ advance(dimensional::unit_time time,
         bf1_ | nd::to_shared(),
         bf2_ | nd::to_shared(),
         bf3_ | nd::to_shared());
+}
+
+
+
+
+//=============================================================================
+std::tuple<
+    nd::shared_array<mhd::conserved_density_t, 3>,
+    nd::shared_array<mhd::unit_magnetic_field, 3>,
+    nd::shared_array<mhd::unit_magnetic_field, 3>,
+    nd::shared_array<mhd::unit_magnetic_field, 3>>
+
+mara::construct_conserved(
+    std::function<mhd::primitive_t(geometric::euclidean_vector_t<dimensional::unit_length>, mhd::magnetic_field_vector_t)> primitive,
+    std::function<mhd::vector_potential_t(geometric::euclidean_vector_t<dimensional::unit_length>)> vector_potential,
+    nd::uint block_size)
+{
+    auto N = block_size;
+
+    auto dl = dimensional::unit_length(1.0) / double(N);
+    auto da = pow<2>(dl);
+
+    auto A = [vector_potential] (unsigned dir)
+    {
+        return compose(geometric::component(dir), vector_potential);
+    };
+    auto p2c = std::bind(mhd::conserved_density, _1, gamma_law_index);
+
+    auto xv = mesh::unit_lattice<dimensional::unit_length>(N + 1, N + 1, N + 1);
+    auto xc = mesh::cell_positions(xv);
+    auto [xe1, xe2, xe3] = mesh::edge_positions(xv);
+    auto [ae1, ae2, ae3] = std::tuple(xe1 | nd::map(A(1)), xe2 | nd::map(A(2)), xe3 | nd::map(A(3)));
+    auto [mf1, mf2, mf3] = mesh::solenoidal_difference(ae1 * dl, ae2 * dl, ae3 * dl);
+    auto [bf1, bf2, bf3] = std::tuple(mf1 / da, mf2 / da, mf3 / da);
+    auto bc = mesh::face_to_cell(bf1, bf2, bf3);
+    auto pc = nd::zip(xc, bc) | nd::map(apply_to(primitive));
+    auto uc = pc | nd::map(p2c);
+
+    return std::tuple(
+        uc  | nd::to_shared(),
+        bf1 | nd::to_shared(),
+        bf2 | nd::to_shared(),
+        bf3 | nd::to_shared());
 }
