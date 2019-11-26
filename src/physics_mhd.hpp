@@ -315,10 +315,10 @@ inline flux_vector_t flux(primitive_t p, geometric::unit_vector_t nhat, double g
 
     auto maxwell_term = numeric::tuple(
         unit_mass_density() * unit_velocity(),
-        Bn * B.component_1(),
-        Bn * B.component_2(),
-        Bn * B.component_3(),
-        Bn * dot(B, v));
+        -Bn * B.component_1(),
+        -Bn * B.component_2(),
+        -Bn * B.component_3(),
+        -Bn * dot(B, v));
 
     return vn * conserved_density(p, gamma_law_index) + pressure_term + maxwell_term;
 }
