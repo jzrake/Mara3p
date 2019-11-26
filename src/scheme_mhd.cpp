@@ -194,13 +194,14 @@ std::tuple<
     nd::shared_array<mhd::unit_magnetic_field, 3>,
     nd::shared_array<mhd::unit_magnetic_field, 3>>
 
-mara::advance(
+mara::advance_mhd_ct(
     dimensional::unit_time time,
     nd::shared_array<mhd::conserved_density_t, 3> uc,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf1,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf2,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf3,
     dimensional::unit_length dl,
+    dimensional::unit_scalar cfl_number,
     const mhd_boundary_extension& boundary_extension)
 {
     auto pc = primitive_array(uc, bf1, bf2, bf3, gamma_law_index);
@@ -214,7 +215,7 @@ mara::advance(
     auto [cf1, cf2, cf3] = mesh::solenoidal_difference(ee1, ee2, ee3);
     auto dc              = mesh::divergence_difference(ff1, ff2, ff3);
 
-    auto dt   = 0.33 * dl / max(pc | nd::map(std::bind(mhd::fastest_speed, _1, gamma_law_index)));
+    auto dt   = cfl_number * dl / max(pc | nd::map(std::bind(mhd::fastest_speed, _1, gamma_law_index)));
     auto uc_  = uc  - dc  * dt / dl;
     auto bf1_ = bf1 - cf1 * dt / dl;
     auto bf2_ = bf2 - cf2 * dt / dl;
@@ -239,8 +240,8 @@ std::tuple<
     nd::shared_array<mhd::unit_magnetic_field, 3>>
 
 mara::construct_conserved(
-    std::function<mhd::primitive_t(geometric::euclidean_vector_t<dimensional::unit_length>, mhd::magnetic_field_vector_t)> primitive,
-    std::function<mhd::vector_potential_t(geometric::euclidean_vector_t<dimensional::unit_length>)> vector_potential,
+    primitive_function_t primitive,
+    vector_potential_function_t vector_potential,
     nd::uint block_size)
 {
     auto N = block_size;

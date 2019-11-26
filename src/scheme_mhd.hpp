@@ -58,6 +58,18 @@ std::shared_ptr<mhd_boundary_extension> local_periodic_boundary_extension();
 
 
 //=============================================================================
+using primitive_function_t = std::function<
+    mhd::primitive_t(
+        geometric::euclidean_vector_t<dimensional::unit_length>,
+        mhd::magnetic_field_vector_t)>;
+
+using vector_potential_function_t = std::function<
+    mhd::vector_potential_t(geometric::euclidean_vector_t<dimensional::unit_length>)>;
+
+
+
+
+//=============================================================================
 nd::shared_array<mhd::primitive_t, 3> primitive_array(
     nd::shared_array<mhd::conserved_density_t, 3> uc,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf1,
@@ -92,12 +104,13 @@ std::tuple<
     nd::shared_array<mhd::unit_magnetic_field, 3>,
     nd::shared_array<mhd::unit_magnetic_field, 3>,
     nd::shared_array<mhd::unit_magnetic_field, 3>>
-advance(dimensional::unit_time time,
+advance_mhd_ct(dimensional::unit_time time,
         nd::shared_array<mhd::conserved_density_t, 3> uc,
         nd::shared_array<mhd::unit_magnetic_field, 3> bf1,
         nd::shared_array<mhd::unit_magnetic_field, 3> bf2,
         nd::shared_array<mhd::unit_magnetic_field, 3> bf3,
         dimensional::unit_length dl,
+        dimensional::unit_scalar cfl_number,
         const mhd_boundary_extension& boundary_extension);
 
 
@@ -110,8 +123,8 @@ std::tuple<
     nd::shared_array<mhd::unit_magnetic_field, 3>,
     nd::shared_array<mhd::unit_magnetic_field, 3>>
 construct_conserved(
-    std::function<mhd::primitive_t(geometric::euclidean_vector_t<dimensional::unit_length>, mhd::magnetic_field_vector_t)> primitive,
-    std::function<mhd::vector_potential_t(geometric::euclidean_vector_t<dimensional::unit_length>)> vector_potential,
+    primitive_function_t primitive,
+    vector_potential_function_t vector_potential,
     nd::uint block_size);
 
 } // namespace mara

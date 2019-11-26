@@ -77,7 +77,13 @@ public:
         {
             throw std::invalid_argument("config has no option " + key);
         }
-        return std::get<ValueType>(parameters.at(key));
+        try {
+            return std::get<ValueType>(parameters.at(key));
+        }
+        catch (const std::bad_variant_access&)
+        {
+            throw std::invalid_argument("mara::config_t (wrong type for key '" + key + "')");
+        }
     }
 
     template<typename Mapping>

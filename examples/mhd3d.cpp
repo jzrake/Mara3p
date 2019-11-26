@@ -27,6 +27,7 @@
 
 
 #include <cstdio>
+#include <iostream>
 #include "app_config.hpp"
 #include "app_control.hpp"
 #include "app_hdf5.hpp"
@@ -47,7 +48,17 @@
 
 
 //=============================================================================
-static const unsigned zone_count = 64;
+auto config_template()
+{
+    return mara::config_template()
+    .item("block_size",            64)   // number of cells on each axis
+    .item("tfinal",              10.0)   // time to stop the simulation
+    .item("cpi",                  0.1)   // checkpoint (output) interval
+    .item("rk_order",               2)   // Runge-Kutta order (1 or 2)
+    .item("cfl",                  0.5)   // courant number
+    .item("plm_theta",            1.5)   // PLM parameter
+    .item("setup",  std::string("spherical-blast"));
+}
 
 
 
@@ -68,10 +79,6 @@ struct solution_t
 
 //=============================================================================
 using namespace std::placeholders;
-using util::apply_to;
-using util::compose;
-using geometric::unit_vector_on;
-using geometric::component;
 using position_t            = geometric::euclidean_vector_t<dimensional::unit_length>;
 using solution_with_tasks_t = std::pair<solution_t, control::task_t>;
 using timed_state_pair_t    = control::timed_pair_t<solution_with_tasks_t>;
@@ -107,61 +114,86 @@ void write(const Group& group, const solution_t& solution)
 
 
 //=============================================================================
-mhd::primitive_t initial_primitive(position_t x, mhd::magnetic_field_vector_t b)
+std::tuple<mara::primitive_function_t, mara::vector_potential_function_t> initial_data_functions(const mara::config_t& cfg)
 {
-    auto x0 = geometric::euclidean_vector<dimensional::unit_length>(0.5, 0.5, 0.5);
-    auto R = sqrt(length_squared(x - x0));
-    auto d = R < dimensional::unit_length(0.125) ? 1.0 : 0.1;
-    auto p = R < dimensional::unit_length(0.125) ? 1.0 : 0.125;
-    return mhd::primitive(d, {}, p, b);
-}
+    auto setup = cfg.get_string("setup");
 
-mhd::vector_potential_t initial_vector_potential(position_t x)
-{
-    return mhd::vector_potential_t{0.0, x.component_1().value * 4.0, 0.0};
+    if (setup == "spherical-blast")
+    {
+        auto ip = [] (position_t x, mhd::magnetic_field_vector_t b)
+        {
+            auto x0 = geometric::euclidean_vector<dimensional::unit_length>(0.5, 0.5, 0.5);
+            auto R = sqrt(length_squared(x - x0));
+            auto d = R < dimensional::unit_length(0.125) ? 1.0 : 0.1;
+            auto p = R < dimensional::unit_length(0.125) ? 1.0 : 0.125;
+            return mhd::primitive(d, {}, p, b);
+        };
+        auto iv = [] (position_t x)
+        {
+            return mhd::vector_potential_t{0.0, x.component_1().value * 4.0, 0.0};
+        };
+        return std::tuple(ip, iv);
+    }
+    throw std::runtime_error("mhd3d::initial_data_functions (no setup named " + setup + ")");
 }
 
 
 
 
 //=============================================================================
-solution_t initial_solution()
+auto advance_solution(const mara::config_t& cfg)
 {
-    auto [uc, bf1, bf2, bf3] = mara::construct_conserved(initial_primitive, initial_vector_potential, zone_count);
+    auto cfl = cfg.get_double("cfl");
+
+    return [cfl] (solution_t solution, dimensional::unit_length dl) -> solution_t
+    {
+        auto [bf1, bf2, bf3] = magnetic_flux(solution);
+        auto bc = mara::local_periodic_boundary_extension();
+        auto uc = conserved(solution);
+        auto [t_, uc_, bf1_, bf2_, bf3_] = mara::advance_mhd_ct(solution.time, uc, bf1, bf2, bf3, dl, cfl, *bc);
+        return {solution.iteration + 1, t_, uc_, bf1_, bf2_, bf3_};
+    };
+}
+
+auto advance_app_state(const mara::config_t& cfg)
+{
+    auto cpi          = dimensional::unit_time  (1.0) * cfg.get_double("cpi");
+    auto cell_size    = dimensional::unit_length(1.0) / double(cfg.get_int("block_size"));
+    auto advance_soln = advance_solution(cfg);
+
+    return [cpi, cell_size, advance_soln] (solution_with_tasks_t state)
+    {
+        return std::pair(
+            advance_soln(solution(state), cell_size),
+            jump(tasks(state), solution(state).time, cpi));
+    };
+}
+
+auto should_continue(const mara::config_t& cfg)
+{
+    auto final_time = dimensional::unit_time(cfg.get_double("tfinal"));
+
+    return [final_time] (timed_state_pair_t state_pair)
+    {
+        return solution(control::this_state(state_pair)).time < final_time;
+    };
+}
+
+
+
+
+//=============================================================================
+solution_t initial_solution(const mara::config_t& cfg)
+{
+    auto block_size = cfg.get_int("block_size");
+    auto [ip, iv] = initial_data_functions(cfg);
+    auto [uc, bf1, bf2, bf3] = mara::construct_conserved(ip, iv, block_size);
     return {rational::number(0), dimensional::unit_time(0.0), uc, bf1, bf2, bf3};
 }
 
-
-
-
-//=============================================================================
-solution_t advance(solution_t solution)
+solution_with_tasks_t initial_app_state(const mara::config_t& cfg)
 {
-    auto [bf1, bf2, bf3] = magnetic_flux(solution);
-    auto bc = mara::local_periodic_boundary_extension();
-    auto uc = conserved(solution);
-    auto dl = dimensional::unit_length(1.0) / double(zone_count);
-    auto [t_, uc_, bf1_, bf2_, bf3_] = mara::advance(solution.time, uc, bf1, bf2, bf3, dl, *bc);
-    return {solution.iteration + 1, t_, uc_, bf1_, bf2_, bf3_};
-}
-
-solution_with_tasks_t advance_app_state(solution_with_tasks_t state)
-{
-    auto cpi = dimensional::unit_time(0.01);
-
-    return std::pair(
-        advance(solution(state)),
-        jump(tasks(state), solution(state).time, cpi));
-}
-
-solution_with_tasks_t initial_app_state(const mara::config_t& run_config)
-{
-    return std::pair(initial_solution(), control::task("write_checkpoint", 0.0));
-}
-
-bool should_continue(timed_state_pair_t state_pair)
-{
-    return solution(control::this_state(state_pair)).time < dimensional::unit_time(1.0);
+    return std::pair(initial_solution(cfg), control::task("write_checkpoint", 0.0));
 }
 
 
@@ -206,14 +238,18 @@ void side_effects(timed_state_pair_t p)
 
 
 //=============================================================================
-int main()
+int main(int argc, const char* argv[])
 {
-    auto run_config = mara::config_t();
+    auto cfg = config_template()
+    .create()
+    .update(mara::argv_to_string_map(argc, argv));
 
-    auto simulation = seq::generate(initial_app_state(run_config), advance_app_state)
+    mara::pretty_print(std::cout, "config", cfg);
+
+    auto simulation = seq::generate(initial_app_state(cfg), advance_app_state(cfg))
     | seq::pair_with(control::time_point_sequence())
     | seq::window()
-    | seq::take_while(should_continue);
+    | seq::take_while(should_continue(cfg));
 
     for (auto state_pair : simulation)
     {
