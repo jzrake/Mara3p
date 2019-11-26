@@ -167,6 +167,12 @@ unit_vector_t direction(euclidean_vector_t<T> a)
     return {b.impl[0], b.impl[1], b.impl[2]};
 }
 
+template<typename T>
+auto as_tuple(euclidean_vector_t<T> a)
+{
+    return a.impl.impl;
+}
+
 
 
 

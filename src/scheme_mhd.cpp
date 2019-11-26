@@ -204,8 +204,7 @@ mara::advance_mhd_ct(
     dimensional::unit_scalar cfl_number,
     const mhd_boundary_extension& boundary_extension)
 {
-    auto pc = primitive_array(uc, bf1, bf2, bf3, gamma_law_index);
-
+    auto pc   = primitive_array(uc, bf1, bf2, bf3, gamma_law_index);
     auto pce  = boundary_extension.extend_primitive(pc);
     auto bf1e = boundary_extension.extend_magnetic1(bf1);
     auto bf2e = boundary_extension.extend_magnetic2(bf2);

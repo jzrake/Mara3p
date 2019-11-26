@@ -70,7 +70,9 @@ using vector_potential_function_t = std::function<
 
 
 //=============================================================================
-nd::shared_array<mhd::primitive_t, 3> primitive_array(
+nd::shared_array<mhd::primitive_t, 3>
+
+primitive_array(
     nd::shared_array<mhd::conserved_density_t, 3> uc,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf1,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf2,
@@ -88,6 +90,7 @@ std::tuple<
     nd::shared_array<mhd::unit_electric_field, 3>,
     nd::shared_array<mhd::unit_electric_field, 3>,
     nd::shared_array<mhd::unit_electric_field, 3>>
+
 flux_arrays(
     nd::shared_array<mhd::primitive_t, 3> pc,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf1,
@@ -104,6 +107,7 @@ std::tuple<
     nd::shared_array<mhd::unit_magnetic_field, 3>,
     nd::shared_array<mhd::unit_magnetic_field, 3>,
     nd::shared_array<mhd::unit_magnetic_field, 3>>
+
 advance_mhd_ct(dimensional::unit_time time,
         nd::shared_array<mhd::conserved_density_t, 3> uc,
         nd::shared_array<mhd::unit_magnetic_field, 3> bf1,
@@ -122,6 +126,7 @@ std::tuple<
     nd::shared_array<mhd::unit_magnetic_field, 3>,
     nd::shared_array<mhd::unit_magnetic_field, 3>,
     nd::shared_array<mhd::unit_magnetic_field, 3>>
+
 construct_conserved(
     primitive_function_t primitive,
     vector_potential_function_t vector_potential,

@@ -146,6 +146,26 @@ std::tuple<mara::primitive_function_t, mara::vector_potential_function_t> initia
         };
         return std::tuple(ip, iv);
     }
+
+    if (setup == "abc")
+    {
+        auto ip = [] (position_t x, mhd::magnetic_field_vector_t b)
+        {
+            return mhd::primitive(1.0, {}, 1.0, b);
+        };
+        auto iv = [] (position_t p)
+        {
+            auto k = 2.0 * M_PI / dimensional::unit_length(1.0);
+            auto [A, B, C] = std::tuple(1.0, 1.0, 1.0);
+            auto [x, y, z] = as_tuple(p);
+            auto ax = A * std::sin(k * z) + C * std::cos(k * y);
+            auto ay = B * std::sin(k * x) + A * std::cos(k * z);
+            auto az = C * std::sin(k * y) + B * std::cos(k * x);
+            return 0.1 * mhd::vector_potential_t{ax, ay, az};
+        };
+        return std::tuple(ip, iv);
+    }
+
     throw std::runtime_error("mhd3d::initial_data_functions (no setup named " + setup + ")");
 }
 
@@ -176,9 +196,11 @@ auto advance_app_state(const mara::config_t& cfg)
 
     return [cpi, advance_rk] (solution_with_tasks_t state)
     {
+        auto next_soln = advance_rk(solution(state));
+
         return std::pair(
-            advance_rk(solution(state)),
-            jump(tasks(state), solution(state).time, cpi));
+            next_soln,
+            jump(tasks(state), next_soln.time, cpi));
     };
 }
 
@@ -188,7 +210,7 @@ auto should_continue(const mara::config_t& cfg)
 
     return [final_time] (timed_state_pair_t state_pair)
     {
-        return solution(control::this_state(state_pair)).time < final_time;
+        return solution(control::last_state(state_pair)).time <= final_time;
     };
 }
 

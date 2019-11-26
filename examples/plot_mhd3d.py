@@ -13,6 +13,12 @@ from matplotlib.animation import FFMpegWriter
 
 
 
+hydro_variables = ['density', 'px', 'py', 'pz', 'energy']
+field_variables = dict(bx='magnetic_flux_1', by='magnetic_flux_2', bz='magnetic_flux_3')
+
+
+
+
 def directory_contents(directory):
     """
     Return the contents of the given directory, sorted alphabetically, and with
@@ -25,10 +31,8 @@ def directory_contents(directory):
 
 def load_slice(h5f, axis, variable):
 
-    variables = ['density', 'px', 'py', 'pz', 'energy']
-
-    if variable in variables:
-        ivar = variables.index(variable)
+    if variable in hydro_variables:
+        ivar = hydro_variables.index(variable)
         if axis == 'x':
             n = h5f['conserved'].shape[0]
             return h5f['conserved'][n // 2, :, :][..., ivar]
@@ -39,32 +43,36 @@ def load_slice(h5f, axis, variable):
             n = h5f['conserved'].shape[2]
             return h5f['conserved'][:, :, n // 2][..., ivar]
 
-    if variable == 'flux':
+    if variable in field_variables:
+        kvar = field_variables[variable]
         if axis == 'x':
-            n = h5f['magnetic_flux_1'].shape[0]
-            return h5f['magnetic_flux_1'][n // 2, :, :][...]
+            n = h5f[kvar].shape[0]
+            return h5f[kvar][n // 2, :, :][...]
         if axis == 'y':
-            n = h5f['magnetic_flux_2'].shape[1]
-            return h5f['magnetic_flux_2'][:, n // 2, :][...]
+            n = h5f[kvar].shape[1]
+            return h5f[kvar][:, n // 2, :][...]
         if axis == 'z':
-            n = h5f['magnetic_flux_3'].shape[2]
-            return h5f['magnetic_flux_3'][:, :, n // 2][...]
+            n = h5f[kvar].shape[2]
+            return h5f[kvar][:, :, n // 2][...]
 
 
 
 
-def plot_slice(fig, filenames, focus=0.0, edges=False):
-    ax1, ax2, ax3 = fig.subplots(nrows=1, ncols=3)
+def plot_slice(fig, filenames=[], field=None, **kwargs):
+    (ax1, ax2, ax3), (cb1, cb2, cb3) = fig.subplots(nrows=2, ncols=3, gridspec_kw={'height_ratios': [19, 1]})
 
     for filename in filenames:
         h5f = h5py.File(filename, 'r')
 
-        dx = load_slice(h5f, 'x', 'energy')
-        dy = load_slice(h5f, 'y', 'energy')
-        dz = load_slice(h5f, 'z', 'energy')
-        ax1.imshow(dx)
-        ax2.imshow(dy)
-        ax3.imshow(dz)
+        dx = load_slice(h5f, 'x', field)
+        dy = load_slice(h5f, 'y', field)
+        dz = load_slice(h5f, 'z', field)
+        m1 = ax1.imshow(dx)
+        m2 = ax2.imshow(dy)
+        m3 = ax3.imshow(dz)
+
+    for m, c in zip([m1, m2, m3], [cb1, cb2, cb3]):
+        fig.colorbar(m, cax=c, orientation='horizontal')
 
     ax1.set_title('X slice')
     ax2.set_title('Y slice')
@@ -77,7 +85,7 @@ def plot_slice(fig, filenames, focus=0.0, edges=False):
 
 
 
-def make_movie(fig, directories, output, plot_function, **kwargs):
+def make_movie(fig, plot_function, output=None, directories=[], **kwargs):
     filename_lists = [directory_contents(d) for d in directories]
     writer = FFMpegWriter(fps=10)
 
@@ -104,15 +112,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("filenames", nargs='+')
     parser.add_argument("--output", default='output.mp4')
+    parser.add_argument("--field", choices=hydro_variables + list(field_variables.keys()), default='density')
     parser.add_argument("--plot", choices=plots.keys(), default='profile')
     args = parser.parse_args()
 
-    fig = plt.figure(figsize=[15, 5])
-    fig.subplots_adjust(top=1.0, bottom=0.0, left=0.01, right=0.99, hspace=0.0)
+    fig = plt.figure(figsize=[16, 8])
+    fig.subplots_adjust(left=0.02, right=0.98)
 
     if all([os.path.isdir(p) for p in args.filenames]):
-        make_movie(fig, args.filenames, args.output, plots[args.plot])
+        make_movie(fig, plots[args.plot], **vars(args))
 
     else:
-        plots[args.plot](fig, args.filenames)
+        plots[args.plot](fig, **vars(args))
         plt.show()
