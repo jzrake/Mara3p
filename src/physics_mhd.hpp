@@ -354,12 +354,15 @@ inline electric_field_vector_t induction(primitive_t p, geometric::unit_vector_t
 
 //=============================================================================
 inline auto riemann_hlle(
-    primitive_t pl,
-    primitive_t pr,
+    primitive_t pl_,
+    primitive_t pr_,
     unit_magnetic_field b_longitudinal,
     geometric::unit_vector_t nhat,
     double gamma_law_index)
 {
+    auto pl = with_longitudinal_field(pl_, nhat, b_longitudinal);
+    auto pr = with_longitudinal_field(pr_, nhat, b_longitudinal);
+
     auto ul = conserved_density(pl, gamma_law_index);
     auto ur = conserved_density(pr, gamma_law_index);
     auto fl = flux(pl, nhat, gamma_law_index);
