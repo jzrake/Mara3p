@@ -57,6 +57,7 @@ auto config_template()
     .item("rk_order",               2)   // Runge-Kutta order (1, 2, or 3)
     .item("cfl",                 0.33)   // courant number
     .item("plm_theta",            1.5)   // PLM parameter
+    .item("B0",                   1.0)   // field strength parameter
     .item("setup",  std::string("spherical-blast"));
 }
 
@@ -118,6 +119,9 @@ void write(const Group& group, const solution_t& solution)
     write(group, "magnetic_flux_1", solution.magnetic_flux_1);
     write(group, "magnetic_flux_2", solution.magnetic_flux_2);
     write(group, "magnetic_flux_3", solution.magnetic_flux_3);
+
+    auto p = mara::primitive_array(solution.conserved, solution.magnetic_flux_1, solution.magnetic_flux_2, solution.magnetic_flux_3, 5. / 3);
+    write(group, "primitive", p);
 }
 
 }
@@ -129,6 +133,7 @@ void write(const Group& group, const solution_t& solution)
 std::tuple<mara::primitive_function_t, mara::vector_potential_function_t> initial_data_functions(const mara::config_t& cfg)
 {
     auto setup = cfg.get_string("setup");
+    auto B0 = cfg.get_double("B0");
 
     if (setup == "spherical-blast")
     {
@@ -140,9 +145,9 @@ std::tuple<mara::primitive_function_t, mara::vector_potential_function_t> initia
             auto p = R < dimensional::unit_length(0.125) ? 1.0 : 0.125;
             return mhd::primitive(d, {}, p, b);
         };
-        auto iv = [] (position_t x)
+        auto iv = [B0] (position_t x)
         {
-            return mhd::vector_potential_t{0.0, 0.5 * x.component_3().value, 0.0};
+            return B0 * mhd::vector_potential_t{0.0, x.component_1().value, 0.0};
         };
         return std::tuple(ip, iv);
     }
@@ -153,7 +158,7 @@ std::tuple<mara::primitive_function_t, mara::vector_potential_function_t> initia
         {
             return mhd::primitive(1.0, {}, 1.0, b);
         };
-        auto iv = [] (position_t p)
+        auto iv = [B0] (position_t p)
         {
             auto k = 2.0 * M_PI / dimensional::unit_length(1.0);
             auto [A, B, C] = std::tuple(1.0, 1.0, 1.0);
@@ -161,7 +166,7 @@ std::tuple<mara::primitive_function_t, mara::vector_potential_function_t> initia
             auto ax = A * std::sin(k * z) + C * std::cos(k * y);
             auto ay = B * std::sin(k * x) + A * std::cos(k * z);
             auto az = C * std::sin(k * y) + B * std::cos(k * x);
-            return 0.1 * mhd::vector_potential_t{ax, ay, az};
+            return B0 * mhd::vector_potential_t{ax, ay, az};
         };
         return std::tuple(ip, iv);
     }
