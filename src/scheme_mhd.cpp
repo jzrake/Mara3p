@@ -30,8 +30,21 @@
 #include "core_ndarray.hpp"
 #include "core_ndarray_ops.hpp"
 #include "core_util.hpp"
-#include "physics_mhd.hpp"
 #include "mesh_cartesian_3d.hpp"
+#include "physics_mhd.hpp"
+#include "scheme_plm_gradient.hpp"
+
+
+
+
+//=============================================================================
+#include <cstdio>
+
+template<typename T>
+void print_shape(const char* message, nd::array_t<T, 3> x)
+{
+    std::printf("%s [%lu %lu %lu]\n", message, shape(x, 0), shape(x, 1), shape(x, 2));
+}
 
 
 
@@ -99,6 +112,22 @@ static auto edge_emf_from_face(nd::array_t<P, 3> ef1, nd::array_t<P, 3> ef2, nd:
 
 
 
+/**
+ * @brief      Generate Godunov fluxes and EMF's using piecewise constant
+ *             (first-order) extrapolation.
+ *
+ * @param[in]  pc    Cell-centered primitive quantities, extended by 1 zones on
+ *                   all three axes
+ * @param[in]  bf1   Face B-fields, extended by 1 zone on axes 1 and 2
+ * @param[in]  bf2   Face B-fields, extended by 1 zone on axes 2 and 0
+ * @param[in]  bf3   Face B-fields, extended by 1 zone on axes 0 and 1
+ *
+ * @tparam     P     The provider type of the primitives
+ * @tparam     Q     The provider type of the B-fields
+ *
+ * @return     A 6-tuple of face-centered Godunov fluxes and EMF's. Each of the
+ *             returned arrays are extended by 1 zone on the transverse axes.
+ */
 template<typename P, typename Q>
 static auto godunov_fluxes(nd::array_t<P, 3> pc, nd::array_t<Q, 3> bf1, nd::array_t<Q, 3> bf2, nd::array_t<Q, 3> bf3)
 {
@@ -116,12 +145,60 @@ static auto godunov_fluxes(nd::array_t<P, 3> pc, nd::array_t<Q, 3> bf1, nd::arra
 
 
 
+/**
+ * @brief      Generate Godunov fluxes and EMF's using a second-order, PLM-based
+ *             extrapolation.
+ *
+ * @param[in]  pc    Cell-centered primitive quantities, extended by 2 zones on
+ *                   all three axes
+ * @param[in]  bf1   Face B-fields, extended by 1 zone on axes 1 and 2
+ * @param[in]  bf2   Face B-fields, extended by 1 zone on axes 2 and 0
+ * @param[in]  bf3   Face B-fields, extended by 1 zone on axes 0 and 1
+ *
+ * @tparam     P     The provider type of the primitives
+ * @tparam     Q     The provider type of the B-fields
+ *
+ * @return     A 6-tuple of face-centered Godunov fluxes and EMF's. Each of the
+ *             returned arrays are extended by 1 zone on the transverse axes.
+ */
+template<typename P, typename Q>
+static auto godunov_fluxes_plm(nd::array_t<P, 3> pc, nd::array_t<Q, 3> bf1, nd::array_t<Q, 3> bf2, nd::array_t<Q, 3> bf3, dimensional::unit_scalar plm_theta)
+{
+    auto g1 = pc | rt1 | nd::adjacent_zip3(0) | nd::map(mara::plm_gradient(plm_theta)) | nd::to_shared();
+    auto g2 = pc | rt2 | nd::adjacent_zip3(1) | nd::map(mara::plm_gradient(plm_theta)) | nd::to_shared();
+    auto g3 = pc | rt3 | nd::adjacent_zip3(2) | nd::map(mara::plm_gradient(plm_theta)) | nd::to_shared();
+
+    auto p1 = pc | mesh::remove_surface(1);
+    auto p2 = pc | mesh::remove_surface(1);
+    auto p3 = pc | mesh::remove_surface(1);
+
+    auto pl1 = p1 + 0.5 * g1 | nd::select(0, 0, -1);
+    auto pr1 = p1 - 0.5 * g1 | nd::select(0, 1);
+    auto pl2 = p2 + 0.5 * g2 | nd::select(1, 0, -1);
+    auto pr2 = p2 - 0.5 * g2 | nd::select(1, 1);
+    auto pl3 = p3 + 0.5 * g3 | nd::select(2, 0, -1);
+    auto pr3 = p3 - 0.5 * g3 | nd::select(2, 1);
+
+    auto pf1 = nd::zip(pl1, pr1, bf1);
+    auto pf2 = nd::zip(pl2, pr2, bf2);
+    auto pf3 = nd::zip(pl3, pr3, bf3);
+
+    auto [ff1, ef1] = nd::unzip(pf1 | nd::map(rs1) | nd::to_shared());
+    auto [ff2, ef2] = nd::unzip(pf2 | nd::map(rs2) | nd::to_shared());
+    auto [ff3, ef3] = nd::unzip(pf3 | nd::map(rs3) | nd::to_shared());
+
+    return std::tuple(ff1, ff2, ff3, ef1, ef2, ef3);
+}
+
+
+
+
 //=============================================================================
 struct local_periodic_boundary_extension_t : mara::mhd_boundary_extension
 {
-    primitive_array extend_primitive(primitive_array pc) const override
+    primitive_array extend_primitive(primitive_array pc, unsigned count) const override
     {
-        return pc | mesh::extend_periodic(1) | nd::to_shared();
+        return pc | mesh::extend_periodic(count) | nd::to_shared();
     }
     magnetic_array extend_magnetic1(magnetic_array bf1) const override
     {
@@ -152,11 +229,11 @@ mara::primitive_array(
     nd::shared_array<mhd::conserved_density_t, 3> uc,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf1,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf2,
-    nd::shared_array<mhd::unit_magnetic_field, 3> bf3,
-    double gamma_law_index)
+    nd::shared_array<mhd::unit_magnetic_field, 3> bf3)
 {
+    auto c2p = apply_to(std::bind(mhd::recover_primitive, _1, _2, gamma_law_index));
     auto bc = mesh::face_to_cell(bf1, bf2, bf3);
-    return zip(uc, bc) | nd::map(apply_to(std::bind(mhd::recover_primitive, _1, _2, gamma_law_index))) | nd::to_shared();
+    return zip(uc, bc) | nd::map(c2p) | nd::to_shared();
 }
 
 
@@ -175,9 +252,13 @@ mara::flux_arrays(
     nd::shared_array<mhd::primitive_t, 3> pc,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf1,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf2,
-    nd::shared_array<mhd::unit_magnetic_field, 3> bf3)
+    nd::shared_array<mhd::unit_magnetic_field, 3> bf3,
+    dimensional::unit_scalar plm_theta)
 {
-    auto [ff1, ff2, ff3, ef1, ef2, ef3] = godunov_fluxes(pc, bf1, bf2, bf3);
+    auto [ff1, ff2, ff3, ef1, ef2, ef3] = plm_theta == 0.0
+    ? godunov_fluxes    (pc, bf1, bf2, bf3)
+    : godunov_fluxes_plm(pc, bf1, bf2, bf3, plm_theta);
+
     auto [ee1, ee2, ee3] = edge_emf_from_face(ef1, ef2, ef3);
     auto ev = nd::to_shared();
     return std::tuple(ff1|rt1|ev, ff2|rt2|ev, ff3|rt3|ev, ee1|rl1|ev, ee2|rl2|ev, ee3|rl3|ev);
@@ -202,15 +283,16 @@ mara::advance_mhd_ct(
     nd::shared_array<mhd::unit_magnetic_field, 3> bf3,
     dimensional::unit_length dl,
     dimensional::unit_scalar cfl_number,
+    dimensional::unit_scalar plm_theta,
     const mhd_boundary_extension& boundary_extension)
 {
-    auto pc   = primitive_array(uc, bf1, bf2, bf3, gamma_law_index);
-    auto pce  = boundary_extension.extend_primitive(pc);
+    auto pc   = primitive_array(uc, bf1, bf2, bf3);
+    auto pce  = boundary_extension.extend_primitive(pc, plm_theta == 0.0 ? 1 : 2);
     auto bf1e = boundary_extension.extend_magnetic1(bf1);
     auto bf2e = boundary_extension.extend_magnetic2(bf2);
     auto bf3e = boundary_extension.extend_magnetic3(bf3);
 
-    auto [ff1, ff2, ff3, ee1, ee2, ee3] = flux_arrays(pce, bf1e, bf2e, bf3e);
+    auto [ff1, ff2, ff3, ee1, ee2, ee3] = flux_arrays(pce, bf1e, bf2e, bf3e, plm_theta);
     auto [cf1, cf2, cf3] = mesh::solenoidal_difference(ee1, ee2, ee3);
     auto dc              = mesh::divergence_difference(ff1, ff2, ff3);
 

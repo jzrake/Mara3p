@@ -246,6 +246,17 @@ auto extend_periodic = [] (nd::uint count)
 
 
 //=============================================================================
+auto remove_surface = [] (nd::uint count)
+{
+    return [c=count] (auto x)
+    {
+        return nd::make_array(nd::indexing([x] (auto i, auto j, auto k)
+        {
+            return x(i + 1, j + 1, k + 1);
+        }), nd::uivec(shape(x, 0) - 2 * c, shape(x, 1) - 2 * c, shape(x, 2) - 2 * c));
+    };
+};
+
 auto remove_transverse_i = [] (nd::uint count)
 {
     return [c=count] (auto x)

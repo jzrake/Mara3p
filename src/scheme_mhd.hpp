@@ -46,7 +46,7 @@ struct mhd_boundary_extension
     using magnetic_array  = nd::shared_array<mhd::unit_magnetic_field, 3>;
 
     virtual ~mhd_boundary_extension() {}
-    virtual primitive_array extend_primitive(primitive_array pc) const = 0;
+    virtual primitive_array extend_primitive(primitive_array pc, unsigned count) const = 0;
     virtual magnetic_array extend_magnetic1(magnetic_array bf1) const = 0;
     virtual magnetic_array extend_magnetic2(magnetic_array bf2) const = 0;
     virtual magnetic_array extend_magnetic3(magnetic_array bf3) const = 0;
@@ -76,8 +76,7 @@ primitive_array(
     nd::shared_array<mhd::conserved_density_t, 3> uc,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf1,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf2,
-    nd::shared_array<mhd::unit_magnetic_field, 3> bf3,
-    double gamma_law_index);
+    nd::shared_array<mhd::unit_magnetic_field, 3> bf3);
 
 
 
@@ -95,7 +94,8 @@ flux_arrays(
     nd::shared_array<mhd::primitive_t, 3> pc,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf1,
     nd::shared_array<mhd::unit_magnetic_field, 3> bf2,
-    nd::shared_array<mhd::unit_magnetic_field, 3> bf3);
+    nd::shared_array<mhd::unit_magnetic_field, 3> bf3,
+    dimensional::unit_scalar plm_parameter);
 
 
 
@@ -115,6 +115,7 @@ advance_mhd_ct(dimensional::unit_time time,
         nd::shared_array<mhd::unit_magnetic_field, 3> bf3,
         dimensional::unit_length dl,
         dimensional::unit_scalar cfl_number,
+        dimensional::unit_scalar plm_parameter,
         const mhd_boundary_extension& boundary_extension);
 
 

@@ -58,12 +58,12 @@ def plot_slice(fig, filename, field=None, **kwargs):
     print("total pz ....... ", h5f['conserved'][...][..., 3].mean())
     print("total energy ... ", h5f['conserved'][...][..., 4].mean())
 
-    dx = load_slice(h5f, 'x', field)
-    dy = load_slice(h5f, 'y', field)
-    dz = load_slice(h5f, 'z', field)
-    m1 = ax1.imshow(dx, vmin=0.75, vmax=1.25)
-    m2 = ax2.imshow(dy, vmin=0.75, vmax=1.25)
-    m3 = ax3.imshow(dz, vmin=0.75, vmax=1.25)
+    dx = load_slice(h5f, 'x', field).T
+    dy = load_slice(h5f, 'y', field).T
+    dz = load_slice(h5f, 'z', field).T
+    m1 = ax1.imshow(dx)
+    m2 = ax2.imshow(dy)
+    m3 = ax3.imshow(dz)
 
     for m, c in zip([m1, m2, m3], [cb1, cb2, cb3]):
         fig.colorbar(m, cax=c, orientation='horizontal')

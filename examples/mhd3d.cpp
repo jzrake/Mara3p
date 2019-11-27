@@ -51,14 +51,14 @@
 auto config_template()
 {
     return mara::config_template()
-    .item("block_size",            64)   // number of cells on each axis
-    .item("tfinal",              10.0)   // time to stop the simulation
-    .item("cpi",                  0.1)   // checkpoint (output) interval
-    .item("rk_order",               2)   // Runge-Kutta order (1, 2, or 3)
-    .item("cfl",                 0.33)   // courant number
-    .item("plm_theta",            1.5)   // PLM parameter
-    .item("B0",                   1.0)   // field strength parameter
-    .item("setup",  std::string("spherical-blast"));
+    .item("nc",                64)   // number of cells on each axis
+    .item("tf",              10.0)   // time to stop the simulation
+    .item("cpi",              0.1)   // checkpoint (output) interval
+    .item("rk",                 2)   // Runge-Kutta order (1, 2, or 3)
+    .item("cfl",             0.33)   // courant number
+    .item("plm",              1.5)   // PLM parameter
+    .item("b0",               1.0)   // field strength parameter
+    .item("setup", "spherical-blast");
 }
 
 
@@ -120,7 +120,12 @@ void write(const Group& group, const solution_t& solution)
     write(group, "magnetic_flux_2", solution.magnetic_flux_2);
     write(group, "magnetic_flux_3", solution.magnetic_flux_3);
 
-    auto p = mara::primitive_array(solution.conserved, solution.magnetic_flux_1, solution.magnetic_flux_2, solution.magnetic_flux_3, 5. / 3);
+    auto p = mara::primitive_array(
+        solution.conserved,
+        solution.magnetic_flux_1,
+        solution.magnetic_flux_2,
+        solution.magnetic_flux_3);
+
     write(group, "primitive", p);
 }
 
@@ -133,21 +138,21 @@ void write(const Group& group, const solution_t& solution)
 std::tuple<mara::primitive_function_t, mara::vector_potential_function_t> initial_data_functions(const mara::config_t& cfg)
 {
     auto setup = cfg.get_string("setup");
-    auto B0 = cfg.get_double("B0");
+    auto b0 = cfg.get_double("b0");
 
     if (setup == "spherical-blast")
     {
         auto ip = [] (position_t x, mhd::magnetic_field_vector_t b)
         {
-            auto x0 = geometric::euclidean_vector<dimensional::unit_length>(0.5, 0.5, 0.5);
+            auto x0 = position_t{0.5, 0.5, 0.5};
             auto R = sqrt(length_squared(x - x0));
             auto d = R < dimensional::unit_length(0.125) ? 1.0 : 0.1;
             auto p = R < dimensional::unit_length(0.125) ? 1.0 : 0.125;
             return mhd::primitive(d, {}, p, b);
         };
-        auto iv = [B0] (position_t x)
+        auto iv = [b0] (position_t x)
         {
-            return B0 * mhd::vector_potential_t{0.0, x.component_1().value, 0.0};
+            return b0 * mhd::vector_potential_t{0.0, x.component_1().value, 0.0};
         };
         return std::tuple(ip, iv);
     }
@@ -158,7 +163,7 @@ std::tuple<mara::primitive_function_t, mara::vector_potential_function_t> initia
         {
             return mhd::primitive(1.0, {}, 1.0, b);
         };
-        auto iv = [B0] (position_t p)
+        auto iv = [b0] (position_t p)
         {
             auto k = 2.0 * M_PI / dimensional::unit_length(1.0);
             auto [A, B, C] = std::tuple(1.0, 1.0, 1.0);
@@ -166,7 +171,7 @@ std::tuple<mara::primitive_function_t, mara::vector_potential_function_t> initia
             auto ax = A * std::sin(k * z) + C * std::cos(k * y);
             auto ay = B * std::sin(k * x) + A * std::cos(k * z);
             auto az = C * std::sin(k * y) + B * std::cos(k * x);
-            return B0 * mhd::vector_potential_t{ax, ay, az};
+            return b0 * mhd::vector_potential_t{ax, ay, az};
         };
         return std::tuple(ip, iv);
     }
@@ -181,14 +186,15 @@ std::tuple<mara::primitive_function_t, mara::vector_potential_function_t> initia
 auto advance_solution(const mara::config_t& cfg)
 {
     auto cfl = cfg.get_double("cfl");
-    auto dl  = dimensional::unit_length(1.0) / double(cfg.get_int("block_size"));
+    auto plm = cfg.get_double("plm");
+    auto dl  = dimensional::unit_length(1.0) / double(cfg.get_int("nc"));
 
-    return [cfl, dl] (solution_t solution) -> solution_t
+    return [cfl, plm, dl] (solution_t solution) -> solution_t
     {
         auto [bf1, bf2, bf3] = magnetic_flux(solution);
         auto bc = mara::local_periodic_boundary_extension();
         auto uc = conserved(solution);
-        auto [t_, uc_, bf1_, bf2_, bf3_] = mara::advance_mhd_ct(solution.time, uc, bf1, bf2, bf3, dl, cfl, *bc);
+        auto [t_, uc_, bf1_, bf2_, bf3_] = mara::advance_mhd_ct(solution.time, uc, bf1, bf2, bf3, dl, cfl, plm, *bc);
         return {solution.iteration + 1, t_, uc_, bf1_, bf2_, bf3_};
     };
 }
@@ -196,8 +202,8 @@ auto advance_solution(const mara::config_t& cfg)
 auto advance_app_state(const mara::config_t& cfg)
 {
     auto cpi          = dimensional::unit_time(1.0) * cfg.get_double("cpi");
-    auto rk_order     = cfg.get_int("rk_order");
-    auto advance_rk   = control::advance_runge_kutta(advance_solution(cfg), rk_order);
+    auto rk           = cfg.get_int("rk");
+    auto advance_rk   = control::advance_runge_kutta(advance_solution(cfg), rk);
 
     return [cpi, advance_rk] (solution_with_tasks_t state)
     {
@@ -211,11 +217,11 @@ auto advance_app_state(const mara::config_t& cfg)
 
 auto should_continue(const mara::config_t& cfg)
 {
-    auto final_time = dimensional::unit_time(cfg.get_double("tfinal"));
+    auto tf = dimensional::unit_time(cfg.get_double("tf"));
 
-    return [final_time] (timed_state_pair_t state_pair)
+    return [tf] (timed_state_pair_t state_pair)
     {
-        return solution(control::last_state(state_pair)).time <= final_time;
+        return solution(control::last_state(state_pair)).time <= tf;
     };
 }
 
@@ -225,9 +231,9 @@ auto should_continue(const mara::config_t& cfg)
 //=============================================================================
 solution_t initial_solution(const mara::config_t& cfg)
 {
-    auto block_size = cfg.get_int("block_size");
+    auto nc = cfg.get_int("nc");
     auto [ip, iv] = initial_data_functions(cfg);
-    auto [uc, bf1, bf2, bf3] = mara::construct_conserved(ip, iv, block_size);
+    auto [uc, bf1, bf2, bf3] = mara::construct_conserved(ip, iv, nc);
     return {rational::number(0), dimensional::unit_time(0.0), uc, bf1, bf2, bf3};
 }
 

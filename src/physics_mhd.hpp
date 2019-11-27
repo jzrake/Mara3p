@@ -304,8 +304,8 @@ inline conserved_density_t conserved_density(primitive_t p, double gamma_law_ind
 {
     auto d = mass_density(p);
     auto v = velocity_vector(p);
-    auto B = magnetic_field_vector(p);
-    auto E = 0.5 * d * length_squared(v) + gas_pressure(p) / (gamma_law_index - 1.0) + magnetic_energy_density(B);
+    auto b = magnetic_field_vector(p);
+    auto E = 0.5 * d * length_squared(v) + gas_pressure(p) / (gamma_law_index - 1.0) + magnetic_energy_density(b);
 
     return numeric::tuple(
         d,
@@ -322,10 +322,10 @@ inline conserved_density_t conserved_density(primitive_t p, double gamma_law_ind
 inline flux_vector_t flux(primitive_t p, geometric::unit_vector_t nhat, double gamma_law_index)
 {
     auto v = velocity_vector(p);
-    auto B = magnetic_field_vector(p);
-    auto Bn = dot(B, nhat);
+    auto b = magnetic_field_vector(p);
+    auto bn = dot(b, nhat);
     auto vn = dot(v, nhat);
-    auto pt = gas_pressure(p) + magnetic_pressure(B);
+    auto pt = gas_pressure(p) + magnetic_pressure(b);
 
     auto pressure_term = numeric::tuple(
         unit_mass_density() * unit_velocity(),
@@ -336,10 +336,10 @@ inline flux_vector_t flux(primitive_t p, geometric::unit_vector_t nhat, double g
 
     auto maxwell_term = numeric::tuple(
         unit_mass_density() * unit_velocity(),
-        -Bn * B.component_1(),
-        -Bn * B.component_2(),
-        -Bn * B.component_3(),
-        -Bn * dot(B, v));
+        -bn * b.component_1(),
+        -bn * b.component_2(),
+        -bn * b.component_3(),
+        -bn * dot(b, v));
 
     return vn * conserved_density(p, gamma_law_index) + pressure_term + maxwell_term;
 }
