@@ -113,7 +113,7 @@ state_t initial_state()
 
 state_t advance(state_t state)
 {
-    auto xh = geometric::unit_vector_on_axis(1);
+    auto xh = geometric::unit_vector_on(1);
     auto dt = dimensional::unit_time(0.3 / num_cells);
     auto da = dimensional::unit_area(1.0);
     auto dv = cell_volumes(state);
