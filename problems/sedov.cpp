@@ -264,7 +264,7 @@ solution_t advance(const mara::config_t& run_config, solution_t solution)
     {
         auto move_cells          = run_config.get_int("move");
         auto plm_theta           = run_config.get_double("plm_theta");
-        auto xhat                = geometric::unit_vector_on_axis(1);
+        auto xhat                = geometric::unit_vector_on(1);
         auto inner_boundary_prim = wind_profile(run_config, front(soln.vertices), soln.time);
         auto outer_boundary_prim = wind_profile(run_config, back (soln.vertices), 1.0);
         auto mesh_geometry       = spherical_mesh_geometry_t();
