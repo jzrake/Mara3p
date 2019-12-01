@@ -850,7 +850,7 @@ auto take(SequenceType sequence, unsigned long count)
 template<typename SequenceType>
 auto drop(SequenceType sequence, unsigned long count)
 {
-    return advance(sequence, back(take(measure(sequence), count + 1)));
+    return advance(sequence, std::optional(back(take(measure(sequence), count + 1))));
 }
 
 template<typename SequenceType>
@@ -858,7 +858,7 @@ auto chunk(SequenceType sequence, unsigned long chunk_size)
 {
     auto second = [] (auto s) { return map(s, [] (auto iv) { return iv.second; }); };
     auto not_dividing = [c=chunk_size] (auto iv) { return iv.first % c != 0; };
-    auto advance_from = [c=chunk_size, s=sequence] (auto p) { return take(advance(s, p), c); };
+    auto advance_from = [c=chunk_size, s=sequence] (auto p) { return take(advance(s, std::optional(p)), c); };
     return map(second(remove_if(enumerate(measure(sequence)), not_dividing)), advance_from);
 }
 

@@ -61,7 +61,7 @@ void increment_fail_count();
 //=============================================================================
 #define require(expr) \
 do { \
-    if (expr) { \
+    if ((expr)) {								\
         std::cout << '\033' << Green     << "Test passed ... [" << __FILE__ << "] " << #expr << std::endl; \
         increment_pass_count(); \
     } \

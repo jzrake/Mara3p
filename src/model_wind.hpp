@@ -28,6 +28,7 @@
 
 #pragma once
 #include <cmath>
+#include <functional>
 #include "core_dimensional.hpp"
 #include "core_dimensional_math.hpp"
 #include "core_numeric_tuple.hpp"

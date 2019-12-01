@@ -27,6 +27,7 @@
 
 
 #pragma once
+#include <tuple>
 #include "core_rational.hpp"
 
 

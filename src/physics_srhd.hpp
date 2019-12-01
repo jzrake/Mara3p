@@ -61,6 +61,7 @@ void throw_or_abort(std::string message) noexcept
     exit(1);
 }
 #else
+#include <stdexcept>
 void throw_or_abort(std::string message)
 {
     throw ExceptionType(message);
