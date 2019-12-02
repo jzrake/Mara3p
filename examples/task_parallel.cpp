@@ -36,6 +36,65 @@
 
 
 //=============================================================================
+template<typename T>
+struct serial::container_shape_setter_t<std::vector<T>>
+{
+    template<typename Serializer>
+    auto operator()(Serializer& s, std::vector<T>& value)
+    {
+        value.resize(s.template vend<std::size_t>());
+    }
+};
+
+template<typename T>
+struct serial::container_shape_descriptor_t<std::vector<T>>
+{
+    template<typename Serializer>
+    auto operator()(Serializer& s, const std::vector<T>& value)
+    {
+        s(value.size());
+    }
+};
+
+template<typename T>
+struct serial::type_descriptor_t<std::vector<T>>
+{
+    template<typename Serializer>
+    void operator()(Serializer& s, std::vector<T>& value) const
+    {
+        s(value.data(), value.size());
+    }
+};
+
+template<>
+struct serial::conversion_to_serializable_t<std::string>
+{
+    using type = std::vector<char>;
+    auto operator()(std::string value) const { return std::vector<char>(value.begin(), value.end()); }
+};
+
+template<>
+struct serial::conversion_from_serializable_t<std::string>
+{
+    using type = std::vector<char>;
+    auto operator()(std::vector<char> value) const { return std::string(value.begin(), value.end()); }
+};
+
+template<typename T, typename U>
+struct serial::type_descriptor_t<std::pair<T, U>>
+{
+    template<typename Serializer>
+    void operator()(Serializer& s, std::pair<T, U>& value) const
+    {
+        s(value.first);
+        s(value.second);
+    }
+};
+
+
+
+
+//=============================================================================
 template<typename KeyType>
 std::map<KeyType, int> partition(const std::vector<KeyType>& keys, unsigned num_groups)
 {
@@ -103,7 +162,7 @@ void print_graph_status(const mara::DependencyGraph<KeyType, ValueType>& graph, 
             + std::to_string(mpi::comm_world().rank())
             + " ("
             + std::to_string(graph.count_unevaluated(is_responsible_for))
-            + " unvaluated)";
+            + " unevaluated)";
 
             os << std::string(52, '=') << "\n";
             os << header << ":\n\n";
@@ -111,10 +170,9 @@ void print_graph_status(const mara::DependencyGraph<KeyType, ValueType>& graph, 
             for (auto key : graph.keys())
             {
                 os << '\t' << left << setw(24) << setfill('.') << key << ' ';
-                os << "status: " << ' ' << graph.status(key) << " eligible: " << graph.is_eligible(key);
+                os << "status: " << graph.status(key) << " eligible: " << graph.is_eligible(key, is_responsible_for);
                 os << '\n';
             }
-
             os << '\n';
         }
         mpi::comm_world().barrier();
@@ -125,60 +183,23 @@ void print_graph_status(const mara::DependencyGraph<KeyType, ValueType>& graph, 
 
 
 //=============================================================================
-template<typename T>
-struct serial::container_shape_setter_t<std::vector<T>>
+void print_received_messages(const std::vector<mpi::buffer_t>& messages)
 {
-    template<typename Serializer>
-    auto operator()(Serializer& s, std::vector<T>& value)
+    for (int i = 0; i < mpi::comm_world().size(); ++i)
     {
-        value.resize(s.template vend<std::size_t>());
+        if (i == mpi::comm_world().rank())
+        {
+            std::cout << "checking messages..." << std::endl;
+
+            for (auto message : messages)
+            {
+                auto [k, p] = serial::loads<std::pair<std::string, int>>(message);
+                std::cout << "process " << i << " received " << k << "\n";
+            }
+        }
+        mpi::comm_world().barrier();
     }
-};
-
-template<typename T>
-struct serial::container_shape_descriptor_t<std::vector<T>>
-{
-    template<typename Serializer>
-    auto operator()(Serializer& s, const std::vector<T>& value)
-    {
-        s(value.size());
-    }
-};
-
-template<typename T>
-struct serial::type_descriptor_t<std::vector<T>>
-{
-    template<typename Serializer>
-    void operator()(Serializer& s, std::vector<T>& value) const
-    {
-        s(value.data(), value.size());
-    }
-};
-
-template<>
-struct serial::conversion_to_serializable_t<std::string>
-{
-    using type = std::vector<char>;
-    auto operator()(std::string value) const { return std::vector<char>(value.begin(), value.end()); }
-};
-
-template<>
-struct serial::conversion_from_serializable_t<std::string>
-{
-    using type = std::vector<char>;
-    auto operator()(std::vector<char> value) const { return std::string(value.begin(), value.end()); }
-};
-
-template<typename T, typename U>
-struct serial::type_descriptor_t<std::pair<T, U>>
-{
-    template<typename Serializer>
-    void operator()(Serializer& s, std::pair<T, U>& value) const
-    {
-        s(value.first);
-        s(value.second);
-    }
-};
+}
 
 
 
@@ -237,10 +258,12 @@ int main()
     {
         for (auto downstream_key : graph.downstream_keys(key))
         {
-            if (assigned_process.at(downstream_key) != mpi::comm_world().rank())
+            auto owner = assigned_process.at(downstream_key);
+
+            if (owner != mpi::comm_world().rank())
             {
                 auto message = serial::dumps(std::pair(key, graph.product_at(key)));
-                message_queue.push(message, assigned_process.at(downstream_key));                
+                message_queue.push(message, owner);                
             }
         }
     };
@@ -249,23 +272,26 @@ int main()
     print_process_assignments(assigned_process);
     print_graph_status(graph, is_responsible_for);
 
-
     while (graph.count_unevaluated(is_responsible_for))
     {
         graph.evaluate_eligible(scheduler, is_responsible_for);
         graph.poll_pending(push_to_remotes, std::chrono::seconds(1));
 
-        for (const auto& received_message : message_queue.poll())
+        auto received_messages = message_queue.poll();
+
+        for (const auto& received_message : received_messages)
         {
             graph.insert_product(serial::loads<std::pair<std::string, int>>(received_message));
         }
-        print_graph_status(graph, is_responsible_for);
     }
 
+    print_graph_status(graph, is_responsible_for);
+
+    if (is_responsible_for("abcdefgh"))
+    {
+        std::cout << "The result is: " << graph.product_at("abcdefgh") << std::endl;
+    }
 
     MPI_Finalize();
     return 0;
 }
-
-
-
