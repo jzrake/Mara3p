@@ -28,6 +28,7 @@
 
 #pragma once
 #include <algorithm>
+#include <set>
 #include <vector>
 #include "parallel_mpi.hpp"
 
@@ -66,6 +67,24 @@ public:
     void push(buffer_t message, int recipient_rank)
     {
         send_requests.push_back(mpi::comm_world().isend(std::move(message), recipient_rank));
+    }
+
+
+
+
+    /**
+     * @brief      Convenience method to push a message to a number of unique
+     *             recipients.
+     *
+     * @param[in]  message          The message to push
+     * @param[in]  recipient_ranks  The ranks of the recipient processes
+     */
+    void push(buffer_t message, std::set<int> recipient_ranks)
+    {
+        for (auto recipient : recipient_ranks)
+        {
+            push(message, recipient);
+        }
     }
 
 

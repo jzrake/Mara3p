@@ -119,6 +119,22 @@ std::map<KeyType, int> partition(const std::vector<KeyType>& keys, unsigned num_
 
 //=============================================================================
 template<typename KeyType>
+std::set<int> unique_recipients(const std::vector<KeyType>& keys, const std::map<KeyType, int>& assigned_process)
+{
+    auto recipients = std::set<int>();
+
+    for (auto key : keys)
+        if (auto recipient = assigned_process.at(key); recipient != mpi::comm_world().rank())
+            recipients.insert(recipient);
+
+    return recipients;
+}
+
+
+
+
+//=============================================================================
+template<typename KeyType>
 void print_process_assignments(const std::map<KeyType, int>& assigned_process)
 {
     using std::left;
@@ -268,28 +284,15 @@ int main()
         &graph,
         &assigned_process] (auto key, auto value)
     {
-        auto recipients_so_far = std::set<int>();
-        auto message = mpi::buffer_t();
-
-        for (auto downstream_key : graph.downstream_keys(key))
-        {
-            auto owner = assigned_process.at(downstream_key);
-
-            if (owner != mpi::comm_world().rank() && recipients_so_far.count(owner) == 0)
-            {
-                if (message.empty())
-                {
-                    message = serial::dumps(std::pair(key, graph.product_at(key)));
-                }
-                message_queue.push(message, owner);
-                recipients_so_far.insert(owner);
-            }
-        }
+        message_queue.push(
+            serial::dumps(std::pair(key, graph.product_at(key))),
+            unique_recipients(graph.downstream_keys(key), assigned_process));
     };
 
 
     print_process_assignments(assigned_process);
     print_graph_status(graph, is_responsible_for);
+
 
     while (graph.count_unevaluated(is_responsible_for))
     {
@@ -305,8 +308,10 @@ int main()
         }
     }
 
+
     print_graph_status(graph, is_responsible_for);
     mpi::comm_world().barrier();
+
 
     for (int i = 0; i < mpi::comm_world().size(); ++i)
     {
@@ -320,6 +325,7 @@ int main()
         }
         mpi::comm_world().barrier();
     }
+
 
     MPI_Finalize();
     return 0;
