@@ -27,6 +27,7 @@
 
 
 #pragma once
+#include <algorithm>
 #include <future>
 #include <map>
 #include <vector>
@@ -77,7 +78,7 @@ public:
     template<typename... KeyTypes>
     void insert_rule(key_type key, mapping_type mapping, KeyTypes... argument_keys)
     {
-        if (rules.count(key))
+        if (contains_rule(key))
             throw std::invalid_argument("DependencyGraph::insert_rule (rule already exists)");
 
         rules[key] = std::pair(mapping, key_vector_type{argument_keys...});
@@ -97,8 +98,14 @@ public:
      */
     void insert_product(std::pair<key_type, value_type> item)
     {
-        if (! rules.count(item.first) || products.count(item.first) || pending_products.count(item.first))
-            throw std::invalid_argument("DependencyGraph::insert_rule");
+        if (! contains_rule(item.first))
+            throw std::invalid_argument("DependencyGraph::insert_product (rule not defined)");
+
+        if (is_pending(item.first))
+            throw std::invalid_argument("DependencyGraph::insert_product (evaluation is pending)");
+
+        if (contains_product(item.first))
+            throw std::invalid_argument(std::string("DependencyGraph::insert_product (already evaluated) ") + item.first + " on " + std::to_string(mpi::comm_world().rank()));
 
         products.insert(item);
     }

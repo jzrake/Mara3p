@@ -26,6 +26,7 @@
 
 
 
+#include <set>
 #include "parallel_mpi.hpp"
 #include "parallel_message_queue.hpp"
 #include "parallel_thread_pool.hpp"
@@ -170,7 +171,7 @@ void print_graph_status(const mara::DependencyGraph<KeyType, ValueType>& graph, 
             for (auto key : graph.keys())
             {
                 os << '\t' << left << setw(24) << setfill('.') << key << ' ';
-                os << "status: " << graph.status(key) << " eligible: " << graph.is_eligible(key, is_responsible_for);
+                os << "status: " << graph.status(key) << " eligible: " << graph.is_eligible(key, is_responsible_for) << (is_responsible_for(key) ? " x" : "");
                 os << '\n';
             }
             os << '\n';
@@ -208,6 +209,8 @@ void print_received_messages(const std::vector<mpi::buffer_t>& messages)
 auto build_graph()
 {
     auto graph = mara::DependencyGraph<std::string, int>();
+    auto mult = [] (auto x) { return x[0] * x[1]; };
+
     graph.insert_rule("a", [] (auto) { return 1; });
     graph.insert_rule("b", [] (auto) { return 2; });
     graph.insert_rule("c", [] (auto) { return 3; });
@@ -217,15 +220,24 @@ auto build_graph()
     graph.insert_rule("g", [] (auto) { return 7; });
     graph.insert_rule("h", [] (auto) { return 8; });
 
-    graph.insert_rule("ab", [] (auto x) { return x[0] * x[1]; }, "a", "b");
-    graph.insert_rule("cd", [] (auto x) { return x[0] * x[1]; }, "c", "d");
-    graph.insert_rule("ef", [] (auto x) { return x[0] * x[1]; }, "e", "f");
-    graph.insert_rule("gh", [] (auto x) { return x[0] * x[1]; }, "g", "h");
+    graph.insert_rule("ab", mult, "a", "b");
+    graph.insert_rule("cd", mult, "c", "d");
+    graph.insert_rule("ef", mult, "e", "f");
+    graph.insert_rule("gh", mult, "g", "h");
 
-    graph.insert_rule("abcd", [] (auto x) { return x[0] * x[1]; }, "ab", "cd");
-    graph.insert_rule("efgh", [] (auto x) { return x[0] * x[1]; }, "ef", "gh");
+    graph.insert_rule("ae", mult, "a", "e");
+    graph.insert_rule("bf", mult, "b", "f");
+    graph.insert_rule("cg", mult, "c", "g");
+    graph.insert_rule("dh", mult, "d", "h");
 
-    graph.insert_rule("abcdefgh", [] (auto x) { return x[0] * x[1]; }, "abcd", "efgh");
+    graph.insert_rule("abcd", mult, "ab", "cd");
+    graph.insert_rule("efgh", mult, "ef", "gh");
+
+    graph.insert_rule("aebf", mult, "ae", "bf");
+    graph.insert_rule("cgdh", mult, "cg", "dh");
+
+    graph.insert_rule("abcdefgh", mult, "abcd", "efgh");
+    graph.insert_rule("aebfcgdh", mult, "aebf", "cgdh");
 
     return graph;
 }
@@ -233,7 +245,7 @@ auto build_graph()
 
 
 
-//=============================================================================
+// =============================================================================
 int main()
 {
     MPI_Init_thread(0, nullptr, MPI_THREAD_SERIALIZED, nullptr);
@@ -256,14 +268,21 @@ int main()
         &graph,
         &assigned_process] (auto key, auto value)
     {
+        auto recipients_so_far = std::set<int>();
+        auto message = mpi::buffer_t();
+
         for (auto downstream_key : graph.downstream_keys(key))
         {
             auto owner = assigned_process.at(downstream_key);
 
-            if (owner != mpi::comm_world().rank())
+            if (owner != mpi::comm_world().rank() && recipients_so_far.count(owner) == 0)
             {
-                auto message = serial::dumps(std::pair(key, graph.product_at(key)));
-                message_queue.push(message, owner);                
+                if (message.empty())
+                {
+                    message = serial::dumps(std::pair(key, graph.product_at(key)));
+                }
+                message_queue.push(message, owner);
+                recipients_so_far.insert(owner);
             }
         }
     };
@@ -277,19 +296,29 @@ int main()
         graph.evaluate_eligible(scheduler, is_responsible_for);
         graph.poll_pending(push_to_remotes, std::chrono::seconds(1));
 
-        auto received_messages = message_queue.poll();
+        // auto received_messages = message_queue.poll();
+        // print_graph_status(graph, is_responsible_for);
 
-        for (const auto& received_message : received_messages)
+        for (const auto& received_message : message_queue.poll())
         {
             graph.insert_product(serial::loads<std::pair<std::string, int>>(received_message));
         }
     }
 
     print_graph_status(graph, is_responsible_for);
+    mpi::comm_world().barrier();
 
-    if (is_responsible_for("abcdefgh"))
+    for (int i = 0; i < mpi::comm_world().size(); ++i)
     {
-        std::cout << "The result is: " << graph.product_at("abcdefgh") << std::endl;
+        if (i == mpi::comm_world().rank())
+        {
+            if (is_responsible_for("abcdefgh"))
+                std::cout << "The result of abcdefgh is " << graph.product_at("abcdefgh") << std::endl;
+
+            if (is_responsible_for("aebfcgdh"))
+                std::cout << "The result of aebfcgdh is " << graph.product_at("aebfcgdh") << std::endl;
+        }
+        mpi::comm_world().barrier();
     }
 
     MPI_Finalize();

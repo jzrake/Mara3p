@@ -101,6 +101,22 @@ public:
         return result;
     }
 
+
+
+
+    /**
+     * @brief      Return a const reference to the vector of open send requests.
+     *
+     * @return     The open send requests
+     */
+    const std::vector<mpi::Request>& open_send_requests() const
+    {
+        return send_requests;
+    }
+
+
+
+
 private:
     std::vector<mpi::Request> send_requests;
 };
