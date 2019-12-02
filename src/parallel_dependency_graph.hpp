@@ -361,7 +361,7 @@ public:
         {
             const auto& up = upstream_keys(k);
 
-            if (std::find(up.begin(), up.end(), k) != up.end())
+            if (std::find(up.begin(), up.end(), key) != up.end())
             {
                 result.push_back(k);
             }
