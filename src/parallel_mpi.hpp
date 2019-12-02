@@ -178,7 +178,10 @@ public:
     {
         if (! is_null())
         {
-            MPI_Cancel(&request);
+            if (! is_ready())
+            {
+                MPI_Cancel(&request);                
+            }
             MPI_Request_free(&request);
         }
     }
