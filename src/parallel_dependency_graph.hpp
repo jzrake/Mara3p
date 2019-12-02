@@ -300,6 +300,33 @@ public:
 
 
     /**
+     * @brief      Count the number of unevaluated rules in the graph which
+     *             satisfy the given predicate.
+     *
+     * @param[in]  is_responsible_for  The predicate (must return false if the
+     *                                 rule under the given key is delegated to
+     *                                 a remote process).
+     *
+     * @return     The number of unevaluated rules
+     */
+    unsigned count_unevaluated(std::function<bool(key_type)> is_responsible_for) const
+    {
+        unsigned count = 0;
+
+        for (const auto& [key, rule] : rules)
+        {
+            if (is_responsible_for(key))
+            {
+                ++count;
+            }
+        }
+        return count;
+    }
+
+
+
+
+    /**
      * @brief      Return the immediate dependencies of the rule defined under a
      *             key.
      *

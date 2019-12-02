@@ -63,7 +63,7 @@ public:
      * @param[in]  message         The message to send
      * @param[in]  recipient_rank  The message recipient rank
      */
-    void push(buffer_t&& message, int recipient_rank)
+    void push(buffer_t message, int recipient_rank)
     {
         send_requests.push_back(mpi::comm_world().isend(std::move(message), recipient_rank));
     }
