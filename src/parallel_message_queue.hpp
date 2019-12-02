@@ -73,8 +73,8 @@ public:
 
     /**
      * @brief      Poll the send requests, deleting any that have completed.
-     *             Then issue a non-blocking probe command to see if any MPI has
-     *             any messages waiting for us. Return a vector all waiting
+     *             Then issue a non-blocking probe command to see if MPI has any
+     *             messages waiting for us. Return a vector of all waiting
      *             messages.
      *
      * @return     A std::vector of messages waiting to be recieved

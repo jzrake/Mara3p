@@ -142,7 +142,7 @@ public:
      * @tparam     Scheduler           The type of the scheduler
      */
     template<typename Scheduler>
-    void evaluate_eligible(Scheduler& scheduler, std::function<bool(key_type)> is_responsible_for)
+    void evaluate_eligible(Scheduler& scheduler, std::function<bool(key_type)> is_responsible_for=true_predicate())
     {
         for (const auto& key : eligible_rules(is_responsible_for))
         {
@@ -164,13 +164,15 @@ public:
      * @param[in]  callback  The callback to invoke on newly completed data
      *                       products
      */
-    void poll_pending(std::function<void(key_type, value_type)> callback=nullptr)
+    void poll_pending(
+        std::function<void(key_type, value_type)> callback=nullptr,
+        std::chrono::duration<long> timeout=std::chrono::seconds(0))
     {
         auto completed_keys = std::vector<key_type>();
 
         for (auto& [key, future] : pending_products)
         {
-            if (future.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+            if (future.wait_for(timeout) == std::future_status::ready)
             {
                 auto data_product = future.get();
                 completed_keys.push_back(key);
@@ -242,20 +244,20 @@ public:
 
     /**
      * @brief      Determines if a given rule is eligible to be evaluated,
-     *             meaning that all of its argument (upstream) keys exist as
-     *             data products, and that the graph on this process is
-     *             responsible for evaluating it. The supplied predicate must
-     *             return false if the rule has been delegated to a remote
-     *             process.
+     *             meaning that its data product is neither pending nor
+     *             complete, all of its argument (upstream) keys are complete,
+     *             and that the graph on this process is responsible for
+     *             evaluating it. The supplied predicate must return false if
+     *             the rule has been delegated to a remote process.
      *
      * @param[in]  key                 The key to check for
      * @param[in]  is_responsible_for  The predicate
      *
-     * @return     True if eligible, False otherwise.
+     * @return     True if this rule is eligible to be evaluated
      */
-    bool is_eligible(key_type key, std::function<bool(key_type)> is_responsible_for) const
+    bool is_eligible(key_type key, std::function<bool(key_type)> is_responsible_for=true_predicate()) const
     {
-        if (is_responsible_for(key))
+        if (is_responsible_for(key) && ! contains_product(key) && ! is_pending(key))
         {
             for (const auto& argument_key : upstream_keys(key))
             {
@@ -282,7 +284,7 @@ public:
      *
      * @return     A std::vector of keys
      */
-    std::vector<key_type> eligible_rules(std::function<bool(key_type)> is_responsible_for) const
+    std::vector<key_type> eligible_rules(std::function<bool(key_type)> is_responsible_for=true_predicate()) const
     {
         auto result = std::vector<key_type>();
         
@@ -309,13 +311,13 @@ public:
      *
      * @return     The number of unevaluated rules
      */
-    unsigned count_unevaluated(std::function<bool(key_type)> is_responsible_for) const
+    unsigned count_unevaluated(std::function<bool(key_type)> is_responsible_for=true_predicate()) const
     {
         unsigned count = 0;
 
         for (const auto& [key, rule] : rules)
         {
-            if (is_responsible_for(key))
+            if (! contains_product(key) && is_responsible_for(key))
             {
                 ++count;
             }
@@ -428,7 +430,33 @@ public:
 
 
 
+    /**
+     * @brief      Return a status code indicating whether a rule under the
+     *             given key is non-existent (0), defined but neither evaluated
+     *             nor pending (1), pending evaluation (2), or completed (3).
+     *
+     * @param[in]  key   The key to check for
+     *
+     * @return     A status code
+     */
+    int status(key_type key) const
+    {
+        if (contains_product(key)) return 3;
+        if (is_pending      (key)) return 2;
+        if (contains_rule   (key)) return 1;
+        return 0;
+    }
+
+
+
+
 private:
+
+    static std::function<bool(key_type)> true_predicate()
+    {
+        return [] (auto) { return true; };
+    }
+
     std::map<key_type, rule_type>               rules;
     std::map<key_type, value_type>              products;
     std::map<key_type, std::future<value_type>> pending_products;
