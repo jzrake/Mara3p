@@ -137,12 +137,6 @@ std::set<int> recipients(const std::set<KeyType>& keys, const std::map<KeyType, 
 template<typename KeyType, typename ValueType, typename ResponsibleForType>
 void print_graph_status(const mara::DependencyGraph<KeyType, ValueType>& graph, ResponsibleForType is_responsible_for)
 {
-    using std::left;
-    using std::setw;
-    using std::setfill;
-
-    auto& os = std::cout;
-
     mpi::comm_world().invoke([&] ()
     {
         auto header = "Process "
@@ -151,16 +145,27 @@ void print_graph_status(const mara::DependencyGraph<KeyType, ValueType>& graph, 
         + std::to_string(graph.count_unevaluated(is_responsible_for))
         + " unevaluated)";
 
-        os << std::string(52, '=') << "\n";
-        os << header << ":\n\n";
+        std::cout << std::string(52, '=') << "\n";
+        std::cout << header << ":\n\n";
 
         for (auto key : graph.keys())
         {
-            os << '\t' << left << setw(24) << setfill('.') << key << ' ';
-            os << "status: " << graph.status(key) << " eligible: " << graph.is_eligible(key, is_responsible_for) << (is_responsible_for(key) ? " x" : "");
-            os << '\n';
+            std::cout
+            << '\t'
+            << std::left
+            << std::setw(24)
+            << std::setfill('.')
+            << key
+            << ' '
+            << "status: "
+            << graph.status(key)
+            << " eligible: "
+            << graph.is_eligible(key, is_responsible_for)
+            << (is_responsible_for(key) ? " x " : " ")
+            << (graph.is_completed(key) ? std::to_string(graph.product_at(key)) : " ")
+            << '\n';
         }
-        os << '\n';
+        std::cout << '\n';
     });
 }
 
@@ -213,15 +218,11 @@ int main()
     MPI_Init_thread(0, nullptr, MPI_THREAD_SERIALIZED, nullptr);
 
 
-    auto message_queue    = mara::MessageQueue();
-    auto scheduler        = mara::ThreadPool();
-    auto graph            = build_graph();
-    auto assigned         = partition(graph.keys(), mpi::comm_world().size());
-
-    auto is_responsible_for = [&assigned] (std::string key)
-    {
-        return assigned.at(key) == mpi::comm_world().rank();
-    };
+    auto message_queue      = mara::MessageQueue();
+    auto scheduler          = mara::ThreadPool();
+    auto graph              = build_graph();
+    auto assigned           = partition(graph.keys(), mpi::comm_world().size());
+    auto is_responsible_for = [&assigned] (auto key) { return assigned[key] == mpi::comm_world().rank(); };
 
 
     print_graph_status(graph, is_responsible_for);
@@ -247,18 +248,6 @@ int main()
 
 
     print_graph_status(graph, is_responsible_for);
-    mpi::comm_world().invoke([&] ()
-    {
-        if (is_responsible_for("abcdefgh"))
-        {
-            std::cout << "The result of abcdefgh is " << graph.product_at("abcdefgh") << std::endl;
-        }
-
-        if (is_responsible_for("aebfcgdh"))
-        {
-            std::cout << "The result of aebfcgdh is " << graph.product_at("aebfcgdh") << std::endl;
-        }
-    });
 
 
     MPI_Finalize();

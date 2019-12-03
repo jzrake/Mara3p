@@ -110,7 +110,7 @@ public:
     template<typename... KeyTypes>
     void insert_rule(key_type key, mapping_type mapping, KeyTypes... argument_keys)
     {
-        if (contains_rule(key))
+        if (is_defined(key))
             throw std::invalid_argument("DependencyGraph::insert_rule (rule already exists)");
 
         if (cyclic(key, argument_keys...))
@@ -142,13 +142,13 @@ public:
      */
     void insert_product(std::pair<key_type, value_type> item)
     {
-        if (! contains_rule(item.first))
+        if (! is_defined(item.first))
             throw std::invalid_argument("DependencyGraph::insert_product (rule not defined)");
 
         if (is_pending(item.first))
             throw std::invalid_argument("DependencyGraph::insert_product (evaluation is pending)");
 
-        if (contains_product(item.first))
+        if (is_completed(item.first))
             throw std::invalid_argument(std::string("DependencyGraph::insert_product (already evaluated) ") + item.first + " on " + std::to_string(mpi::comm_world().rank()));
 
         products.insert(item);
@@ -222,7 +222,7 @@ public:
      *
      * @return     True or false
      */
-    bool contains_rule(key_type key) const
+    bool is_defined(key_type key) const
     {
         return rules.find(key) != rules.end();
     }
@@ -238,7 +238,7 @@ public:
      *
      * @return     True or false
      */
-    bool contains_product(key_type key) const
+    bool is_completed(key_type key) const
     {
         return products.find(key) != products.end();
     }
@@ -277,11 +277,11 @@ public:
      */
     bool is_eligible(key_type key, std::function<bool(key_type)> is_responsible_for=true_predicate()) const
     {
-        if (is_responsible_for(key) && ! contains_product(key) && ! is_pending(key))
+        if (is_responsible_for(key) && ! is_completed(key) && ! is_pending(key))
         {
             for (const auto& argument_key : upstream_keys(key))
             {
-                if (! contains_product(argument_key))
+                if (! is_completed(argument_key))
                 {
                     return false;
                 }
@@ -337,7 +337,7 @@ public:
 
         for (const auto& [key, rule] : rules)
         {
-            if (! contains_product(key) && is_responsible_for(key))
+            if (! is_completed(key) && is_responsible_for(key))
             {
                 ++count;
             }
@@ -489,9 +489,9 @@ public:
      */
     int status(key_type key) const
     {
-        if (contains_product(key)) return 3;
-        if (is_pending      (key)) return 2;
-        if (contains_rule   (key)) return 1;
+        if (is_completed(key)) return 3;
+        if (is_pending  (key)) return 2;
+        if (is_defined  (key)) return 1;
         return 0;
     }
 
