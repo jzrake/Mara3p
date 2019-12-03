@@ -1,4 +1,3 @@
-
 /**
  ==============================================================================
  Copyright 2019, Jonathan Zrake
@@ -27,32 +26,25 @@
 
 
 
-#define DO_UNIT_TESTS
+#pragma once
+#include <string>
 #include "app_serial.hpp"
-#include "app_config.hpp"
-#include "app_hdf5.hpp"
-#include "app_hdf5_dimensional.hpp"
-#include "app_hdf5_ndarray.hpp"
-#include "app_hdf5_numeric_array.hpp"
-#include "app_hdf5_ndarray_dimensional.hpp"
-#include "app_hdf5_rational.hpp"
-#include "app_hdf5_std_map.hpp"
-#include "app_hdf5_std_variant.hpp"
+#include "app_serial_std_vector.hpp"
 
 
 
 
 //=============================================================================
-int test_app()
+template<>
+struct serial::conversion_to_serializable_t<std::string>
 {
-    test_serial();
-    test_hdf5();
-    test_hdf5_dimensional();
-    test_hdf5_ndarray();
-    test_hdf5_ndarray_dimensional();
-    test_hdf5_numeric_array();
-    test_hdf5_rational();
-    test_hdf5_std_variant();
-    test_hdf5_std_map();
-    return 0;
-}
+    using type = std::vector<char>;
+    auto operator()(std::string value) const { return std::vector<char>(value.begin(), value.end()); }
+};
+
+template<>
+struct serial::conversion_from_serializable_t<std::string>
+{
+    using type = std::vector<char>;
+    auto operator()(std::vector<char> value) const { return std::string(value.begin(), value.end()); }
+};

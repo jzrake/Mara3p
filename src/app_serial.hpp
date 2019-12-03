@@ -487,7 +487,7 @@ struct serial::type_descriptor_t<non_pod_struct_t>
 
 
 //=============================================================================
-inline void test_binary_serialize()
+inline void test_serial()
 {
     auto require_serializes = [] (auto value)
     {

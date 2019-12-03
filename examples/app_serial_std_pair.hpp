@@ -1,4 +1,3 @@
-
 /**
  ==============================================================================
  Copyright 2019, Jonathan Zrake
@@ -27,32 +26,21 @@
 
 
 
-#define DO_UNIT_TESTS
+#pragma once
+#include <utility>
 #include "app_serial.hpp"
-#include "app_config.hpp"
-#include "app_hdf5.hpp"
-#include "app_hdf5_dimensional.hpp"
-#include "app_hdf5_ndarray.hpp"
-#include "app_hdf5_numeric_array.hpp"
-#include "app_hdf5_ndarray_dimensional.hpp"
-#include "app_hdf5_rational.hpp"
-#include "app_hdf5_std_map.hpp"
-#include "app_hdf5_std_variant.hpp"
 
 
 
 
 //=============================================================================
-int test_app()
+template<typename T, typename U>
+struct serial::type_descriptor_t<std::pair<T, U>>
 {
-    test_serial();
-    test_hdf5();
-    test_hdf5_dimensional();
-    test_hdf5_ndarray();
-    test_hdf5_ndarray_dimensional();
-    test_hdf5_numeric_array();
-    test_hdf5_rational();
-    test_hdf5_std_variant();
-    test_hdf5_std_map();
-    return 0;
-}
+    template<typename Serializer>
+    void operator()(Serializer& s, std::pair<T, U>& value) const
+    {
+        s(value.first);
+        s(value.second);
+    }
+};

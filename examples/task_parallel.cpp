@@ -31,66 +31,8 @@
 #include "parallel_message_queue.hpp"
 #include "parallel_thread_pool.hpp"
 #include "parallel_dependency_graph.hpp"
-#include "app_binary_serialize.hpp"
-
-
-
-
-//=============================================================================
-template<typename T>
-struct serial::container_shape_setter_t<std::vector<T>>
-{
-    template<typename Serializer>
-    auto operator()(Serializer& s, std::vector<T>& value)
-    {
-        value.resize(s.template vend<std::size_t>());
-    }
-};
-
-template<typename T>
-struct serial::container_shape_descriptor_t<std::vector<T>>
-{
-    template<typename Serializer>
-    auto operator()(Serializer& s, const std::vector<T>& value)
-    {
-        s(value.size());
-    }
-};
-
-template<typename T>
-struct serial::type_descriptor_t<std::vector<T>>
-{
-    template<typename Serializer>
-    void operator()(Serializer& s, std::vector<T>& value) const
-    {
-        s(value.data(), value.size());
-    }
-};
-
-template<>
-struct serial::conversion_to_serializable_t<std::string>
-{
-    using type = std::vector<char>;
-    auto operator()(std::string value) const { return std::vector<char>(value.begin(), value.end()); }
-};
-
-template<>
-struct serial::conversion_from_serializable_t<std::string>
-{
-    using type = std::vector<char>;
-    auto operator()(std::vector<char> value) const { return std::string(value.begin(), value.end()); }
-};
-
-template<typename T, typename U>
-struct serial::type_descriptor_t<std::pair<T, U>>
-{
-    template<typename Serializer>
-    void operator()(Serializer& s, std::pair<T, U>& value) const
-    {
-        s(value.first);
-        s(value.second);
-    }
-};
+#include "app_serial_std_string.hpp"
+#include "app_serial_std_pair.hpp"
 
 
 
