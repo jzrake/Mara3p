@@ -93,8 +93,8 @@ inline number_t operator+(int a, number_t b) { return number(a) + b; }
 inline number_t operator-(int a, number_t b) { return number(a) - b; }
 inline number_t operator*(int a, number_t b) { return number(a) * b; }
 inline number_t operator/(int a, number_t b) { return number(a) / b; }
-inline bool operator==(number_t a, number_t b) { return reduce(a / b).num == 1 && reduce(a / b).den == 1; }
-inline bool operator!=(number_t a, number_t b) { return reduce(a / b).num != 1 || reduce(a / b).den != 1; }
+inline bool operator==(number_t a, number_t b) { return double(a) == double(b); }
+inline bool operator!=(number_t a, number_t b) { return double(a) != double(b); }
 inline bool operator< (number_t a, number_t b) { return double(a) <  double(b); }
 inline bool operator> (number_t a, number_t b) { return double(a) >  double(b); }
 inline bool operator<=(number_t a, number_t b) { return double(a) <= double(b); }
