@@ -119,7 +119,7 @@ std::map<KeyType, int> partition(const std::vector<KeyType>& keys, unsigned num_
 
 //=============================================================================
 template<typename KeyType>
-std::set<int> unique_recipients(const std::set<KeyType>& keys, const std::map<KeyType, int>& assigned_process)
+std::set<int> recipients(const std::set<KeyType>& keys, const std::map<KeyType, int>& assigned_process)
 {
     auto recipients = std::set<int>();
 
@@ -128,34 +128,6 @@ std::set<int> unique_recipients(const std::set<KeyType>& keys, const std::map<Ke
             recipients.insert(recipient);
 
     return recipients;
-}
-
-
-
-
-//=============================================================================
-template<typename KeyType>
-void print_process_assignments(const std::map<KeyType, int>& assigned_process)
-{
-    using std::left;
-    using std::setw;
-    using std::setfill;
-
-    auto& os = std::cout;
-
-    if (mpi::comm_world().rank() == 0)
-    {
-        auto header = "Rule assignment";
-
-        os << std::string(52, '=') << "\n";
-        os << header << ":\n\n";
-
-        for (auto item : assigned_process)
-        {
-            os << '\t' << left << setw(24) << setfill('.') << item.first << ' ' << item.second << std::endl;
-        }
-        os << '\n';
-    }
 }
 
 
@@ -171,51 +143,25 @@ void print_graph_status(const mara::DependencyGraph<KeyType, ValueType>& graph, 
 
     auto& os = std::cout;
 
-    for (int i = 0; i < mpi::comm_world().size(); ++i)
+    mpi::comm_world().invoke([&] ()
     {
-        if (i == mpi::comm_world().rank())
+        auto header = "Process "
+        + std::to_string(mpi::comm_world().rank())
+        + " ("
+        + std::to_string(graph.count_unevaluated(is_responsible_for))
+        + " unevaluated)";
+
+        os << std::string(52, '=') << "\n";
+        os << header << ":\n\n";
+
+        for (auto key : graph.keys())
         {
-            auto header = "Process "
-            + std::to_string(mpi::comm_world().rank())
-            + " ("
-            + std::to_string(graph.count_unevaluated(is_responsible_for))
-            + " unevaluated)";
-
-            os << std::string(52, '=') << "\n";
-            os << header << ":\n\n";
-
-            for (auto key : graph.keys())
-            {
-                os << '\t' << left << setw(24) << setfill('.') << key << ' ';
-                os << "status: " << graph.status(key) << " eligible: " << graph.is_eligible(key, is_responsible_for) << (is_responsible_for(key) ? " x" : "");
-                os << '\n';
-            }
+            os << '\t' << left << setw(24) << setfill('.') << key << ' ';
+            os << "status: " << graph.status(key) << " eligible: " << graph.is_eligible(key, is_responsible_for) << (is_responsible_for(key) ? " x" : "");
             os << '\n';
         }
-        mpi::comm_world().barrier();
-    }
-}
-
-
-
-
-//=============================================================================
-void print_received_messages(const std::vector<mpi::buffer_t>& messages)
-{
-    for (int i = 0; i < mpi::comm_world().size(); ++i)
-    {
-        if (i == mpi::comm_world().rank())
-        {
-            std::cout << "checking messages..." << std::endl;
-
-            for (auto message : messages)
-            {
-                auto [k, p] = serial::loads<std::pair<std::string, int>>(message);
-                std::cout << "process " << i << " received " << k << "\n";
-            }
-        }
-        mpi::comm_world().barrier();
-    }
+        os << '\n';
+    });
 }
 
 
@@ -270,60 +216,49 @@ int main()
     auto message_queue    = mara::MessageQueue();
     auto scheduler        = mara::ThreadPool();
     auto graph            = build_graph();
-    auto assigned_process = partition(graph.keys(), mpi::comm_world().size());
+    auto assigned         = partition(graph.keys(), mpi::comm_world().size());
 
-    auto is_responsible_for = [&assigned_process] (std::string key)
+    auto is_responsible_for = [&assigned] (std::string key)
     {
-        return assigned_process.at(key) == mpi::comm_world().rank();
+        return assigned.at(key) == mpi::comm_world().rank();
     };
 
 
-    auto push_to_remotes = [
-        &message_queue,
-        &graph,
-        &assigned_process] (auto key, auto value)
-    {
-        message_queue.push(
-            serial::dumps(std::pair(key, graph.product_at(key))),
-            unique_recipients(graph.downstream_keys(key), assigned_process));
-    };
-
-
-    print_process_assignments(assigned_process);
     print_graph_status(graph, is_responsible_for);
 
 
     while (graph.count_unevaluated(is_responsible_for))
     {
-        graph.evaluate_eligible(scheduler, is_responsible_for);
-        graph.poll_pending(push_to_remotes, std::chrono::seconds(1));
-
-        // auto received_messages = message_queue.poll();
-        // print_graph_status(graph, is_responsible_for);
-
-        for (const auto& received_message : message_queue.poll())
+        for (const auto& key : graph.eligible_rules(is_responsible_for))
         {
-            graph.insert_product(serial::loads<std::pair<std::string, int>>(received_message));
+            graph.evaluate_rule(key, scheduler);                
+        }
+
+        for (const auto& [k, p] : graph.poll())
+        {
+            message_queue.push(serial::dumps(std::pair(k, p)), recipients(graph.downstream_keys(k), assigned));
+        }
+
+        for (const auto& received : message_queue.poll())
+        {
+            graph.insert_product(serial::loads<std::pair<std::string, int>>(received));
         }
     }
 
 
     print_graph_status(graph, is_responsible_for);
-    mpi::comm_world().barrier();
-
-
-    for (int i = 0; i < mpi::comm_world().size(); ++i)
+    mpi::comm_world().invoke([&] ()
     {
-        if (i == mpi::comm_world().rank())
+        if (is_responsible_for("abcdefgh"))
         {
-            if (is_responsible_for("abcdefgh"))
-                std::cout << "The result of abcdefgh is " << graph.product_at("abcdefgh") << std::endl;
-
-            if (is_responsible_for("aebfcgdh"))
-                std::cout << "The result of aebfcgdh is " << graph.product_at("aebfcgdh") << std::endl;
+            std::cout << "The result of abcdefgh is " << graph.product_at("abcdefgh") << std::endl;
         }
-        mpi::comm_world().barrier();
-    }
+
+        if (is_responsible_for("aebfcgdh"))
+        {
+            std::cout << "The result of aebfcgdh is " << graph.product_at("aebfcgdh") << std::endl;
+        }
+    });
 
 
     MPI_Finalize();

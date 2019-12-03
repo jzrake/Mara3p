@@ -183,63 +183,32 @@ public:
 
 
     /**
-     * @brief      Evaluate all of the currently eligible rules on a particular
-     *             scheduler, referencing the given predicate to filter out
-     *             rules whose evaluation has been delegated to another process.
-     *
-     * @param      scheduler           The scheduler to use
-     * @param[in]  is_responsible_for  The predicate to filter out remote rules
-     *
-     * @tparam     Scheduler           The type of the scheduler
-     */
-    template<typename Scheduler>
-    void evaluate_eligible(Scheduler& scheduler, std::function<bool(key_type)> is_responsible_for=true_predicate())
-    {
-        for (const auto& key : eligible_rules(is_responsible_for))
-        {
-            evaluate_rule(key, scheduler);
-        }
-    }
-
-
-
-
-    /**
      * @brief      Check on the status of data products whose evaluation is
-     *             currently pending, invoking an optional callback on the key
-     *             and value of any products that are newly completed, and
-     *             moving those products to the internal map of completed
-     *             products. The callback is likely utilized to communicate
-     *             completed products to graphs on other processes.
+     *             currently pending, and move them to the internal map of
+     *             completed items.
      *
-     * @param[in]  callback  The callback to invoke on newly completed data
-     *                       products
+     * @param[in]  timeout  The amount of time to wait for pending items to
+     *                      finish
+     *
+     * @return     A map of the newly completed items
      */
-    void poll_pending(
-        std::function<void(key_type, value_type)> callback=nullptr,
-        std::chrono::duration<long> timeout=std::chrono::seconds(0))
+    std::map<key_type, value_type> poll(std::chrono::duration<long> timeout=std::chrono::seconds(0))
     {
-        auto completed_keys = std::vector<key_type>();
+        auto completed = std::map<key_type, value_type>();
 
         for (auto& [key, future] : pending_products)
         {
             if (future.wait_for(timeout) == std::future_status::ready)
             {
-                auto data_product = future.get();
-                completed_keys.push_back(key);
-                products[key] = data_product;
-
-                if (callback)
-                {
-                    callback(key, data_product);
-                }
+                products[key] = completed[key] = future.get();
             }
         }
 
-        for (const auto& key : completed_keys)
+        for (const auto& item : completed)
         {
-            pending_products.erase(key);
+            pending_products.erase(item.first);
         }
+        return completed;
     }
 
 

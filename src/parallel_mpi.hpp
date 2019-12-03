@@ -80,7 +80,7 @@ namespace mpi
             case operation::maxloc: return MPI_MAXLOC;
             case operation::minloc: return MPI_MINLOC;
         }
-    }
+    }    
 }
 
 
@@ -850,6 +850,21 @@ public:
         int result_value;
         MPI_Allreduce(&local_value, &result_value, 1, MPI_INT, get_op(op), comm);
         return result_value;
+    }
+
+
+    //=========================================================================
+    template<typename FunctionType, typename... Args>
+    void invoke(FunctionType function, Args... args)
+    {
+        for (int i = 0; i < size(); ++i)
+        {
+            if (i == rank())
+            {
+                std::invoke(function, args...);
+            }
+            barrier();
+        }
     }
 
 
