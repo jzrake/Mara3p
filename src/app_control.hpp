@@ -28,6 +28,7 @@
 
 #pragma once
 #include <chrono>
+#include <functional>
 #include <string>
 #include <tuple>
 #include "core_dimensional.hpp"

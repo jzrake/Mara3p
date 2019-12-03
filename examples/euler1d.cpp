@@ -122,12 +122,12 @@ state_t advance(state_t state)
     auto p0 = u0 | nd::map(recover_primitive());
     auto f0 = p0 | nd::extend_zero_gradient() | nd::adjacent_zip() | nd::map(riemann_solver_for(xh)) | nd::to_shared();
     auto df = f0 | nd::adjacent_diff();
-    auto u1 = u0 - df * dt / dx | nd::to_shared();
+    auto u1 = u0 - df * dt / dx;
 
     return {
         state.time + dt,
         state.iteration + 1,
-        u1,
+        u1 | nd::to_shared(),
         std::chrono::high_resolution_clock::now(),
     };
 }

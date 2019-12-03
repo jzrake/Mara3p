@@ -86,8 +86,8 @@ state_with_vertices_t<ConservedType> advance(
         auto ff = fv | nd::map([] (auto a) { return std::get<0>(a); });
         auto vf = fv | nd::map([] (auto a) { return std::get<1>(a); });
         auto df = ff | nd::multiply(da) | nd::adjacent_diff() | nd::to_shared();
-        auto x1 = state.vertices  + (vf * dt)                 | nd::to_shared();
-        auto u1 = state.conserved + (s0 - df) * dt            | nd::to_shared();
+        auto x1 = (state.vertices  + (vf * dt))               | nd::to_shared();
+        auto u1 = (state.conserved + (s0 - df) * dt)          | nd::to_shared();
 
         return {
             state.iteration + 1,

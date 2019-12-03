@@ -843,7 +843,7 @@ template<typename SequenceType>
 auto take(SequenceType sequence, unsigned long count)
 {
     return map(take_while(enumerate(sequence),
-        [count] (auto iv) { return iv.first < count; }),
+        [count] (auto iv) { return (unsigned long)iv.first < count; }),
         []      (auto iv) { return iv.second; });
 }
 

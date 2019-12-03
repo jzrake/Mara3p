@@ -110,7 +110,7 @@ struct tree_index_t
 template<std::size_t R>
 bool valid(const tree_index_t<R>& i)
 {
-    return all(map(i.coordinates, [level=i.level] (auto j) { return j < (1 << level); }));
+    return all(map(i.coordinates, [level=i.level] (auto j) { return j < unsigned(1 << level); }));
 }
 
 

@@ -579,9 +579,9 @@ inline void test_linked_list()
     require((seq::to<std::vector>(seq::adapt(list::singly_linked_t<double>(values.begin(), values.end()))) == values));
     require(head(seq::to<list::singly_linked_t>(seq::range(10))) == 0);
     require(size(seq::to<list::singly_linked_t>(seq::range(10))) == 10);
-    require(size(seq::to<list::singly_linked_t>(seq::range(big))) == big);
-    require(size(take(seq::to<list::singly_linked_t>(seq::range(10)), 2)) == 2);
-    require(head(take(seq::to<list::singly_linked_t>(seq::range(10)), 2)) == 0);
+    require(size(seq::to<list::singly_linked_t>(seq::range(big))) == std::size_t(big));
+    require(size(take(seq::to<list::singly_linked_t>(seq::range(10)), 2)) == std::size_t(2));
+    require(head(take(seq::to<list::singly_linked_t>(seq::range(10)), 2)) == std::size_t(0));
 
 
     require(head(drop(seq::to<list::singly_linked_t>(seq::range(10)), 2)) == 2);
@@ -589,7 +589,7 @@ inline void test_linked_list()
     require_throws(drop(seq::to<list::singly_linked_t>(seq::range(10)), 11));
 
 
-    require(head(drop(seq::to<list::singly_linked_t>(seq::range(big)), big - 1)) == big - 1);
+    require(head(drop(seq::to<list::singly_linked_t>(seq::range(big)), big - 1)) + 1 == big);
     require(head(reverse(seq::to<list::singly_linked_t>(seq::range(big)))) == big - 1);
     require(sorted_merge(list::from(1, 3, 5), list::from(2, 4, 6), std::less<>()) == list::from(1, 2, 3, 4, 5, 6));
 

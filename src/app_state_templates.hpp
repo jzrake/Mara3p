@@ -59,10 +59,10 @@ template<typename ConservedType>
 auto weighted_sum(state_with_vertices_t<ConservedType> s, state_with_vertices_t<ConservedType> t, rational::number_t b)
 {
     return state_with_vertices_t<ConservedType>{
-        s.iteration *         b + t.iteration *       (1 - b),
-        s.time      * double(b) + t.time      * double(1 - b),
-        s.vertices  * double(b) + t.vertices  * double(1 - b) | nd::to_shared(),
-        s.conserved * double(b) + t.conserved * double(1 - b) | nd::to_shared(),
+        s.iteration  *         b + t.iteration *       (1 - b),
+        s.time       * double(b) + t.time      * double(1 - b),
+        (s.vertices  * double(b) + t.vertices  * double(1 - b)) | nd::to_shared(),
+        (s.conserved * double(b) + t.conserved * double(1 - b)) | nd::to_shared(),
     };
 }
 
