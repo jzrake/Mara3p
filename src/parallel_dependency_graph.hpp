@@ -64,6 +64,38 @@ public:
 
 
     /**
+     * @brief      Return true if the addition of the given rule would create a
+     *             dependency cycle in the graph. This checks for whether any of
+     *             the expression's symbols are downstream of its key.
+     *
+     * @param[in]  key            The key identifying the rule
+     * @param[in]  argument_keys  The names of the products required for this
+     *                            rule to be evaluated
+     *
+     * @tparam     KeyTypes       The types of the upstream keys (must all be
+     *                            convertable to key_type)
+     *
+     * @return     True or false
+     */
+    template<typename... KeyTypes>
+    bool cyclic(key_type key, KeyTypes... argument_keys)
+    {
+        auto dependents = referencing(key);
+
+        for (const auto& s : key_vector_type{argument_keys...})
+        {
+            if (dependents.count(s) || s == key)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+
+
+    /**
      * @brief      Insert an evaluation rule into this graph. The entry must not
      *             replace a rule that already exists.
      *
@@ -81,7 +113,19 @@ public:
         if (contains_rule(key))
             throw std::invalid_argument("DependencyGraph::insert_rule (rule already exists)");
 
+        if (cyclic(key, argument_keys...))
+            throw std::invalid_argument("DependencyGraph::insert_rule (rule would create a dependency cycle)");
+
         rules[key] = std::pair(mapping, key_vector_type{argument_keys...});
+        downstream[key] = downstream_keys(key);
+
+        for (const auto& [k, r] : rules)
+        {
+            if (contains(upstream_keys(key), k))
+            {
+                downstream[k].insert(key);
+            }
+        }
     }
 
 
@@ -360,17 +404,45 @@ public:
      * @return     A std::vector, containing the keys that are immediately
      *             downstream of the one given
      */
-    std::vector<key_type> downstream_keys(key_type key) const
+    std::set<key_type> downstream_keys(key_type key) const
     {
-        auto result = std::vector<key_type>();
+        if (downstream.count(key))
+        {
+            return downstream.at(key);            
+        }
+
+        auto result = std::set<key_type>();
 
         for (const auto& [k, r] : rules)
         {
-            const auto& up = upstream_keys(k);
-
-            if (std::find(up.begin(), up.end(), key) != up.end())
+            if (contains(upstream_keys(k), key))
             {
-                result.push_back(k);
+                result.insert(k);
+            }
+        }
+        return result;
+    }
+
+
+
+
+    /**
+     * @brief      Return the keys that reference (directly or indirectly) the
+     *             given key.
+     *
+     * @param[in]  key   The key to check for
+     *
+     * @return     A std::set of keys
+     */
+    std::set<key_type> referencing(key_type key) const
+    {
+        auto result = downstream_keys(key);
+
+        for (const auto& k : downstream_keys(key))
+        {
+            for (const auto& m : referencing(k))
+            {
+                result.insert(m);
             }
         }
         return result;
@@ -458,13 +530,21 @@ public:
 
 
 private:
-
+    //=========================================================================
     static std::function<bool(key_type)> true_predicate()
     {
         return [] (auto) { return true; };
     }
 
+    static bool contains(const std::vector<key_type>& v, const key_type& k)
+    {
+        return std::find(v.begin(), v.end(), k) != v.end();
+    }
+
+
+    //=========================================================================
     std::map<key_type, rule_type>               rules;
     std::map<key_type, value_type>              products;
     std::map<key_type, std::future<value_type>> pending_products;
+    std::map<key_type, std::set<key_type>>      downstream;
 };

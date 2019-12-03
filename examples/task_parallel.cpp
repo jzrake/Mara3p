@@ -119,7 +119,7 @@ std::map<KeyType, int> partition(const std::vector<KeyType>& keys, unsigned num_
 
 //=============================================================================
 template<typename KeyType>
-std::set<int> unique_recipients(const std::vector<KeyType>& keys, const std::map<KeyType, int>& assigned_process)
+std::set<int> unique_recipients(const std::set<KeyType>& keys, const std::map<KeyType, int>& assigned_process)
 {
     auto recipients = std::set<int>();
 
@@ -271,7 +271,6 @@ int main()
     auto scheduler        = mara::ThreadPool();
     auto graph            = build_graph();
     auto assigned_process = partition(graph.keys(), mpi::comm_world().size());
-
 
     auto is_responsible_for = [&assigned_process] (std::string key)
     {
