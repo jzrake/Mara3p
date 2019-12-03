@@ -143,13 +143,13 @@ public:
     void insert_product(std::pair<key_type, value_type> item)
     {
         if (! is_defined(item.first))
-            throw std::invalid_argument("DependencyGraph::insert_product (rule not defined)");
+            throw std::out_of_range("DependencyGraph::insert_product (rule not defined)");
 
         if (is_pending(item.first))
             throw std::invalid_argument("DependencyGraph::insert_product (evaluation is pending)");
 
         if (is_completed(item.first))
-            throw std::invalid_argument(std::string("DependencyGraph::insert_product (already evaluated) ") + item.first + " on " + std::to_string(mpi::comm_world().rank()));
+            throw std::invalid_argument("DependencyGraph::insert_product (already evaluated)");
 
         products.insert(item);
     }
@@ -173,8 +173,14 @@ public:
     template<typename Scheduler>
     void evaluate_rule(key_type key, Scheduler& scheduler)
     {
-        if (! rules.count(key) || products.count(key) || pending_products.count(key))
-            throw std::invalid_argument("DependencyGraph::evaluate_rule");
+        if (! is_defined(key))
+            throw std::out_of_range("DependencyGraph::evaluate_rule (rule not defined)");
+
+        if (is_pending(key))
+            throw std::invalid_argument("DependencyGraph::evaluate_rule (evaluation is pending)");
+
+        if (is_completed(key))
+            throw std::invalid_argument("DependencyGraph::evaluate_rule (already evaluated)");
 
         pending_products[key] = scheduler.enqueue(rules.at(key).first, argument_values(key));
     }
@@ -415,6 +421,70 @@ public:
             }
         }
         return result;
+    }
+
+
+
+
+    /**
+     * @brief      Return all the primitive rules upstream of the one defined
+     *             under the given key. A primitive rule is one that has no
+     *             arguments. If the given key is not defined, or if a
+     *             dependency (direct or indirect) without a definition is
+     *             encountered, this function throws std::out_of_range.
+     *
+     * @param[in]  key   The key to check for
+     *
+     * @return     A std::set of keys
+     */
+    std::set<key_type> primitives(key_type key) const
+    {
+        auto result = std::set<key_type>();
+
+        for (const auto& k : upstream_keys(key))
+        {
+            if (upstream_keys(k).empty())
+            {
+                result.insert(k);                        
+            }
+            else
+            {
+                for (const auto& m : primitives(k))
+                {
+                    result.insert(m);
+                }
+            }
+        }
+        return result;
+    }
+
+
+
+
+    /**
+     * @brief      Throw a runtime error if the graph is any lacking any
+     *             definitions that would be required to fully evaluate it.
+     *
+     * @return     A moved copy of this
+     *
+     * @note       This function is likely to be used in a graph factory
+     *             function, e.g.
+     *             
+     *             return std::move(graph).throw_if_incomplete();
+     */
+    DependencyGraph throw_if_incomplete() &&
+    {
+        try {
+            for (const auto& [k, r] : rules)
+            {
+                primitives(k);
+            }
+            return std::move(*this);
+        }
+        catch (const std::out_of_range&)
+        {
+            throw std::runtime_error("DependencyGraph::throw_if_incomplete");
+        }
     }
 
 
