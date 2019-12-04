@@ -199,7 +199,8 @@ public:
      *
      * @return     A map of the newly completed items
      */
-    std::map<key_type, value_type> poll(std::chrono::duration<long> timeout=std::chrono::seconds(0))
+    template<class Rep, class Period>
+    std::map<key_type, value_type> poll(std::chrono::duration<Rep, Period> timeout)
     {
         auto completed = std::map<key_type, value_type>();
 

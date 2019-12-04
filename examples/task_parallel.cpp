@@ -179,7 +179,7 @@ int main()
             graph.evaluate_rule(key, scheduler);                
         }
 
-        for (const auto& [k, p] : graph.poll())
+        for (const auto& [k, p] : graph.poll(std::chrono::milliseconds(10)))
         {
             message_queue.push(serial::dumps(std::pair(k, p)), recipients(graph.downstream_keys(k), assigned));
         }
