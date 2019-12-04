@@ -26,6 +26,8 @@
 
 
 
+#include <iomanip>
+#include <iostream>
 #include <set>
 #include "parallel_mpi.hpp"
 #include "parallel_message_queue.hpp"

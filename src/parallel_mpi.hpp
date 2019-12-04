@@ -27,11 +27,10 @@
 
 
 #pragma once
-#include <string>
+#include <cstring>
+#include <functional>
 #include <numeric>
 #include <vector>
-#include <fstream>
-#include <iostream>
 #include <mpi.h>
 
 
@@ -495,7 +494,7 @@ public:
 
     /**
      * Blocking-receive a message with the given source and tag. Return the
-     * data as a string.
+     * data as a buffer.
      */
     buffer_t recv(int source=any_source, int tag=any_tag) const
     {
@@ -535,7 +534,7 @@ public:
 
 
     /**
-     * Blocking-send a string to the given rank.
+     * Blocking-send a buffer to the given rank.
      */
     void send(buffer_t buf, int rank, int tag=0) const
     {
@@ -544,7 +543,7 @@ public:
 
 
     /**
-     * Blocking-sendrecv a string from dest to source
+     * Blocking-sendrecv a buffer from dest to source
      */
     buffer_t sendrecv(buffer_t sendbuf, int dest, int source, int tag=0)
     {
@@ -560,7 +559,7 @@ public:
 
 
     /**
-     * Non-blocking send a string to the given rank. Returns a request object
+     * Non-blocking send a buffer to the given rank. Returns a request object
      * that can be tested for completion or waited on. Note that the request
      * is cancelled if allowed to go out of scope. Also keep in mind your MPI
      * implementation may have chosen to buffer your message internally, in

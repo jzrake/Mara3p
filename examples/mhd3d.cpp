@@ -78,12 +78,12 @@ struct solution_t
 solution_t weighted_sum(solution_t s, solution_t t, rational::number_t b)
 {
     return {
-        s.iteration *         b + t.iteration *       (1 - b),
-        s.time      * double(b) + t.time      * double(1 - b),
-        s.conserved * double(b) + t.conserved * double(1 - b) | nd::to_shared(),
-        s.magnetic_flux_1 * double(b) + t.magnetic_flux_1 * double(1 - b) | nd::to_shared(),
-        s.magnetic_flux_2 * double(b) + t.magnetic_flux_2 * double(1 - b) | nd::to_shared(),
-        s.magnetic_flux_3 * double(b) + t.magnetic_flux_3 * double(1 - b) | nd::to_shared(),
+        s.iteration  *         b + t.iteration *       (1 - b),
+        s.time       * double(b) + t.time      * double(1 - b),
+        (s.conserved * double(b) + t.conserved * double(1 - b)) | nd::to_shared(),
+        (s.magnetic_flux_1 * double(b) + t.magnetic_flux_1 * double(1 - b)) | nd::to_shared(),
+        (s.magnetic_flux_2 * double(b) + t.magnetic_flux_2 * double(1 - b)) | nd::to_shared(),
+        (s.magnetic_flux_3 * double(b) + t.magnetic_flux_3 * double(1 - b)) | nd::to_shared(),
     };
 }
 

@@ -34,12 +34,6 @@
 
 
 //=============================================================================
-namespace h5 {
-
-
-
-
-//=============================================================================
 template<typename T>
 struct h5::hdf5_datatype_creation<geometric::euclidean_vector_t<T>>
 {
@@ -57,5 +51,3 @@ struct h5::hdf5_datatype_creation<geometric::unit_vector_t>
         return make_datatype_for(double()).as_array(3);
     }
 };
-
-} // namespace h5
