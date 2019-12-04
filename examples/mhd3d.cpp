@@ -91,7 +91,6 @@ solution_t weighted_sum(solution_t s, solution_t t, rational::number_t b)
 
 
 //=============================================================================
-using namespace std::placeholders;
 using position_t            = geometric::euclidean_vector_t<dimensional::unit_length>;
 using solution_with_tasks_t = std::pair<solution_t, control::task_t>;
 using timed_state_pair_t    = control::timed_pair_t<solution_with_tasks_t>;

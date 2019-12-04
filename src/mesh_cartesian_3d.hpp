@@ -250,9 +250,9 @@ auto remove_surface = [] (nd::uint count)
 {
     return [c=count] (auto x)
     {
-        return nd::make_array(nd::indexing([x] (auto i, auto j, auto k)
+        return nd::make_array(nd::indexing([x,c] (auto i, auto j, auto k)
         {
-            return x(i + 1, j + 1, k + 1);
+            return x(i + c, j + c, k + c);
         }), nd::uivec(shape(x, 0) - 2 * c, shape(x, 1) - 2 * c, shape(x, 2) - 2 * c));
     };
 };
@@ -261,9 +261,9 @@ auto remove_transverse_i = [] (nd::uint count)
 {
     return [c=count] (auto x)
     {
-        return nd::make_array(nd::indexing([x] (auto i, auto j, auto k)
+        return nd::make_array(nd::indexing([x,c] (auto i, auto j, auto k)
         {
-            return x(i, j + 1, k + 1);
+            return x(i, j + c, k + c);
         }), nd::uivec(shape(x, 0), shape(x, 1) - 2 * c, shape(x, 2) - 2 * c));
     };
 };
@@ -272,9 +272,9 @@ auto remove_transverse_j = [] (nd::uint count)
 {
     return [c=count] (auto x)
     {
-        return nd::make_array(nd::indexing([x] (auto i, auto j, auto k)
+        return nd::make_array(nd::indexing([x,c] (auto i, auto j, auto k)
         {
-            return x(i + 1, j, k + 1);
+            return x(i + c, j, k + c);
         }), nd::uivec(shape(x, 0) - 2 * c, shape(x, 1), shape(x, 2) - 2 * c));
     };
 };
@@ -283,9 +283,9 @@ auto remove_transverse_k = [] (nd::uint count)
 {
     return [c=count] (auto x)
     {
-        return nd::make_array(nd::indexing([x] (auto i, auto j, auto k)
+        return nd::make_array(nd::indexing([x,c] (auto i, auto j, auto k)
         {
-            return x(i + 1, j + 1, k);
+            return x(i + c, j + c, k);
         }), nd::uivec(shape(x, 0) - 2 * c, shape(x, 1) - 2 * c, shape(x, 2)));
     };
 };
