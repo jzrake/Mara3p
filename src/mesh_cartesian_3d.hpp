@@ -27,9 +27,11 @@
 
 
 #pragma once
+#include <vector>
 #include "core_geometric.hpp"
 #include "core_ndarray.hpp"
 #include "core_ndarray_ops.hpp"
+#include "core_numeric_array.hpp"
 #include "core_util.hpp"
 
 
@@ -37,6 +39,18 @@
 
 //=============================================================================
 namespace mesh {
+
+
+
+
+/**
+ * @brief      This enum is used to represent an axis in a 3d array
+ */
+enum class axis_3d {
+    i, j, k
+};
+
+using block_index_3d_t = numeric::array_t<unsigned long, 3>;
 
 
 
@@ -234,6 +248,133 @@ auto divergence_difference(nd::array_t<P1, 3> f1, nd::array_t<P2, 3> f2, nd::arr
 
 
 //=============================================================================
+template<typename P>
+auto tile_blocks_27(std::vector<nd::array_t<P, 3>> blocks)
+{
+    if (blocks.size() != 27)
+        throw std::invalid_argument("mesh::tile_blocks_27 (must supply exactly 27 blocks)");
+
+    for (const auto& block : blocks)
+        if (shape(block) != shape(blocks.at(0)))
+            throw std::invalid_argument("mesh::tile_blocks_27 (supplied blocks have non-uniform shapes)");
+
+    auto ni = shape(blocks.at(0), 0);
+    auto nj = shape(blocks.at(0), 1);
+    auto nk = shape(blocks.at(0), 2);
+
+    return nd::make_array(nd::indexing([ni, nj, nk, blocks] (auto i, auto j, auto k)
+    {
+        auto s = nd::uivec(1, 3, 9);
+        auto b = nd::uivec(i / ni, j / nj, k / nk);
+        auto c = nd::uivec(i % ni, j % nj, k % nk);
+        return blocks[dot(s, b)](c);
+    }), nd::uivec(3 * ni, 3 * nj, 3 * nk));
+}
+
+
+
+
+//=============================================================================
+template<typename P>
+auto tile_blocks_9(std::vector<nd::array_t<P, 3>> blocks, axis_3d axis)
+{
+    if (blocks.size() != 9)
+        throw std::invalid_argument("mesh::tile_blocks_9 (must supply exactly 9 blocks)");
+
+    for (const auto& block : blocks)
+        if (shape(block) != shape(blocks.at(0)))
+            throw std::invalid_argument("mesh::tile_blocks_9 (supplied blocks have non-uniform shapes)");
+
+    auto ni = shape(blocks.at(0), 0);
+    auto nj = shape(blocks.at(0), 1);
+    auto nk = shape(blocks.at(0), 2);
+
+    return nd::make_array(nd::indexing([ni, nj, nk, blocks, axis] (auto i, auto j, auto k)
+    {
+        switch (axis)
+        {
+            case axis_3d::i: {
+                auto s = nd::uivec(1, 3);
+                auto b = nd::uivec(j / nj, k / nk);
+                auto c = nd::uivec(i, j % nj, k % nk);
+                return blocks[dot(s, b)](c);                
+            }
+            case axis_3d::j: {
+                auto s = nd::uivec(1, 3);
+                auto b = nd::uivec(k / nk, i / ni);
+                auto c = nd::uivec(i % ni, j, k % nk);
+                return blocks[dot(s, b)](c);                
+            }
+            case axis_3d::k: {
+                auto s = nd::uivec(1, 3);
+                auto b = nd::uivec(i / ni, j / nj);
+                auto c = nd::uivec(i % ni, j % nj, k);
+                return blocks[dot(s, b)](c);                
+            }
+        }
+    }), nd::uivec(
+        (axis == axis_3d::i ? 1 : 3) * ni,
+        (axis == axis_3d::j ? 1 : 3) * nj,
+        (axis == axis_3d::k ? 1 : 3) * nk));
+}
+
+template<typename P> auto tile_blocks_faces_9i(std::vector<nd::array_t<P, 3>> b) { return tile_blocks_9(b, axis_3d::i); }
+template<typename P> auto tile_blocks_faces_9j(std::vector<nd::array_t<P, 3>> b) { return tile_blocks_9(b, axis_3d::j); }
+template<typename P> auto tile_blocks_faces_9k(std::vector<nd::array_t<P, 3>> b) { return tile_blocks_9(b, axis_3d::k); }
+
+
+
+
+//=============================================================================
+inline std::vector<block_index_3d_t> neighbors_27(block_index_3d_t index, block_index_3d_t extent)
+{
+    auto wi = [e=extent[0]] (auto i) { return (i + e) % e; };
+    auto wj = [e=extent[1]] (auto j) { return (j + e) % e; };
+    auto wk = [e=extent[2]] (auto k) { return (k + e) % e; };
+    auto stride = nd::uivec(1, 3, 9);
+    auto result = std::vector<block_index_3d_t>(27);
+
+    for (auto d : nd::index_space(nd::uivec(3, 3, 3)))
+    {
+        result[dot(stride, d)] = numeric::array(
+            wi(index[0] + d[0] - 1),
+            wj(index[1] + d[1] - 1),
+            wk(index[2] + d[2] - 1));
+    }
+    return result;
+}
+
+
+
+
+//=============================================================================
+inline std::vector<block_index_3d_t> neighbors_9(block_index_3d_t index, block_index_3d_t extent, axis_3d axis)
+{
+    auto wi = [e=extent[0]] (auto i) { return (i + e) % e; };
+    auto wj = [e=extent[1]] (auto j) { return (j + e) % e; };
+    auto wk = [e=extent[2]] (auto k) { return (k + e) % e; };
+    auto [i, j, k] = index.impl;
+    auto stride = nd::uivec(1, 3);
+    auto result = std::vector<block_index_3d_t>(9);
+
+    for (auto d : nd::index_space(nd::uivec(3, 3)))
+    {
+        auto [da, db] = d.impl;
+
+        switch (axis)
+        {
+            case axis_3d::i: result[dot(stride, d)] = numeric::array(i, wj(j + da - 1), wk(k + db - 1)); break;
+            case axis_3d::j: result[dot(stride, d)] = numeric::array(wi(i + db - 1), j, wk(k + da - 1)); break;
+            case axis_3d::k: result[dot(stride, d)] = numeric::array(wi(i + da - 1), wk(k + db - 1), k); break;
+        }
+    }
+    return result;
+}
+
+
+
+
+//=============================================================================
 auto extend_periodic = [] (nd::uint count)
 {
     return [count] (auto p)
@@ -297,6 +438,7 @@ auto remove_transverse_k = [] (nd::uint count)
 
 //=============================================================================
 #ifdef DO_UNIT_TESTS
+#include <iostream>
 #include "core_unit_test.hpp"
 
 
@@ -307,6 +449,25 @@ inline void test_mesh_cartesian_3d()
 {
     auto verts = mesh::unit_lattice(10, 10, 10);
     require(shape(verts) == nd::uivec(10, 10, 10));
+
+    {
+        auto blocks = std::vector<nd::shared_array<geometric::euclidean_vector_t<double>, 3>>();
+        auto A = mesh::unit_lattice(16, 17, 18) | nd::to_shared();
+
+        for (int i = 0; i < 27; ++i)
+            blocks.push_back(A);
+
+        auto B = mesh::tile_blocks_27(blocks);
+        require(shape(B) == nd::uivec(16 * 3, 17 * 3, 18 * 3));
+        require(B(0, 0, 0) == B(16, 17, 18));
+        require(B(16, 17, 18) == B(32, 34, 36));
+        require(B(16, 17, 19) == B(32, 34, 37));
+    }
+
+    require(mesh::neighbors_27(numeric::array(2UL, 2UL, 2UL), numeric::array(16UL, 16UL, 16UL)).at(0) == numeric::array( 1UL,  1UL, 1UL));
+    require(mesh::neighbors_27(numeric::array(2UL, 2UL, 2UL), numeric::array(16UL, 16UL, 16UL)).at(5) == numeric::array( 3UL,  2UL, 1UL));
+    require(mesh::neighbors_27(numeric::array(0UL, 0UL, 0UL), numeric::array(16UL, 16UL, 16UL)).at(0) == numeric::array(15UL, 15UL, 15UL));
+    require(mesh::neighbors_27(numeric::array(0UL, 0UL, 0UL), numeric::array(16UL, 16UL, 16UL)).at(5) == numeric::array( 1UL,  0UL, 15UL));
 }
 
 #endif // DO_UNIT_TESTS
