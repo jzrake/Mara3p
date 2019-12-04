@@ -96,7 +96,6 @@ struct tree_index_t
 
 
 
-
 /**
  * @brief      Determine if this is a valid index (whether it is in-bounds on
  *             its level).
@@ -303,6 +302,8 @@ template<std::size_t R> tree_index_t<R> prev_on(const tree_index_t<R>& i, std::s
 //=============================================================================
 template<std::size_t R> bool operator==(const tree_index_t<R>& a, const tree_index_t<R>& b) { return a.level == b.level && a.coordinates == b.coordinates; }
 template<std::size_t R> bool operator!=(const tree_index_t<R>& a, const tree_index_t<R>& b) { return a.level != b.level || a.coordinates != b.coordinates; }
+template<std::size_t R> bool operator< (const tree_index_t<R>& a, const tree_index_t<R>& b) { return a.level != b.level ? a.level < b.level : a.coordinates.impl < b.coordinates.impl; }
+template<std::size_t R> bool operator> (const tree_index_t<R>& a, const tree_index_t<R>& b) { return a.level != b.level ? a.level > b.level : a.coordinates.impl > b.coordinates.impl; }
 
 
 

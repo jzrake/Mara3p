@@ -188,6 +188,18 @@ auto product(array_t<T, S> t)
 }
 
 template<typename T, std::size_t S>
+auto min(array_t<T, S> t)
+{   
+    return reduce(t, t.at(0), [] (auto a, auto b) { return std::min(a, b); });
+}
+
+template<typename T, std::size_t S>
+auto max(array_t<T, S> t)
+{   
+    return reduce(t, t.at(0), [] (auto a, auto b) { return std::max(a, b); });
+}
+
+template<typename T, std::size_t S>
 auto replace(array_t<T, S> t, std::size_t index, T value)
 {   
     t.at(index) = value;
