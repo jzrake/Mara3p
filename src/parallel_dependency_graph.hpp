@@ -85,17 +85,13 @@ public:
      * @param[in]  argument_keys  The names of the products required for this
      *                            rule to be evaluated
      *
-     * @tparam     KeyTypes       The types of the upstream keys (must all be
-     *                            convertable to key_type)
-     *
      * @return     True or false
      */
-    template<typename... KeyTypes>
-    bool cyclic(key_type key, KeyTypes... argument_keys)
+    bool cyclic(key_type key, const std::vector<key_type>& argument_keys)
     {
         auto dependents = referencing(key);
 
-        for (const auto& s : key_vector_type{argument_keys...})
+        for (const auto& s : argument_keys)
         {
             if (dependents.count(s) || s == key)
             {
@@ -120,16 +116,15 @@ public:
      * @tparam     KeyTypes       The types of the upstream keys (must all be
      *                            convertable to key_type)
      */
-    template<typename... KeyTypes>
-    void insert_rule(key_type key, mapping_type mapping, KeyTypes... argument_keys)
+    void insert_rule(key_type key, mapping_type mapping, const std::vector<key_type>& argument_keys)
     {
         if (is_defined(key))
             throw std::invalid_argument("DependencyGraph::insert_rule (rule already exists)");
 
-        if (cyclic(key, argument_keys...))
+        if (cyclic(key, argument_keys))
             throw std::invalid_argument("DependencyGraph::insert_rule (rule would create a dependency cycle)");
 
-        rules[key] = std::pair(mapping, key_vector_type{argument_keys...});
+        rules[key] = std::pair(mapping, argument_keys);
         downstream[key] = downstream_keys(key);
 
         for (const auto& [k, r] : rules)
@@ -139,6 +134,12 @@ public:
                 downstream[k].insert(key);
             }
         }
+    }
+
+    template<typename... KeyTypes>
+    void insert_rule(key_type key, mapping_type mapping, KeyTypes... argument_keys)
+    {
+        insert_rule(key, mapping, {argument_keys...});
     }
 
 

@@ -121,9 +121,10 @@ void write(const Group& group, const solution_t& solution)
 
     auto p = mara::primitive_array(
         solution.conserved,
-        solution.magnetic_flux_1,
-        solution.magnetic_flux_2,
-        solution.magnetic_flux_3);
+        std::array{
+            solution.magnetic_flux_1,
+            solution.magnetic_flux_2,
+            solution.magnetic_flux_3});
 
     write(group, "primitive", p);
 }

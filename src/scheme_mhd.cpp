@@ -227,11 +227,10 @@ nd::shared_array<mhd::primitive_t, 3>
 
 mara::primitive_array(
     nd::shared_array<mhd::conserved_density_t, 3> uc,
-    nd::shared_array<mhd::unit_magnetic_field, 3> bf1,
-    nd::shared_array<mhd::unit_magnetic_field, 3> bf2,
-    nd::shared_array<mhd::unit_magnetic_field, 3> bf3)
+    std::array<nd::shared_array<mhd::unit_magnetic_field, 3>, 3> bf)
 {
     auto c2p = apply_to(std::bind(mhd::recover_primitive, _1, _2, gamma_law_index));
+    auto [bf1, bf2, bf3] = bf;
     auto bc = mesh::face_to_cell(bf1, bf2, bf3);
     return zip(uc, bc) | nd::map(c2p) | nd::to_shared();
 }
@@ -286,7 +285,8 @@ mara::advance_mhd_ct(
     dimensional::unit_scalar plm_theta,
     const mhd_boundary_extension& boundary_extension)
 {
-    auto pc   = primitive_array(uc, bf1, bf2, bf3);
+    auto bf   = std::array{bf1, bf2, bf3};
+    auto pc   = primitive_array(uc, bf);
     auto pce  = boundary_extension.extend_primitive(pc, plm_theta == 0.0 ? 1 : 2);
     auto bf1e = boundary_extension.extend_magnetic1(bf1);
     auto bf2e = boundary_extension.extend_magnetic2(bf2);

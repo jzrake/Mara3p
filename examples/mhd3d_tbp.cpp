@@ -138,7 +138,7 @@ std::string to_string(extended_status s)
 std::string to_string(product_identifier_t id)
 {
     auto [a, b, c, d] = id;
-    return 
+    return
       to_string(a) + " - "
     + to_string(b) + " - "
     + to_string(c) + " - "
@@ -276,6 +276,24 @@ auto curl(dimensional::unit_length dl)
 
 
 //=============================================================================
+auto extend_27(nd::uint block_size, nd::uint count)
+{
+    return [r=block_size - count] (std::vector<product_t> args) -> product_t
+    {
+        auto pcs = std::vector<cell_primitive_variables_t>();
+
+        for (auto arg : args)
+        {
+            pcs.push_back(std::get<cell_primitive_variables_t>(arg));
+        }
+        return mesh::tile_blocks_27(pcs) | mesh::remove_surface(r) | nd::to_shared();
+    };
+}
+
+
+
+
+//=============================================================================
 template<typename FunctionType>
 auto wrap(FunctionType f)
 {
@@ -295,6 +313,17 @@ auto wrap(FunctionType f)
     };
 }
 
+template<typename Arg1, typename Arg2, typename FunctionType>
+auto wrap(FunctionType f)
+{
+    return [f] (std::vector<product_t> args) -> product_t
+    {
+        const auto& arg1 = std::get<Arg1>(args.at(0));
+        const auto& arg2 = std::get<Arg2>(args.at(1));
+        return f(arg1, arg2);
+    };
+}
+
 
 
 
@@ -303,7 +332,7 @@ auto build_graph()
 {
     auto graph = DependencyGraph();
     auto depth = 1UL;
-    auto nb = 1 << depth;
+    auto nb = unsigned(1 << depth);
 
     for (auto i : nd::index_space(nb, nb, nb))
     {
@@ -331,9 +360,38 @@ auto build_graph()
             extended_status :: not_extended,
         };
 
-        graph.insert_rule(ae, wrap(construct_vector_potential(index)));        
+        auto pc = product_identifier_t{
+            rational::number(0),
+            index,
+            data_field      :: cell_primitive_variables,
+            extended_status :: not_extended,
+        };
+
+        auto pce = product_identifier_t{
+            rational::number(0),
+            index,
+            data_field      :: cell_primitive_variables,
+            extended_status :: extended,
+        };
+
+        auto neighbor_ids = std::vector<product_identifier_t>();
+
+        for (auto neighbor_index : mesh::neighbors_27(index.coordinates, {nb, nb, nb}))
+        {
+            auto id = product_identifier_t{
+                rational::number(0),
+                bqo_tree::tree_index_t<3>{depth, neighbor_index},
+                data_field      :: cell_primitive_variables,
+                extended_status :: not_extended,
+            };
+            neighbor_ids.push_back(id);
+        }
+
+        graph.insert_rule(ae, wrap(construct_vector_potential(index)));
         graph.insert_rule(bf, wrap<edge_electromotive_density_t>(curl(dl)), ae);
         graph.insert_rule(uc, wrap<face_magnetic_flux_density_t>(construct_conserved(index)), bf);
+        graph.insert_rule(pc, wrap<cell_conserved_density_t, face_magnetic_flux_density_t>(mara::primitive_array), uc, bf);
+        graph.insert_rule(pce, extend_27(block_size, 2), neighbor_ids);
     }
 
     return std::move(graph).throw_if_incomplete();
@@ -351,12 +409,12 @@ void execute(DependencyGraph& graph)
     {
         for (const auto& key : graph.eligible_rules(is_responsible_for))
         {
-            graph.evaluate_rule(key, scheduler);                
+            graph.evaluate_rule(key, scheduler);
         }
 
         if (! graph.poll(std::chrono::milliseconds(10)).empty())
         {
-            print_graph_status(graph, is_responsible_for);            
+            print_graph_status(graph, is_responsible_for);
         }
     }
 }

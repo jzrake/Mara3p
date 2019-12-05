@@ -74,9 +74,7 @@ nd::shared_array<mhd::primitive_t, 3>
 
 primitive_array(
     nd::shared_array<mhd::conserved_density_t, 3> uc,
-    nd::shared_array<mhd::unit_magnetic_field, 3> bf1,
-    nd::shared_array<mhd::unit_magnetic_field, 3> bf2,
-    nd::shared_array<mhd::unit_magnetic_field, 3> bf3);
+    std::array<nd::shared_array<mhd::unit_magnetic_field, 3>, 3> bf);
 
 
 
