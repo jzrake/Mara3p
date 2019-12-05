@@ -432,6 +432,12 @@ auto index_space(uivec_t<Rank> shape)
     return index_space_row_major_t<Rank>{shape};
 }
 
+template<typename... Args>
+auto index_space(Args... args)
+{
+    return index_space(uivec(args...));
+}
+
 template<uint Rank>
 auto begin(const index_space_row_major_t<Rank>& space)
 {

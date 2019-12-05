@@ -82,6 +82,12 @@ euclidean_vector_t<T> euclidean_vector(T x, T y, T z)
     return {numeric::array(x, y, z)};
 }
 
+template<typename T>
+euclidean_vector_t<T> to_euclidean_vector(numeric::array_t<T, 3> v)
+{
+    return {v};
+}
+
 inline unit_vector_t unit_vector_on(unsigned direction)
 {
     switch (direction)

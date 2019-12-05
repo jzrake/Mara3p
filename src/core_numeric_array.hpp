@@ -212,6 +212,12 @@ auto update(array_t<T, S> t, std::size_t index, FunctionType f)
     return replace(t, index, f(t.at(index)));
 }
 
+template<typename T, typename U, std::size_t S>
+auto construct(numeric::array_t<U, S> a)
+{
+    return map(a, [] (auto x) { return T(x); });
+}
+
 
 
 
