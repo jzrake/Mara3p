@@ -450,6 +450,18 @@ auto end(const index_space_row_major_t<Rank>& space)
     return typename index_space_row_major_t<Rank>::iterator{space.shape, space.shape};
 }
 
+template<uint Rank>
+bool size(const index_space_row_major_t<Rank>& space)
+{
+    return product(space.shape);
+}
+
+template<uint Rank>
+bool empty(const index_space_row_major_t<Rank>& space)
+{
+    return product(space.shape) == 0;
+}
+
 
 
 

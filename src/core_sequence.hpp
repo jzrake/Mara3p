@@ -120,6 +120,8 @@ struct value_type
 template<typename SequenceType>
 using value_type_t = typename value_type<SequenceType>::type;
 
+template<typename T> struct is_sequence : std::false_type {};
+
 
 
 
@@ -142,47 +144,19 @@ struct iterator
     std::optional<position_type> position;
 };
 
-// template<typename SequenceType>
-// struct iterator_p
-// {
-//     using sequence_type = SequenceType;
-//     using position_type = position_t<sequence_type>;
-//     using iterator_category = std::input_iterator_tag;
-//     using value_type        = value_type_t<SequenceType>;
-//     using difference_type   = std::ptrdiff_t;
-//     using pointer           = value_type*;
-//     using reference         = value_type&;
-
-//     iterator_p& operator++() { p = std::make_unique<std::optional<position_type>>(next(sequence, p->value())); return *this; }
-//     bool operator!=(const iterator_p& other) const { return p->has_value() != other.p->has_value(); }
-//     auto operator*() const { return obtain(sequence, p->value()); }
-//     sequence_type sequence;
-//     std::unique_ptr<std::optional<position_type>> p;
-// };
-
-template<typename SequenceType>
+template<typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 auto begin(SequenceType sequence)
 {
-    //using ops = std::optional<position_t<SequenceType>>;
-
-    //if constexpr (std::is_copy_assignable<position_t<SequenceType>>::value)
-        return iterator<SequenceType>{sequence, start(sequence)};
-    //else
-    //    return iterator_p<SequenceType>{sequence, std::make_unique<ops>(start(sequence))};
+    return iterator<SequenceType>{sequence, start(sequence)};
 }
 
-template<typename SequenceType>
+template<typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 auto end(SequenceType sequence)
 {
-    //using ops = std::optional<position_t<SequenceType>>;
-
-    //if constexpr (std::is_copy_assignable<position_t<SequenceType>>::value)
-        return iterator<SequenceType>{sequence, {}};
-    //else
-    //    return iterator_p<SequenceType>{sequence, std::make_unique<ops>(ops{})};
+    return iterator<SequenceType>{sequence, {}};
 }
 
-template<typename SequenceType>
+template<typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 bool empty(const SequenceType& sequence)
 {
     return ! start(sequence).has_value();
@@ -205,6 +179,9 @@ struct generator_sequence_t
     ValueType start;
     FunctionType function;
 };
+
+template<typename ValueType, typename FunctionType>
+struct is_sequence<generator_sequence_t<ValueType, FunctionType>> : std::true_type {};
 
 template<typename ValueType, typename FunctionType, typename SequenceType = generator_sequence_t<ValueType, FunctionType>>
 std::optional<ValueType> start(generator_sequence_t<ValueType, FunctionType> sequence)
@@ -255,6 +232,9 @@ struct mapped_sequence_t
 };
 
 template<typename SequenceType, typename FunctionType>
+struct is_sequence<mapped_sequence_t<SequenceType, FunctionType>> : std::true_type {};
+
+template<typename SequenceType, typename FunctionType>
 auto start(mapped_sequence_t<SequenceType, FunctionType> sequence)
 {
     return start(sequence.sequence);
@@ -294,6 +274,9 @@ struct filtered_sequence_t
     SequenceType sequence;
     FunctionType predicate;
 };
+
+template<typename SequenceType, typename FunctionType>
+struct is_sequence<filtered_sequence_t<SequenceType, FunctionType>> : std::true_type {};
 
 template<typename SequenceType, typename FunctionType>
 auto __not_removed(filtered_sequence_t<SequenceType, FunctionType> sequence, std::optional<position_t<SequenceType>> p)
@@ -349,6 +332,9 @@ struct truncated_sequence_t
 };
 
 template<typename SequenceType, typename FunctionType>
+struct is_sequence<truncated_sequence_t<SequenceType, FunctionType>> : std::true_type {};
+
+template<typename SequenceType, typename FunctionType>
 auto start(truncated_sequence_t<SequenceType, FunctionType> sequence)
 -> std::optional<position_t<SequenceType>>
 {
@@ -394,6 +380,9 @@ struct advanced_sequence_t
 };
 
 template<typename SequenceType>
+struct is_sequence<advanced_sequence_t<SequenceType>> : std::true_type {};
+
+template<typename SequenceType>
 auto start(advanced_sequence_t<SequenceType> sequence)
 {
     return sequence.start;
@@ -430,6 +419,9 @@ struct measured_sequence_t
 {
     SequenceType sequence;
 };
+
+template<typename SequenceType>
+struct is_sequence<measured_sequence_t<SequenceType>> : std::true_type {};
 
 template<typename SequenceType>
 auto start(measured_sequence_t<SequenceType> sequence)
@@ -471,6 +463,9 @@ struct chained_sequence_t
 {
     std::pair<SequenceType1, SequenceType2> sequences;
 };
+
+template<typename SequenceType1, typename SequenceType2>
+struct is_sequence<chained_sequence_t<SequenceType1, SequenceType2>> : std::true_type {};
 
 template<typename SequenceType1, typename SequenceType2>
 auto start(chained_sequence_t<SequenceType1, SequenceType2> sequence)
@@ -523,6 +518,9 @@ struct zipped_sequence_t
 {
     std::tuple<SequenceTypes...> sequences;
 };
+
+template<typename... SequenceTypes>
+struct is_sequence<zipped_sequence_t<SequenceTypes...>> : std::true_type {};
 
 template<typename... SequenceTypes>
 auto start(zipped_sequence_t<SequenceTypes...> sequence)
@@ -578,6 +576,9 @@ struct flattened_sequence_t
 };
 
 template<typename SequenceType>
+struct is_sequence<flattened_sequence_t<SequenceType>> : std::true_type {};
+
+template<typename SequenceType>
 auto start(flattened_sequence_t<SequenceType> sequence)
 -> std::optional<std::pair<position_t<SequenceType>, position_t<value_type_t<SequenceType>>>>
 {
@@ -611,8 +612,8 @@ auto obtain(flattened_sequence_t<SequenceType> sequence, position_t<flattened_se
 template<typename SequenceType>
 auto flat(SequenceType sequence)
 {
-    auto non_empty = remove_if(sequence, [] (const auto& seq) { return empty(seq); });
-    return flattened_sequence_t<decltype(non_empty)>{std::move(non_empty)};
+    auto non_empty = remove_if(sequence, [] (auto seq) { return empty(seq); });
+    return flattened_sequence_t<decltype(non_empty)>{non_empty};
 }
 
 
@@ -636,6 +637,9 @@ struct scanned_sequence_t
     B start;
     C reducer;
 };
+
+template<typename A, typename B, typename C>
+struct is_sequence<scanned_sequence_t<A, B, C>> : std::true_type {};
 
 template<typename A, typename B, typename C>
 auto start(scanned_sequence_t<A, B, C> sequence)
@@ -694,6 +698,9 @@ struct foreign_sequence_t
 };
 
 template<typename SequenceType>
+struct is_sequence<foreign_sequence_t<SequenceType>> : std::true_type {};
+
+template<typename SequenceType>
 auto start(foreign_sequence_t<SequenceType> sequence)
 {
     return start(sequence.sequence);
@@ -721,58 +728,21 @@ auto adapt(SequenceType sequence)
 
 
 //=============================================================================
-template<typename ContainerType>
-struct container_sequence_t
-{
-    std::shared_ptr<ContainerType> container;
-};
-
-template<typename ContainerType>
-auto start(container_sequence_t<ContainerType> sequence)
-{
-    const auto& c = *sequence.container;
-    return std::empty(c)
-    ? std::optional<decltype(std::begin(c))>{}
-    : std::optional<decltype(std::begin(c))>{std::begin(c)};
-}
-
-template<typename ContainerType>
-auto next(container_sequence_t<ContainerType> sequence, position_t<container_sequence_t<ContainerType>> position)
-{
-    ++position;
-    const auto& c = *sequence.container;
-    return position == std::end(c)
-    ? std::optional<position_t<container_sequence_t<ContainerType>>>{}
-    : std::optional<position_t<container_sequence_t<ContainerType>>>{position};
-}
-
-template<typename ContainerType>
-auto obtain(container_sequence_t<ContainerType> sequence, position_t<container_sequence_t<ContainerType>> position)
-{
-    return *position;
-}
-
-template<typename ContainerType>
-auto view(ContainerType&& container)
-{
-    return container_sequence_t<ContainerType>{std::make_shared<ContainerType>(std::move(container))};
-}
-
-
-
-
-//=============================================================================
 template<typename ValueType>
 struct dynamic_sequence_t
 {
     struct base
     {
+        virtual ~base() {}
         virtual std::optional<std::any> next(std::any) const = 0;
         virtual std::optional<std::any> start() const = 0;
         virtual ValueType obtain(std::any) const = 0;
     };
     std::shared_ptr<base> impl;
 };
+
+template<typename ValueType>
+struct is_sequence<dynamic_sequence_t<ValueType>> : std::true_type {};
 
 template<typename ValueType>
 auto start(dynamic_sequence_t<ValueType> sequence)
@@ -813,13 +783,13 @@ auto to_dynamic(SequenceType sequence)
 
 
 //=============================================================================
-template<typename SequenceType>
+template<typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 auto front(SequenceType sequence)
 {
     return obtain(sequence, start(sequence).value());
 }
 
-template<typename SequenceType>
+template<typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 auto back(SequenceType sequence)
 {
     auto position = start(sequence).value();
@@ -833,13 +803,13 @@ auto back(SequenceType sequence)
     return obtain(sequence, position);
 }
 
-template<typename SequenceType>
+template<typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 auto enumerate(SequenceType sequence)
 {
     return zip(generate(), sequence);
 }
 
-template<typename SequenceType>
+template<typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 auto take(SequenceType sequence, unsigned long count)
 {
     return map(take_while(enumerate(sequence),
@@ -847,13 +817,13 @@ auto take(SequenceType sequence, unsigned long count)
         []      (auto iv) { return iv.second; });
 }
 
-template<typename SequenceType>
+template<typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 auto drop(SequenceType sequence, unsigned long count)
 {
     return advance(sequence, std::optional(back(take(measure(sequence), count + 1))));
 }
 
-template<typename SequenceType>
+template<typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 auto chunk(SequenceType sequence, unsigned long chunk_size)
 {
     auto second = [] (auto s) { return map(s, [] (auto iv) { return iv.second; }); };
@@ -874,16 +844,28 @@ inline auto range(long start, long final)
     return take(generate(start), final - start);
 }
 
+template<typename ContainerType>
+auto view(ContainerType container)
+{
+    return to_dynamic(map(range(size(container)), [container] (auto i) { return container[i]; }));
+}
+
 template<typename... ValueType>
 auto from(ValueType... values)
 {
     return view(std::array{values...});
 }
 
-template<template<typename...> typename ContainerType, typename SequenceType>
+template<template<typename...> typename ContainerType, typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 auto to(SequenceType sequence)
 {
     return ContainerType<value_type_t<SequenceType>>(begin(sequence), end(sequence));
+}
+
+template<template<typename...> typename ContainerType>
+auto to()
+{
+    return [] (auto sequence) { return to<ContainerType>(sequence); };
 }
 
 template<typename ValueType>
@@ -898,19 +880,19 @@ auto just(ValueType value)
     return take(always(value), 1);
 }
 
-template<typename SequenceType>
+template<typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 auto cycle(SequenceType sequence)
 {
     return flat(always(sequence));
 }
 
-template<typename SequenceType>
+template<typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 auto repeat(SequenceType sequence, unsigned long count)
 {
     return flat(take(always(sequence), count));
 }
 
-template<typename SequenceType, typename FunctionType>
+template<typename SequenceType, typename FunctionType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 auto flat_map(SequenceType sequence, FunctionType function)
 {
     return flat(map(sequence, function));
@@ -936,7 +918,7 @@ auto yield_if(ValueType value, bool condition)
  *
  * @return     A sequence of pairs
  */
-template<typename SequenceType>
+template<typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 auto window(SequenceType sequence)
 {
     auto p0 = start(sequence).value();
@@ -955,7 +937,7 @@ auto window(SequenceType sequence)
 
 
 //=============================================================================
-template<typename SequenceType, typename OperatorType>
+template<typename SequenceType, typename OperatorType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 auto operator|(SequenceType&& sequence, OperatorType&& op)
 {
     return std::forward<OperatorType>(op)(std::forward<SequenceType>(sequence));
@@ -996,6 +978,7 @@ inline void test_sequence()
     require((seq::to<std::vector>(seq::from(1, 2, 3)) == std::vector{1, 2, 3}));
     require((seq::to<std::vector>(take(cycle(seq::from(1, 2)), 4)) == std::vector{1, 2, 1, 2}));
     require((seq::to<std::vector>(flat(map(seq::range(4), [] (auto i) { return seq::range(i); }))) == std::vector<long>{0, 0, 1, 0, 1, 2}));
+    require((seq::to<std::vector>(flat(map(seq::range(4), [] (auto) { return seq::from(1, 2); }))) == std::vector{1, 2, 1, 2, 1, 2, 1, 2}));
     require((seq::to<std::vector>(drop(seq::range(5, 10), 2)) == std::vector{7l, 8l, 9l}));
     require((seq::to<std::vector>(back(chunk(seq::range(6), 3))) == std::vector{3l, 4l, 5l}));
     require((seq::to<std::vector>(scan(seq::from(4, 2, 4), 64.0, std::divides<>())) == std::vector{64., 16., 8., 2.}));
