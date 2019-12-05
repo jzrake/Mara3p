@@ -77,6 +77,22 @@ std::set<int> recipients(const std::set<KeyType>& keys, const std::map<KeyType, 
 
 
 
+//=============================================================================
+std::string to_string(mara::evaluation_status s)
+{
+    switch (s)
+    {
+        case mara::evaluation_status::undefined:   return "!";
+        case mara::evaluation_status::defined:     return "d";
+        case mara::evaluation_status::pending:     return ".";
+        case mara::evaluation_status::eligible:    return "e";
+        case mara::evaluation_status::completed:   return "c";
+    }
+}
+
+
+
+
 //=========================================================================
 template<typename KeyType, typename ValueType, typename ResponsibleForType>
 void print_graph_status(const mara::DependencyGraph<KeyType, ValueType>& graph, ResponsibleForType is_responsible_for)
@@ -102,7 +118,7 @@ void print_graph_status(const mara::DependencyGraph<KeyType, ValueType>& graph, 
             << key
             << ' '
             << "status: "
-            << graph.status(key)
+            << to_string(graph.status(key))
             << " eligible: "
             << graph.is_eligible(key, is_responsible_for)
             << (is_responsible_for(key) ? " x " : " ")

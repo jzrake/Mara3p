@@ -38,8 +38,20 @@
 
 //=============================================================================
 namespace mara {
+
+
     template<typename, typename>
     class DependencyGraph;
+
+
+    enum class evaluation_status
+    {
+        undefined,
+        defined,
+        eligible,
+        pending,
+        completed,
+    };
 }
 
 
@@ -552,19 +564,20 @@ public:
 
     /**
      * @brief      Return a status code indicating whether a rule under the
-     *             given key is non-existent (0), defined but neither evaluated
-     *             nor pending (1), pending evaluation (2), or completed (3).
+     *             given key is non-existent, defined but neither evaluated nor
+     *             pending, pending evaluation, eligible, or completed.
      *
      * @param[in]  key   The key to check for
      *
-     * @return     A status code
+     * @return     A status enum
      */
-    int status(key_type key) const
+    evaluation_status status(key_type key) const
     {
-        if (is_completed(key)) return 3;
-        if (is_pending  (key)) return 2;
-        if (is_defined  (key)) return 1;
-        return 0;
+        if (is_completed(key)) return evaluation_status::completed;
+        if (is_pending  (key)) return evaluation_status::pending;
+        if (is_eligible (key)) return evaluation_status::eligible;
+        if (is_defined  (key)) return evaluation_status::defined;
+        return evaluation_status::undefined;
     }
 
 
