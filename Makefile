@@ -29,6 +29,7 @@ ALL_TARGETS = mara \
 	examples/euler1d_moving_mesh \
 	examples/euler1d_moving_mesh_plm \
 	examples/mhd3d \
+	examples/mhd3d_tbp \
 	examples/task_parallel \
 	problems/sedov
 TARGETS = $(ALL_TARGETS)
@@ -68,10 +69,13 @@ examples/mhd3d: examples/mhd3d.o src/scheme_mhd.o
 examples/task_parallel: examples/task_parallel.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
+examples/mhd3d_tbp: examples/mhd3d_tbp.o src/scheme_mhd.o
+	$(CXX) -o $@ $^ $(LDFLAGS)
+
 problems/sedov: problems/sedov.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 clean:
-	$(RM) $(OBJ) $(DEP) mara
+	$(RM) $(OBJ) $(DEP) $(ALL_TARGETS)
 
 -include $(DEP)
