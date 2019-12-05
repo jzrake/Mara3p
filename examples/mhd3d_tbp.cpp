@@ -26,6 +26,7 @@
 
 
 
+#include <chrono>
 #include <iostream>
 #include <iomanip>
 #include <variant>
@@ -33,6 +34,7 @@
 #include "core_ndarray.hpp"
 #include "core_ndarray_ops.hpp"
 #include "core_rational.hpp"
+#include "core_sequence.hpp"
 #include "mesh_cartesian_3d.hpp"
 #include "parallel_dependency_graph.hpp"
 #include "parallel_thread_pool.hpp"
@@ -53,8 +55,8 @@ enum class data_field
 
 enum class extended_status
 {
-    extended,
     not_extended,
+    extended,
 };
 
 
@@ -130,8 +132,8 @@ std::string to_string(extended_status s)
 {
     switch (s)
     {
-        case extended_status::extended:      return "[[]]";
         case extended_status::not_extended:  return "|[]|";
+        case extended_status::extended:      return "[[]]";
     }
 }
 
@@ -151,6 +153,8 @@ std::string to_string(product_identifier_t id)
 //=============================================================================
 static auto is_responsible_for = [] (auto) { return true; };
 static auto block_size = 32;
+static auto depth = 1UL;
+static auto blocks_extent = mesh::block_index_3d_t{unsigned(1 << depth), unsigned(1 << depth), unsigned(1 << depth)};
 static auto gamma_law_index = 5. / 3;
 
 
@@ -182,6 +186,88 @@ void print_graph_status(const mara::DependencyGraph<KeyType, ValueType>& graph, 
         }
         std::cout << '\n';
     });
+}
+
+
+
+
+//=============================================================================
+using named_rule_t = std::tuple<
+    product_identifier_t,
+    std::function<product_t(std::vector<product_t>)>,
+    std::vector<product_identifier_t>>;
+
+named_rule_t rule(
+    product_identifier_t key,
+    std::function<product_t(std::vector<product_t>)> mapping,
+    std::vector<product_identifier_t> args)
+{
+    return named_rule_t{key, mapping, args};
+}
+
+
+
+
+//=============================================================================
+struct key_factory_t
+{
+    key_factory_t iteration(rational::number_t v)                        const { auto n = id; std::get<0>(n) = v; return {n}; }
+    key_factory_t block    (bqo_tree::tree_index_t<3> v)                 const { auto n = id; std::get<1>(n) = v; return {n}; }
+    key_factory_t field    (data_field v)                                const { auto n = id; std::get<2>(n) = v; return {n}; }
+    key_factory_t extended (extended_status v=extended_status::extended) const { auto n = id; std::get<3>(n) = v; return {n}; }
+
+    operator product_identifier_t() const
+    {
+        return id;
+    }
+
+    auto bind_block() const { return [this] (bqo_tree::tree_index_t<3> v) { return block(v).id; }; }
+
+    product_identifier_t id;
+};
+
+key_factory_t key(data_field field)
+{
+    return key_factory_t().field(field);
+}
+
+key_factory_t key(rational::number_t iteration)
+{
+    return key_factory_t().iteration(iteration);
+}
+
+
+
+
+//=============================================================================
+template<typename FunctionType>
+auto wrap(FunctionType f)
+{
+    return [f] (std::vector<product_t>) -> product_t
+    {
+        return f();
+    };
+}
+
+template<typename Arg1, typename FunctionType>
+auto wrap(FunctionType f)
+{
+    return [f] (std::vector<product_t> args) -> product_t
+    {
+        const auto& arg1 = std::get<Arg1>(args.at(0));
+        return f(arg1);
+    };
+}
+
+template<typename Arg1, typename Arg2, typename FunctionType>
+auto wrap(FunctionType f)
+{
+    return [f] (std::vector<product_t> args) -> product_t
+    {
+        const auto& arg1 = std::get<Arg1>(args.at(0));
+        const auto& arg2 = std::get<Arg2>(args.at(1));
+        return f(arg1, arg2);
+    };
 }
 
 
@@ -294,34 +380,78 @@ auto extend_27(nd::uint block_size, nd::uint count)
 
 
 //=============================================================================
-template<typename FunctionType>
-auto wrap(FunctionType f)
+auto block_indexes()
 {
-    return [f] (std::vector<product_t>) -> product_t
-    {
-        return f();
-    };
+    auto nb = unsigned(1 << depth);
+    return seq::adapt(nd::index_space(nb, nb, nb))
+    | seq::map([] (auto i) { return bqo_tree::tree_index_t<3>{depth, {i[0], i[1], i[2]}}; });
 }
 
-template<typename Arg1, typename FunctionType>
-auto wrap(FunctionType f)
+
+
+
+//=============================================================================
+auto initial_condition_rules()
 {
-    return [f] (std::vector<product_t> args) -> product_t
+    auto nb = unsigned(1 << depth);
+    auto dl = dimensional::unit_length(1.0 / block_size / nb);
+
+    return block_indexes()
+    | seq::map([dl] (auto index)
     {
-        const auto& arg1 = std::get<Arg1>(args.at(0));
-        return f(arg1);
-    };
+        auto k_ae = key(data_field::edge_electromotive_density).block(index);
+        auto k_bf = key(data_field::face_magnetic_flux_density).block(index);
+        auto k_uc = key(data_field::cell_conserved_density)    .block(index);
+
+        auto f_ae = wrap(construct_vector_potential(index));
+        auto f_bf = wrap<edge_electromotive_density_t>(curl(dl));
+        auto f_uc = wrap<face_magnetic_flux_density_t>(construct_conserved(index));
+
+        auto r_ae = rule(k_ae, f_ae, {});
+        auto r_bf = rule(k_bf, f_bf, {k_ae});
+        auto r_uc = rule(k_uc, f_uc, {k_bf});
+
+        return seq::from(r_ae, r_bf, r_uc);
+    })
+    | seq::flat();
 }
 
-template<typename Arg1, typename Arg2, typename FunctionType>
-auto wrap(FunctionType f)
+
+
+
+//=============================================================================
+auto block_extension_rules(rational::number_t iteration)
 {
-    return [f] (std::vector<product_t> args) -> product_t
+    return block_indexes()
+    | seq::map([iteration] (auto index)
     {
-        const auto& arg1 = std::get<Arg1>(args.at(0));
-        const auto& arg2 = std::get<Arg2>(args.at(1));
-        return f(arg1, arg2);
-    };
+        auto pc = key(data_field::cell_primitive_variables).iteration(iteration);
+
+        auto neighbor_ids = seq::view(mesh::neighbors_27(index.coordinates, blocks_extent))
+        | seq::map([] (auto i) { return bqo_tree::tree_index_t<3>{depth, i}; })
+        | seq::map(pc.bind_block())
+        | seq::to<std::vector>();
+
+        return rule(pc.extended().block(index), extend_27(block_size, 2), neighbor_ids);
+    });
+}
+
+
+
+
+//=============================================================================
+auto recover_primitive_rules(rational::number_t iteration)
+{
+    return block_indexes()
+    | seq::map([iteration] (auto index)
+    {
+        auto uc = key(iteration).block(index).field(data_field::cell_conserved_density);
+        auto bf = key(iteration).block(index).field(data_field::face_magnetic_flux_density);
+        auto pc = key(iteration).block(index).field(data_field::cell_primitive_variables);
+
+        auto f = wrap<cell_conserved_density_t, face_magnetic_flux_density_t>(mara::primitive_array);
+        return rule(pc, f, {uc, bf});
+    });
 }
 
 
@@ -331,69 +461,21 @@ auto wrap(FunctionType f)
 auto build_graph()
 {
     auto graph = DependencyGraph();
-    auto depth = 1UL;
-    auto nb = unsigned(1 << depth);
 
-    for (auto i : nd::index_space(nb, nb, nb))
+    for (auto rule : initial_condition_rules())
     {
-        auto index = bqo_tree::tree_index_t<3>{depth, {i[0], i[1], i[2]}};
-        auto dl = dimensional::unit_length(1.0 / block_size / nb);
-
-        auto ae = product_identifier_t{
-            rational::number(0),
-            index,
-            data_field      :: edge_electromotive_density,
-            extended_status :: not_extended,
-        };
-
-        auto bf = product_identifier_t{
-            rational::number(0),
-            index,
-            data_field      :: face_magnetic_flux_density,
-            extended_status :: not_extended,
-        };
-
-        auto uc = product_identifier_t{
-            rational::number(0),
-            index,
-            data_field      :: cell_conserved_density,
-            extended_status :: not_extended,
-        };
-
-        auto pc = product_identifier_t{
-            rational::number(0),
-            index,
-            data_field      :: cell_primitive_variables,
-            extended_status :: not_extended,
-        };
-
-        auto pce = product_identifier_t{
-            rational::number(0),
-            index,
-            data_field      :: cell_primitive_variables,
-            extended_status :: extended,
-        };
-
-        auto neighbor_ids = std::vector<product_identifier_t>();
-
-        for (auto neighbor_index : mesh::neighbors_27(index.coordinates, {nb, nb, nb}))
-        {
-            auto id = product_identifier_t{
-                rational::number(0),
-                bqo_tree::tree_index_t<3>{depth, neighbor_index},
-                data_field      :: cell_primitive_variables,
-                extended_status :: not_extended,
-            };
-            neighbor_ids.push_back(id);
-        }
-
-        graph.insert_rule(ae, wrap(construct_vector_potential(index)));
-        graph.insert_rule(bf, wrap<edge_electromotive_density_t>(curl(dl)), ae);
-        graph.insert_rule(uc, wrap<face_magnetic_flux_density_t>(construct_conserved(index)), bf);
-        graph.insert_rule(pc, wrap<cell_conserved_density_t, face_magnetic_flux_density_t>(mara::primitive_array), uc, bf);
-        graph.insert_rule(pce, extend_27(block_size, 2), neighbor_ids);
+        graph.define(rule);
     }
 
+    for (auto rule : recover_primitive_rules(0))
+    {
+        graph.define(rule);
+    }
+
+    for (auto rule : block_extension_rules(0))
+    {
+        graph.define(rule);
+    }
     return std::move(graph).throw_if_incomplete();
 }
 
@@ -403,7 +485,8 @@ auto build_graph()
 //=============================================================================
 void execute(DependencyGraph& graph)
 {
-    auto scheduler = mara::ThreadPool(1);
+    auto scheduler = mara::ThreadPool(12);
+    auto start = std::chrono::high_resolution_clock::now();
 
     while (graph.count_unevaluated(is_responsible_for))
     {
@@ -417,6 +500,9 @@ void execute(DependencyGraph& graph)
             print_graph_status(graph, is_responsible_for);
         }
     }
+    
+    auto delta = std::chrono::high_resolution_clock::now() - start;
+    std::cout << "Time to complete graph: " << 1e-9 * std::chrono::duration_cast<std::chrono::nanoseconds>(delta).count() << "s" << std::endl;
 }
 
 
