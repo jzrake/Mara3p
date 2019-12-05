@@ -31,6 +31,7 @@
 #include <tuple>
 #include <functional>
 #include <memory>
+#include <optional>
 
 
 
@@ -460,6 +461,32 @@ template<uint Rank>
 bool empty(const index_space_row_major_t<Rank>& space)
 {
     return product(space.shape) == 0;
+}
+
+
+
+
+//=============================================================================
+template<uint Rank>
+auto start(const index_space_row_major_t<Rank>& space) -> std::optional<uivec_t<Rank>>
+{
+    if (! empty(space))
+        return uivec_t<Rank>{};
+    return {};
+}
+
+template<uint Rank>
+auto next(const index_space_row_major_t<Rank>& space, const uivec_t<Rank>& position) -> std::optional<uivec_t<Rank>>
+{
+    if (auto p = next(position, space.shape); p != space.shape)
+        return p;
+    return {};
+}
+
+template<uint Rank>
+auto obtain(const index_space_row_major_t<Rank>&, const uivec_t<Rank>& position) -> uivec_t<Rank>
+{
+    return position;
 }
 
 

@@ -70,8 +70,7 @@ public:
     using key_type             = KeyType;
     using value_type           = ValueType;
     using mapping_type         = std::function<value_type(std::vector<value_type>)>;
-    using key_vector_type      = std::vector<key_type>;
-    using rule_type            = std::pair<mapping_type, key_vector_type>;
+    using rule_type            = std::pair<mapping_type, std::vector<key_type>>;
 
 
 
@@ -140,6 +139,11 @@ public:
     void insert_rule(key_type key, mapping_type mapping, KeyTypes... argument_keys)
     {
         insert_rule(key, mapping, {argument_keys...});
+    }
+
+    void define(std::tuple<key_type, mapping_type, std::vector<key_type>> named_rule)
+    {
+        insert_rule(std::get<0>(named_rule), std::get<1>(named_rule), std::get<2>(named_rule));
     }
 
 
