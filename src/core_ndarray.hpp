@@ -85,8 +85,12 @@ struct uivec_t
 {
     uint& operator[](std::size_t n) { return impl[n]; }
     const uint& operator[](std::size_t n) const { return impl[n]; }
-    bool operator==(uivec_t b) const { for (std::size_t i = 0; i < Rank; ++i) { if (impl[i] != b[i]) return false; } return true; }
-    bool operator!=(uivec_t b) const { for (std::size_t i = 0; i < Rank; ++i) { if (impl[i] != b[i]) return true; } return false; }
+    bool operator==(uivec_t b) const { return impl == b.impl; }
+    bool operator!=(uivec_t b) const { return impl != b.impl; }
+    bool operator<=(uivec_t b) const { return impl <= b.impl; }
+    bool operator>=(uivec_t b) const { return impl >= b.impl; }
+    bool operator< (uivec_t b) const { return impl <  b.impl; }
+    bool operator> (uivec_t b) const { return impl >  b.impl; }
     std::array<uint, Rank> impl;
 };
 
@@ -311,6 +315,12 @@ struct array_t
     ProviderType provider;
     uivec_t<Rank> shape;
 };
+
+template<typename T>
+struct is_array : std::false_type {};
+
+template<typename ProviderType, uint Rank>
+struct is_array<array_t<ProviderType, Rank>> : std::true_type {};
 
 
 

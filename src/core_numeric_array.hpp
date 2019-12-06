@@ -222,16 +222,25 @@ auto construct(numeric::array_t<U, S> a)
 
 
 //=============================================================================
-template<typename T, typename U, std::size_t S> auto operator+(array_t<T, S> a, array_t<U, S> b) { return map(zip(a, b), [] (auto t) { return std::apply(std::plus<>(), t); }); }
-template<typename T, typename U, std::size_t S> auto operator-(array_t<T, S> a, array_t<U, S> b) { return map(zip(a, b), [] (auto t) { return std::apply(std::minus<>(), t); }); }
-template<typename T, typename U, std::size_t S> auto operator*(array_t<T, S> a, array_t<U, S> b) { return map(zip(a, b), [] (auto t) { return std::apply(std::multiplies<>(), t); }); }
-template<typename T, typename U, std::size_t S> auto operator/(array_t<T, S> a, array_t<U, S> b) { return map(zip(a, b), [] (auto t) { return std::apply(std::divides<>(), t); }); }
-template<typename T, typename U, std::size_t S> auto operator*(array_t<T, S> a, U b) { return map(zip(a, uniform<S>(b)), [] (auto t) { return std::apply(std::multiplies<>(), t); }); }
-template<typename T, typename U, std::size_t S> auto operator/(array_t<T, S> a, U b) { return map(zip(a, uniform<S>(b)), [] (auto t) { return std::apply(std::divides<>(), t); }); }
-template<typename T, typename U, std::size_t S> auto operator*(U b, array_t<T, S> a) { return map(zip(uniform<S>(b), a), [] (auto t) { return std::apply(std::multiplies<>(), t); }); }
-template<typename T, typename U, std::size_t S> auto operator/(U b, array_t<T, S> a) { return map(zip(uniform<S>(b), a), [] (auto t) { return std::apply(std::divides<>(), t); }); }
+template<typename T, typename U, std::size_t S> auto operator+ (array_t<T, S> a, array_t<U, S> b) { return map(zip(a, b), [] (auto t) { return std::apply(std::plus<>(), t); }); }
+template<typename T, typename U, std::size_t S> auto operator- (array_t<T, S> a, array_t<U, S> b) { return map(zip(a, b), [] (auto t) { return std::apply(std::minus<>(), t); }); }
+template<typename T, typename U, std::size_t S> auto operator* (array_t<T, S> a, array_t<U, S> b) { return map(zip(a, b), [] (auto t) { return std::apply(std::multiplies<>(), t); }); }
+template<typename T, typename U, std::size_t S> auto operator/ (array_t<T, S> a, array_t<U, S> b) { return map(zip(a, b), [] (auto t) { return std::apply(std::divides<>(), t); }); }
+template<typename T, typename U, std::size_t S> auto operator% (array_t<T, S> a, array_t<U, S> b) { return map(zip(a, b), [] (auto t) { return std::apply(std::modulus<>(), t); }); }
 template<typename T, typename U, std::size_t S> auto operator==(array_t<T, S> a, array_t<U, S> b) { return all(map(zip(a, b), [] (auto t) { return std::apply(std::equal_to<>(), t); })); }
 template<typename T, typename U, std::size_t S> auto operator!=(array_t<T, S> a, array_t<U, S> b) { return any(map(zip(a, b), [] (auto t) { return std::apply(std::not_equal_to<>(), t); })); }
+
+template<typename T, typename U, std::size_t S> auto operator+(array_t<T, S> a, U b) { return a + uniform<S>(b); }
+template<typename T, typename U, std::size_t S> auto operator-(array_t<T, S> a, U b) { return a - uniform<S>(b); }
+template<typename T, typename U, std::size_t S> auto operator*(array_t<T, S> a, U b) { return a * uniform<S>(b); }
+template<typename T, typename U, std::size_t S> auto operator/(array_t<T, S> a, U b) { return a / uniform<S>(b); }
+template<typename T, typename U, std::size_t S> auto operator%(array_t<T, S> a, U b) { return a % uniform<S>(b); }
+template<typename T, typename U, std::size_t S> auto operator+(U b, array_t<T, S> a) { return uniform<S>(b) + a; }
+template<typename T, typename U, std::size_t S> auto operator-(U b, array_t<T, S> a) { return uniform<S>(b) - a; }
+template<typename T, typename U, std::size_t S> auto operator*(U b, array_t<T, S> a) { return uniform<S>(b) * a; }
+template<typename T, typename U, std::size_t S> auto operator/(U b, array_t<T, S> a) { return uniform<S>(b) / a; }
+template<typename T, typename U, std::size_t S> auto operator%(U b, array_t<T, S> a) { return uniform<S>(b) % a; }
+
 template<typename T, std::size_t S> auto operator+(array_t<T, S> a) { return map(a, [] (auto t) { return +t; }); }
 template<typename T, std::size_t S> auto operator-(array_t<T, S> a) { return map(a, [] (auto t) { return -t; }); }
 
