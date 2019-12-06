@@ -806,16 +806,35 @@ auto from(ValueType... values)
     return view(std::array{values...});
 }
 
-template<template<typename...> typename ContainerType, typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
+template<template<typename...>
+    typename ContainerType,
+    typename SequenceType,
+    typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 auto to(SequenceType sequence)
 {
     return ContainerType<value_type_t<SequenceType>>(begin(sequence), end(sequence));
+}
+
+template<template<typename...>
+    typename ContainerType,
+    typename SequenceType,
+    typename KeyType   = std::tuple_element_t<0, value_type_t<SequenceType>>,
+    typename ValueType = std::tuple_element_t<1, value_type_t<SequenceType>>>
+auto to_dict(SequenceType sequence)
+{
+    return ContainerType<KeyType, ValueType>(begin(sequence), end(sequence));
 }
 
 template<template<typename...> typename ContainerType>
 auto to()
 {
     return [] (auto sequence) { return to<ContainerType>(sequence); };
+}
+
+template<template<typename...> typename ContainerType>
+auto to_dict()
+{
+    return [] (auto sequence) { return to_dict<ContainerType>(sequence); };
 }
 
 template<typename ValueType>
@@ -911,6 +930,7 @@ template<typename F> auto map       (F f)  { return [f] (auto s) { return map   
 template<typename F> auto take_while(F f)  { return [f] (auto s) { return take_while(s, f); }; }
 template<typename F> auto remove_if (F f)  { return [f] (auto s) { return remove_if (s, f); }; }
 template<typename T> auto pair_with (T t)  { return [t] (auto s) { return zip       (s, t); }; }
+template<typename T> auto keys      (T t)  { return [t] (auto s) { return zip       (t, s); }; }
 
 inline auto to_dynamic()            { return [ ] (auto s) { return to_dynamic(s); }; }
 inline auto flat  ()                { return [ ] (auto s) { return flat  (s); }; }
