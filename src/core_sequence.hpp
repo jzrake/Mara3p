@@ -40,6 +40,12 @@ namespace seq {
 
 namespace detail {
 
+template<typename T, typename... Ts>
+using all_same_as = std::conjunction<std::is_same<T, Ts>...>;
+
+template<typename... Ts>
+using all_same = all_same_as<std::tuple_element_t<0, std::tuple<Ts...>>, Ts...>;
+
 template<typename... Ts, typename... Us, std::size_t... Is>
 auto zip_tuple_impl(std::tuple<Ts...> t, std::tuple<Us...> u, std::index_sequence<Is...>)
 {
@@ -85,7 +91,7 @@ auto optional_tuple(const std::tuple<std::optional<Ts>...>& t)
 template<typename T>
 std::optional<std::any> optional_any(const std::optional<T>& o)
 {
-    return o.has_value() ? o.value() : std::optional<std::any>{};
+    return o.has_value() ? std::optional<std::any>{o.value()} : std::optional<std::any>{};
 }
 
 template<typename T, typename U>
@@ -445,62 +451,6 @@ template<typename SequenceType>
 auto measure(SequenceType sequence)
 {
     return measured_sequence_t<SequenceType>{sequence};
-}
-
-
-
-
-/**
- * @brief      A sequence made by concatenating two source sequences A and B.
- *             The only requirement is that a common type exists for the value
- *             types of A and B.
- *
- * @tparam     SequenceType1  The type of the source sequence A
- * @tparam     SequenceType2  The type of the source sequence B
- */
-template<typename SequenceType1, typename SequenceType2>
-struct chained_sequence_t
-{
-    std::pair<SequenceType1, SequenceType2> sequences;
-};
-
-template<typename SequenceType1, typename SequenceType2>
-struct is_sequence<chained_sequence_t<SequenceType1, SequenceType2>> : std::true_type {};
-
-template<typename SequenceType1, typename SequenceType2>
-auto start(chained_sequence_t<SequenceType1, SequenceType2> sequence)
-{
-    return detail::optional_pair_of_either(start(sequence.sequences.first), start(sequence.sequences.second));
-}
-
-template<typename SequenceType1, typename SequenceType2>
-auto next(chained_sequence_t<SequenceType1, SequenceType2> sequence, position_t<chained_sequence_t<SequenceType1, SequenceType2>> position)
-{
-    return detail::optional_pair_of_either(
-          position.first.has_value() ? next(sequence.sequences.first,  position.first .value()) : position.first,
-        ! position.first.has_value() ? next(sequence.sequences.second, position.second.value()) : position.second);
-}
-
-template<typename SequenceType1, typename SequenceType2>
-auto obtain(chained_sequence_t<SequenceType1, SequenceType2> sequence, position_t<chained_sequence_t<SequenceType1, SequenceType2>> position)
-{
-    using value_type = typename std::common_type<value_type_t<SequenceType1>, value_type_t<SequenceType2>>::type;
-
-    return position.first.has_value()
-    ? value_type(obtain(sequence.sequences.first,  position.first .value()))
-    : value_type(obtain(sequence.sequences.second, position.second.value()));
-}
-
-template<typename SequenceType1, typename SequenceType2>
-auto chain(SequenceType1 sequence1, SequenceType2 sequence2)
-{
-    return chained_sequence_t<SequenceType1, SequenceType2>{std::pair(sequence1, sequence2)};
-}
-
-template<typename SequenceType1, typename SequenceType2, typename... SequenceTypes>
-auto chain(SequenceType1 sequence1, SequenceType2 sequence2, SequenceTypes... sequences)
-{
-    return chain(chain(sequence1, sequence2), sequences...);
 }
 
 
@@ -892,6 +842,19 @@ auto repeat(SequenceType sequence, unsigned long count)
     return flat(take(always(sequence), count));
 }
 
+template<typename... SequenceTypes>
+auto concat(SequenceTypes... sequences)
+{
+    if constexpr (detail::all_same<SequenceTypes...>::value)
+    {
+        return flat(view(std::array{sequences...}));
+    }
+    else
+    {
+        return flat(view(std::array{to_dynamic(sequences)...}));        
+    }
+}
+
 template<typename SequenceType, typename FunctionType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 auto flat_map(SequenceType sequence, FunctionType function)
 {
@@ -949,6 +912,7 @@ template<typename F> auto take_while(F f)  { return [f] (auto s) { return take_w
 template<typename F> auto remove_if (F f)  { return [f] (auto s) { return remove_if (s, f); }; }
 template<typename T> auto pair_with (T t)  { return [t] (auto s) { return zip       (s, t); }; }
 
+inline auto to_dynamic()            { return [ ] (auto s) { return to_dynamic(s); }; }
 inline auto flat  ()                { return [ ] (auto s) { return flat  (s); }; }
 inline auto cycle ()                { return [ ] (auto s) { return cycle (s); }; }
 inline auto window()                { return [ ] (auto s) { return window(s); }; }
