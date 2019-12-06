@@ -30,6 +30,13 @@
 #include <iostream>
 #include <iomanip>
 #include <variant>
+#include "app_hdf5.hpp"
+#include "app_hdf5_dimensional.hpp"
+#include "app_hdf5_geometric.hpp"
+#include "app_hdf5_ndarray.hpp"
+#include "app_hdf5_numeric_array.hpp"
+#include "app_hdf5_ndarray_dimensional.hpp"
+#include "app_hdf5_rational.hpp"
 #include "core_bqo_tree.hpp"
 #include "core_ndarray.hpp"
 #include "core_ndarray_ops.hpp"
@@ -86,6 +93,41 @@ using product_identifier_t = std::tuple<
 
 using DependencyGraph = mara::DependencyGraph<product_identifier_t, product_t>;
 using position_t      = geometric::euclidean_vector_t<dimensional::unit_length>;
+
+
+
+
+//=============================================================================
+namespace h5 {
+
+void write(const Group& group, std::string name, const face_magnetic_flux_density_t& bf)
+{
+    write(group.require_group(name), "1", bf.at(0));
+    write(group.require_group(name), "2", bf.at(1));
+    write(group.require_group(name), "3", bf.at(2));
+}
+
+void write(const Group& group, std::string name, const edge_electromotive_density_t& ee)
+{
+    write(group.require_group(name), "1", ee.at(0));
+    write(group.require_group(name), "2", ee.at(1));
+    write(group.require_group(name), "3", ee.at(2));
+}
+
+void write(const Group& group, std::string name, const product_t& product)
+{
+    std::visit([&group, name] (auto p) { write(group, name, p); }, product);
+}
+
+std::string legalize(std::string s)
+{
+    return seq::view(s)
+    | seq::map([] (auto c) { return c == ' ' ? '_' : c; })
+    | seq::map([] (auto c) { return c == '/' ? '?' : c; })
+    | seq::to<std::basic_string>();
+}
+
+}
 
 
 
@@ -152,7 +194,7 @@ std::string to_string(product_identifier_t id)
 
 //=============================================================================
 static auto is_responsible_for = [] (auto) { return true; };
-static auto block_size = 32;
+static auto block_size = 16;
 static auto depth = 1UL;
 static auto blocks_extent = mesh::block_index_3d_t{unsigned(1 << depth), unsigned(1 << depth), unsigned(1 << depth)};
 static auto gamma_law_index = 5. / 3;
@@ -366,12 +408,10 @@ auto extend_27(nd::uint block_size, nd::uint count)
 {
     return [r=block_size - count] (std::vector<product_t> args) -> product_t
     {
-        auto pcs = std::vector<cell_primitive_variables_t>();
+        auto pcs = seq::view(args)
+        | seq::map([] (auto p) { return std::get<cell_primitive_variables_t>(p); })
+        | seq::to<std::vector>();
 
-        for (auto arg : args)
-        {
-            pcs.push_back(std::get<cell_primitive_variables_t>(arg));
-        }
         return mesh::tile_blocks_27(pcs) | mesh::remove_surface(r) | nd::to_shared();
     };
 }
@@ -500,9 +540,22 @@ void execute(DependencyGraph& graph)
             print_graph_status(graph, is_responsible_for);
         }
     }
-    
+
     auto delta = std::chrono::high_resolution_clock::now() - start;
-    std::cout << "Time to complete graph: " << 1e-9 * std::chrono::duration_cast<std::chrono::nanoseconds>(delta).count() << "s" << std::endl;
+
+    std::cout
+    << "Time to complete graph: "
+    << 1e-9 * std::chrono::duration_cast<std::chrono::nanoseconds>(delta).count()
+    << "s"
+    << std::endl;
+
+
+    auto h5f = h5::File("test.h5", "w");
+
+    for (const auto& [key, product] : graph.items())
+    {
+        h5::write(h5::Group(h5f), h5::legalize(to_string(key)), product);
+    }
 }
 
 

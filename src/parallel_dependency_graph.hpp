@@ -564,6 +564,11 @@ public:
         return result;
     }
 
+    const std::map<key_type, value_type>& items() const
+    {
+        return products;
+    }
+
 
 
 

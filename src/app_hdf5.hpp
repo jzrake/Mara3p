@@ -1129,6 +1129,13 @@ inline void test_hdf5()
     test_read_write(std::vector{1, 2, 3});
     test_read_write(std::vector{1.1, 2.2, 3.3});
     test_read_write(std::tuple(13));
+
+    {
+        auto file = h5::File("test.h5", h5::File::Access::Truncate);
+        h5::Group(file).create_group("group");
+        require(  h5::Group(file).contains_group("group"));
+        require(! h5::Group(file).contains_group("froup"));
+    }
 }
 
 #endif // DO_UNIT_TESTS
