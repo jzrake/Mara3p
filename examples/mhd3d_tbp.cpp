@@ -122,8 +122,8 @@ void write(const Group& group, std::string name, const product_t& product)
 std::string legalize(std::string s)
 {
     return seq::view(s)
-    | seq::map([] (auto c) { return c == ' ' ? '_' : c; })
-    | seq::map([] (auto c) { return c == '/' ? '?' : c; })
+    | seq::map([] (auto c) { return c == '/' ? '@' : c; })
+    | seq::remove_if([] (auto c) { return c == ' '; })
     | seq::to<std::basic_string>();
 }
 
@@ -154,8 +154,8 @@ std::string to_string(bqo_tree::tree_index_t<3> i)
 {
     return std::to_string(i.level)
     + ":["
-    + std::to_string(i.coordinates[0]) + " "
-    + std::to_string(i.coordinates[1]) + " "
+    + std::to_string(i.coordinates[0]) + ", "
+    + std::to_string(i.coordinates[1]) + ", "
     + std::to_string(i.coordinates[2]) + "]";
 }
 
@@ -174,8 +174,8 @@ std::string to_string(extended_status s)
 {
     switch (s)
     {
-        case extended_status::not_extended:  return "|[]|";
-        case extended_status::extended:      return "[[]]";
+        case extended_status::not_extended:  return "ne";
+        case extended_status::extended:      return "ex";
     }
 }
 
@@ -196,7 +196,7 @@ std::string to_string(product_identifier_t id)
 static auto is_responsible_for = [] (auto) { return true; };
 static auto block_size = 16;
 static auto depth = 1UL;
-static auto blocks_extent = mesh::block_index_3d_t{unsigned(1 << depth), unsigned(1 << depth), unsigned(1 << depth)};
+static auto blocks_extent = nd::uivec(1 << depth, 1 << depth, 1 << depth);
 static auto gamma_law_index = 5. / 3;
 
 
@@ -408,11 +408,12 @@ auto extend_27(nd::uint block_size, nd::uint count)
 {
     return [r=block_size - count] (std::vector<product_t> args) -> product_t
     {
-        auto pcs = seq::view(args)
+        auto items = seq::view(args)
         | seq::map([] (auto p) { return std::get<cell_primitive_variables_t>(p); })
-        | seq::to<std::vector>();
+        | seq::keys(nd::index_space(3, 3, 3))
+        | seq::to_dict<std::map>();
 
-        return mesh::tile_blocks_27(pcs) | mesh::remove_surface(r) | nd::to_shared();
+        return mesh::tile_blocks_27(items) | mesh::remove_surface(r) | nd::to_shared();
     };
 }
 
@@ -453,27 +454,8 @@ auto initial_condition_rules()
 
         return seq::from(r_ae, r_bf, r_uc);
     })
-    | seq::flat();
-}
-
-
-
-
-//=============================================================================
-auto block_extension_rules(rational::number_t iteration)
-{
-    return block_indexes()
-    | seq::map([iteration] (auto index)
-    {
-        auto pc = key(data_field::cell_primitive_variables).iteration(iteration);
-
-        auto neighbor_ids = seq::view(mesh::neighbors_27(index.coordinates, blocks_extent))
-        | seq::map([] (auto i) { return bqo_tree::tree_index_t<3>{depth, i}; })
-        | seq::map(pc.bind_block())
-        | seq::to<std::vector>();
-
-        return rule(pc.extended().block(index), extend_27(block_size, 2), neighbor_ids);
-    });
+    | seq::flat()
+    | seq::to_dynamic();
 }
 
 
@@ -491,7 +473,29 @@ auto recover_primitive_rules(rational::number_t iteration)
 
         auto f = wrap<cell_conserved_density_t, face_magnetic_flux_density_t>(mara::primitive_array);
         return rule(pc, f, {uc, bf});
-    });
+    })
+    | seq::to_dynamic();
+}
+
+
+
+
+//=============================================================================
+auto block_extension_rules(rational::number_t iteration)
+{
+    return block_indexes()
+    | seq::map([iteration] (auto index) -> named_rule_t
+    {
+        auto pc = key(data_field::cell_primitive_variables).iteration(iteration);
+
+        auto neighbor_ids = mesh::neighbors_27(mesh::to_uivec(index.coordinates), blocks_extent)
+        | seq::map([] (auto i) { return bqo_tree::tree_index_t<3>{depth, mesh::to_numeric_array(i)}; })
+        | seq::map(pc.bind_block())
+        | seq::to<std::vector>();
+
+        return rule(pc.extended().block(index), extend_27(block_size, 2), neighbor_ids);
+    })
+    | seq::to_dynamic();
 }
 
 
@@ -502,17 +506,7 @@ auto build_graph()
 {
     auto graph = DependencyGraph();
 
-    for (auto rule : initial_condition_rules())
-    {
-        graph.define(rule);
-    }
-
-    for (auto rule : recover_primitive_rules(0))
-    {
-        graph.define(rule);
-    }
-
-    for (auto rule : block_extension_rules(0))
+    for (auto rule : seq::concat(initial_condition_rules(), recover_primitive_rules(0), block_extension_rules(0)))
     {
         graph.define(rule);
     }
@@ -549,12 +543,11 @@ void execute(DependencyGraph& graph)
     << "s"
     << std::endl;
 
-
     auto h5f = h5::File("test.h5", "w");
 
     for (const auto& [key, product] : graph.items())
     {
-        h5::write(h5::Group(h5f), h5::legalize(to_string(key)), product);
+        h5::write(h5f, h5::legalize(to_string(key)), product);
     }
 }
 
