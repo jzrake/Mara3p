@@ -497,18 +497,25 @@ auto obtain(zipped_sequence_t<SequenceTypes...> sequence, position_t<zipped_sequ
     });
 }
 
-template<typename SequenceType1, typename SequenceType2>
-auto zip(SequenceType1 sequence1, SequenceType2 sequence2)
-{
-    return map(zipped_sequence_t<SequenceType1, SequenceType2>{{sequence1, sequence2}}, [] (auto t) {
-        return std::pair(std::get<0>(t), std::get<1>(t));
-    });
-}
-
 template<typename... SequenceTypes>
 auto zip(SequenceTypes... sequences)
 {
-    return zipped_sequence_t<SequenceTypes...>{{sequences...}};
+    if constexpr (sizeof...(SequenceTypes) == 2)
+    {
+        return map(zipped_sequence_t<SequenceTypes...>{{sequences...}}, [] (auto t) {
+            return std::pair(std::get<0>(t), std::get<1>(t));
+        });
+    }
+    else if constexpr (detail::all_same<SequenceTypes...>::value)
+    {
+        return map(zipped_sequence_t<SequenceTypes...>{{sequences...}}, [] (auto t) {
+            return std::apply([] (auto... ts) { return std::array{ts...}; }, t);
+        });
+    }
+    else
+    {
+        return zipped_sequence_t<SequenceTypes...>{{sequences...}};
+    }
 }
 
 
@@ -633,10 +640,7 @@ auto scan(A sequence, B start, C reducer)
  *             sequence protocol to a proper sequence. This technique trivially
  *             wraps this foreign sequence's start, next, and obtain methods,
  *             such that the structure is effectively imported into the seq
- *             namespace. Doing this enables argument-dependent-lookup (ADL) to
- *             find the sequence operators without prefixing the seq namespace,
- *             most importantly the begin and end begin functions, making the
- *             foreign struct iterable via range-based for-loop.
+ *             namespace.
  *
  * @tparam     SequenceType  The type of the data structure implementing the
  *                           sequence protocol
