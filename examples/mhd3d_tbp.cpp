@@ -139,6 +139,7 @@ std::string to_string(mara::evaluation_status s)
         case mara::evaluation_status::pending:     return ".";
         case mara::evaluation_status::eligible:    return "e";
         case mara::evaluation_status::completed:   return "c";
+        default: return "";
     }
 }
 
@@ -164,6 +165,7 @@ std::string to_string(data_field f)
         case data_field::cell_primitive_variables:     return "P";
         case data_field::face_magnetic_flux_density:   return "B";
         case data_field::edge_electromotive_density:   return "E";
+        default: return "";
     }
 }
 
@@ -173,6 +175,7 @@ std::string to_string(extended_status s)
     {
         case extended_status::not_extended:  return " [] ";
         case extended_status::extended:      return "[[]]";
+        default: return "";
     }
 }
 

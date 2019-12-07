@@ -1,3 +1,4 @@
+
 /**
  ==============================================================================
  Copyright 2019, Jonathan Zrake
@@ -376,7 +377,6 @@ struct riemann_solver_mode_contact_speed_t {};
 template<typename RiemannSolverMode>
 auto riemann_solver(primitive_t pl, primitive_t pr, geometric::unit_vector_t nhat, double gamma_law_index, RiemannSolverMode mode)
 {
-    auto c2 = light_speed * light_speed;
     auto ul = conserved_density(pl, gamma_law_index);
     auto ur = conserved_density(pr, gamma_law_index);
     auto fl = flux(pl, nhat, gamma_law_index);
@@ -392,7 +392,7 @@ auto riemann_solver(primitive_t pl, primitive_t pr, geometric::unit_vector_t nha
         if (unit_velocity(0.0) < al) return fl;
         if (unit_velocity(0.0) > ar) return fr;
         return (ar * fl - al * fr - (ul - ur) * ar * al) / (ar - al);
-    }
+    } else {
 
     // Equations (9) and (11)
     auto u_hll = (ar * ur - al * ul + (fl - fr))           / (ar - al);
@@ -403,7 +403,9 @@ auto riemann_solver(primitive_t pl, primitive_t pr, geometric::unit_vector_t nha
         if (mode.face_speed < al) return fl - mode.face_speed * ul;
         if (mode.face_speed > ar) return fr - mode.face_speed * ur;
         return f_hll - mode.face_speed * u_hll;
-    }
+    } else {
+
+    auto c2 = light_speed * light_speed;
 
     // Mignone defines total energy as including the rest mass
     auto ue_hll = conserved_energy_density(u_hll) + conserved_mass_density(u_hll) * c2;
@@ -416,12 +418,13 @@ auto riemann_solver(primitive_t pl, primitive_t pr, geometric::unit_vector_t nha
     auto b = -fm_hll - ue_hll;
     auto c = +um_hll;
     auto as = (std::abs(a.value) > 1e-8 ? (-b - sqrt(b * b - 4.0 * a * c)) / (2.0 * a) : -c / b) * c2;
-    auto ps = -fe_hll * as / c2 + fm_hll;
 
     if constexpr (std::is_same_v<RiemannSolverMode, riemann_solver_mode_contact_speed_t>)
     {
         return as;
-    }
+    } else {
+
+    auto ps = -fe_hll * as / c2 + fm_hll;
 
     auto star_state_flux = [nhat, c2, as, ps] (conserved_density_t u, flux_vector_t f, primitive_t p, unit_velocity a, unit_velocity face_speed)
     {
@@ -466,6 +469,9 @@ auto riemann_solver(primitive_t pl, primitive_t pr, geometric::unit_vector_t nha
         if (mode.face_speed >= as) return star_state_flux(ur, fr, pr, ar, mode.face_speed);
 
         return flux_vector_t{};
+    }
+    }
+    }
     }
 }
 

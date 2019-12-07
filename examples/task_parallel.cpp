@@ -87,6 +87,7 @@ std::string to_string(mara::evaluation_status s)
         case mara::evaluation_status::pending:     return ".";
         case mara::evaluation_status::eligible:    return "e";
         case mara::evaluation_status::completed:   return "c";
+        default: return "";
     }
 }
 

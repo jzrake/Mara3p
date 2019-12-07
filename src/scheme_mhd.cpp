@@ -172,12 +172,12 @@ static auto godunov_fluxes_plm(nd::array_t<P, 3> pc, nd::array_t<Q, 3> bf1, nd::
     auto p2 = pc | mesh::remove_surface(1);
     auto p3 = pc | mesh::remove_surface(1);
 
-    auto pl1 = p1 + 0.5 * g1 | nd::select(0, 0, -1);
-    auto pr1 = p1 - 0.5 * g1 | nd::select(0, 1);
-    auto pl2 = p2 + 0.5 * g2 | nd::select(1, 0, -1);
-    auto pr2 = p2 - 0.5 * g2 | nd::select(1, 1);
-    auto pl3 = p3 + 0.5 * g3 | nd::select(2, 0, -1);
-    auto pr3 = p3 - 0.5 * g3 | nd::select(2, 1);
+    auto pl1 = (p1 + 0.5 * g1) | nd::select(0, 0, -1);
+    auto pr1 = (p1 - 0.5 * g1) | nd::select(0, 1);
+    auto pl2 = (p2 + 0.5 * g2) | nd::select(1, 0, -1);
+    auto pr2 = (p2 - 0.5 * g2) | nd::select(1, 1);
+    auto pl3 = (p3 + 0.5 * g3) | nd::select(2, 0, -1);
+    auto pr3 = (p3 - 0.5 * g3) | nd::select(2, 1);
 
     auto pf1 = nd::zip(pl1, pr1, bf1);
     auto pf2 = nd::zip(pl2, pr2, bf2);
@@ -328,7 +328,7 @@ mara::construct_conserved(
     auto N = block_size;
 
     auto dl = dimensional::unit_length(1.0) / double(N);
-    auto da = pow<2>(dl);
+    auto da = dimensional::pow<2>(dl);
 
     auto A = [vector_potential] (unsigned dir)
     {

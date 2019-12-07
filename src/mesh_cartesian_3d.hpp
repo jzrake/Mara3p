@@ -73,6 +73,7 @@ inline auto kronecker_delta(axis_3d axis)
         case axis_3d::i: return numeric::array(1, 0, 0);
         case axis_3d::j: return numeric::array(0, 1, 0);
         case axis_3d::k: return numeric::array(0, 0, 1);
+        default: return numeric::array(0, 0, 0);
     }
 }
 

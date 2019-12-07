@@ -132,8 +132,8 @@ state_t advance(state_t state)
 
     auto f0 = zip(pf, vf) | nd::map(riemann_solver_for(xh)) | nd::to_shared();
     auto df = f0 | nd::adjacent_diff() | nd::extend_zero_gradient() | nd::to_shared();
-    auto q1 = state.conserved - (df * dt * da) | nd::to_shared();
-    auto x1 = state.vertices  + (vf * dt | nd::extend_zero_gradient()) | nd::to_shared();
+    auto q1 = (state.conserved - (df * dt * da)) | nd::to_shared();
+    auto x1 = (state.vertices  + (vf * dt | nd::extend_zero_gradient())) | nd::to_shared();
 
     return {
         state.iteration + 1,

@@ -144,6 +144,7 @@ struct iterator
     using reference         = value_type&;
 
     iterator& operator++() { position = next(sequence, position.value()); return *this; }
+    bool operator==(const iterator& other) const { return position.has_value() == other.position.has_value(); }
     bool operator!=(const iterator& other) const { return position.has_value() != other.position.has_value(); }
     auto operator*() const { return obtain(sequence, position.value()); }
     sequence_type sequence;
