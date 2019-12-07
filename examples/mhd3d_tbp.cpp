@@ -401,7 +401,7 @@ auto curl(dimensional::unit_length dl)
 
 
 //=============================================================================
-auto extend_27(nd::uint block_size, nd::uint count)
+auto extend_cell_primitive_variables(nd::uint block_size, nd::uint count)
 {
     return [r=block_size - count] (std::vector<product_t> args) -> product_t
     {
@@ -411,6 +411,36 @@ auto extend_27(nd::uint block_size, nd::uint count)
         | seq::to_dict<std::map>();
 
         return mesh::tile_blocks(items, nd::uivec(3, 3, 3)) | mesh::remove_surface(r) | nd::to_shared();
+    };
+}
+
+
+
+
+//=============================================================================
+auto extend_face_magnetic_flux_density(nd::uint block_size, nd::uint count)
+{
+    return [r=block_size - count] (std::vector<product_t> args) -> product_t
+    {
+        auto bfs = seq::get<face_magnetic_flux_density_t>(seq::view(args)) | seq::chunk(9);
+        auto axs = seq::from(mesh::axis_3d::i, mesh::axis_3d::j, mesh::axis_3d::k);
+        auto shp = seq::from(nd::uivec(1, 3, 3), nd::uivec(3, 1, 3), nd::uivec(3, 3, 1));
+
+        auto extend = [r] (unsigned a, auto bf, mesh::axis_3d axis, nd::uivec_t<3> shape)
+        {
+            auto items = seq::adapt(bf)
+            | seq::map([a] (auto x) { return x.at(a); })
+            | seq::keys(nd::index_space(shape))
+            | seq::to_dict<std::map>();
+
+            return mesh::tile_blocks(items, shape)
+            | mesh::remove_transverse(r, axis)
+            | nd::to_shared();
+        };
+
+        return seq::zip(seq::range(3), bfs, axs, shp)
+        | seq::map(util::apply_to(extend))
+        | seq::to_std_array<3>();
     };
 }
 
@@ -476,7 +506,7 @@ auto recover_primitive_rules(rational::number_t iteration)
 
 
 //=============================================================================
-auto block_extension_rules(rational::number_t iteration)
+auto primitive_extension_rules(rational::number_t iteration)
 {
     return block_indexes()
     | seq::map([iteration] (auto index) -> named_rule_t
@@ -488,7 +518,31 @@ auto block_extension_rules(rational::number_t iteration)
         | seq::map(pc.bind_block())
         | seq::to<std::vector>();
 
-        return rule(pc.extended().block(index), extend_27(block_size, 2), neighbor_ids);
+        return rule(pc.extended().block(index), extend_cell_primitive_variables(block_size, 2), neighbor_ids);
+    })
+    | seq::to_dynamic();
+}
+
+
+
+
+//=============================================================================
+auto magnetic_extension_rules(rational::number_t iteration)
+{
+    return block_indexes()
+    | seq::map([iteration] (auto index) -> named_rule_t
+    {
+        auto bf = key(data_field::face_magnetic_flux_density).iteration(iteration);
+        auto n1 = mesh::neighbors_9(mesh::to_uivec(index.coordinates), block_extent, mesh::axis_3d::i);
+        auto n2 = mesh::neighbors_9(mesh::to_uivec(index.coordinates), block_extent, mesh::axis_3d::j);
+        auto n3 = mesh::neighbors_9(mesh::to_uivec(index.coordinates), block_extent, mesh::axis_3d::k);
+
+        auto neighbor_ids = seq::concat(n1, n2, n3)
+        | seq::map([] (auto i) { return multilevel_index_t{depth, mesh::to_numeric_array(i)}; })
+        | seq::map(bf.bind_block())
+        | seq::to<std::vector>();
+
+        return rule(bf.extended().block(index), extend_face_magnetic_flux_density(block_size, 2), neighbor_ids);
     })
     | seq::to_dynamic();
 }
@@ -524,7 +578,8 @@ auto build_graph()
 
     for (auto rule : initial_condition_rules())       graph.define(rule);
     for (auto rule : recover_primitive_rules(0))      graph.define(rule);   
-    for (auto rule : block_extension_rules(0))        graph.define(rule);
+    for (auto rule : primitive_extension_rules(0))    graph.define(rule);
+    for (auto rule : magnetic_extension_rules(0))     graph.define(rule);
     for (auto rule : global_primitive_array_rules(0)) graph.define(rule);
 
     return std::move(graph).throw_if_incomplete();
