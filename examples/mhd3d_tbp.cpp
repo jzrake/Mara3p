@@ -74,11 +74,9 @@ using cell_conserved_density_t     = nd::shared_array<mhd::conserved_density_t, 
 using cell_primitive_variables_t   = nd::shared_array<mhd::primitive_t, 3>;
 using face_magnetic_flux_density_t = std::array<nd::shared_array<mhd::unit_magnetic_field, 3>, 3>;
 using edge_electromotive_density_t = std::array<nd::shared_array<mhd::unit_electric_field, 3>, 3>;
+using position_t                   = geometric::euclidean_vector_t<dimensional::unit_length>;
+using multilevel_index_t           = bqo_tree::tree_index_t<3>;
 
-
-
-
-//=============================================================================
 using product_t = std::variant<
     cell_conserved_density_t,
     cell_primitive_variables_t,
@@ -87,12 +85,11 @@ using product_t = std::variant<
 
 using product_identifier_t = std::tuple<
     rational::number_t,
-    bqo_tree::tree_index_t<3>,
+    multilevel_index_t,
     data_field,
     extended_status>;
 
 using DependencyGraph = mara::DependencyGraph<product_identifier_t, product_t>;
-using position_t      = geometric::euclidean_vector_t<dimensional::unit_length>;
 
 
 
@@ -150,7 +147,7 @@ std::string to_string(rational::number_t n)
     return std::to_string(n.num) + "/" + std::to_string(n.den);
 }
 
-std::string to_string(bqo_tree::tree_index_t<3> i)
+std::string to_string(multilevel_index_t i)
 {
     return std::to_string(i.level)
     + ":["
@@ -174,8 +171,8 @@ std::string to_string(extended_status s)
 {
     switch (s)
     {
-        case extended_status::not_extended:  return "ne";
-        case extended_status::extended:      return "ex";
+        case extended_status::not_extended:  return " [] ";
+        case extended_status::extended:      return "[[]]";
     }
 }
 
@@ -196,7 +193,7 @@ std::string to_string(product_identifier_t id)
 static auto is_responsible_for = [] (auto) { return true; };
 static auto block_size = 16;
 static auto depth = 1UL;
-static auto blocks_extent = nd::uivec(1 << depth, 1 << depth, 1 << depth);
+static auto block_extent = nd::uivec(1 << depth, 1 << depth, 1 << depth);
 static auto gamma_law_index = 5. / 3;
 
 
@@ -254,7 +251,7 @@ named_rule_t rule(
 struct key_factory_t
 {
     key_factory_t iteration(rational::number_t v)                        const { auto n = id; std::get<0>(n) = v; return {n}; }
-    key_factory_t block    (bqo_tree::tree_index_t<3> v)                 const { auto n = id; std::get<1>(n) = v; return {n}; }
+    key_factory_t block    (multilevel_index_t v)                        const { auto n = id; std::get<1>(n) = v; return {n}; }
     key_factory_t field    (data_field v)                                const { auto n = id; std::get<2>(n) = v; return {n}; }
     key_factory_t extended (extended_status v=extended_status::extended) const { auto n = id; std::get<3>(n) = v; return {n}; }
 
@@ -263,7 +260,7 @@ struct key_factory_t
         return id;
     }
 
-    auto bind_block() const { return [this] (bqo_tree::tree_index_t<3> v) { return block(v).id; }; }
+    auto bind_block() const { return [this] (multilevel_index_t v) { return block(v).id; }; }
 
     product_identifier_t id;
 };
@@ -333,7 +330,7 @@ auto abc_vector_potential(position_t p)
     return b0 * mhd::vector_potential_t{ax, ay, az};
 };
 
-auto vertices(bqo_tree::tree_index_t<3> index)
+auto vertices(multilevel_index_t index)
 {
     auto N = block_size;
     auto dx = dimensional::unit_length(1.0 / (1 << index.level));
@@ -346,7 +343,7 @@ auto vertices(bqo_tree::tree_index_t<3> index)
 
 
 //=============================================================================
-auto construct_vector_potential(bqo_tree::tree_index_t<3> index)
+auto construct_vector_potential(multilevel_index_t index)
 {
     return [index] ()
     {
@@ -366,7 +363,7 @@ auto construct_vector_potential(bqo_tree::tree_index_t<3> index)
 
 
 //=============================================================================
-auto construct_conserved(bqo_tree::tree_index_t<3> index)
+auto construct_conserved(multilevel_index_t index)
 {
     return [index] (face_magnetic_flux_density_t bf)
     {
@@ -413,7 +410,7 @@ auto extend_27(nd::uint block_size, nd::uint count)
         | seq::keys(nd::index_space(3, 3, 3))
         | seq::to_dict<std::map>();
 
-        return mesh::tile_blocks_27(items) | mesh::remove_surface(r) | nd::to_shared();
+        return mesh::tile_blocks(items, nd::uivec(3, 3, 3)) | mesh::remove_surface(r) | nd::to_shared();
     };
 }
 
@@ -423,9 +420,8 @@ auto extend_27(nd::uint block_size, nd::uint count)
 //=============================================================================
 auto block_indexes()
 {
-    auto nb = unsigned(1 << depth);
-    return seq::adapt(nd::index_space(nb, nb, nb))
-    | seq::map([] (auto i) { return bqo_tree::tree_index_t<3>{depth, {i[0], i[1], i[2]}}; });
+    return seq::adapt(nd::index_space(block_extent))
+    | seq::map([] (auto i) { return multilevel_index_t{depth, mesh::to_numeric_array(i)}; });
 }
 
 
@@ -467,12 +463,11 @@ auto recover_primitive_rules(rational::number_t iteration)
     return block_indexes()
     | seq::map([iteration] (auto index)
     {
-        auto uc = key(iteration).block(index).field(data_field::cell_conserved_density);
         auto bf = key(iteration).block(index).field(data_field::face_magnetic_flux_density);
+        auto uc = key(iteration).block(index).field(data_field::cell_conserved_density);
         auto pc = key(iteration).block(index).field(data_field::cell_primitive_variables);
-
-        auto f = wrap<cell_conserved_density_t, face_magnetic_flux_density_t>(mara::primitive_array);
-        return rule(pc, f, {uc, bf});
+        auto fm = wrap<cell_conserved_density_t, face_magnetic_flux_density_t>(mara::primitive_array);
+        return rule(pc, fm, {uc, bf});
     })
     | seq::to_dynamic();
 }
@@ -488,8 +483,8 @@ auto block_extension_rules(rational::number_t iteration)
     {
         auto pc = key(data_field::cell_primitive_variables).iteration(iteration);
 
-        auto neighbor_ids = mesh::neighbors_27(mesh::to_uivec(index.coordinates), blocks_extent)
-        | seq::map([] (auto i) { return bqo_tree::tree_index_t<3>{depth, mesh::to_numeric_array(i)}; })
+        auto neighbor_ids = mesh::neighbors_27(mesh::to_uivec(index.coordinates), block_extent)
+        | seq::map([] (auto i) { return multilevel_index_t{depth, mesh::to_numeric_array(i)}; })
         | seq::map(pc.bind_block())
         | seq::to<std::vector>();
 
@@ -502,14 +497,36 @@ auto block_extension_rules(rational::number_t iteration)
 
 
 //=============================================================================
+auto global_primitive_array_rules(rational::number_t iteration)
+{
+    auto pc = key(data_field::cell_primitive_variables).iteration(iteration);
+    auto arg_keys = block_indexes() | seq::map(pc.bind_block()) | seq::to<std::vector>();
+
+    auto tile = [] (std::vector<product_t> block_vector) -> product_t
+    {
+        auto block_map = seq::view(block_vector)
+        | seq::map([] (auto p) { return std::get<cell_primitive_variables_t>(p); })
+        | seq::keys(nd::index_space(block_extent))
+        | seq::to_dict<std::map>();
+
+        return mesh::tile_blocks(block_map, block_extent) | nd::to_shared();
+    };
+    return seq::just(rule(pc, tile, arg_keys)) | seq::to_dynamic();
+}
+
+
+
+
+//=============================================================================
 auto build_graph()
 {
     auto graph = DependencyGraph();
 
-    for (auto rule : seq::concat(initial_condition_rules(), recover_primitive_rules(0), block_extension_rules(0)))
-    {
-        graph.define(rule);
-    }
+    for (auto rule : initial_condition_rules())       graph.define(rule);
+    for (auto rule : recover_primitive_rules(0))      graph.define(rule);   
+    for (auto rule : block_extension_rules(0))        graph.define(rule);
+    for (auto rule : global_primitive_array_rules(0)) graph.define(rule);
+
     return std::move(graph).throw_if_incomplete();
 }
 

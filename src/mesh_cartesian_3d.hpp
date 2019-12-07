@@ -55,6 +55,19 @@ enum class axis_3d {
 
 
 
+//=============================================================================
+inline auto to_numeric_array(nd::uivec_t<3> i)
+{
+    return numeric::array(i[0], i[1], i[2]);
+};
+
+inline auto to_uivec(numeric::array_t<unsigned long, 3> a)
+{
+    return nd::uivec(a[0], a[1], a[2]);
+};
+
+
+
 
 /**
  * @brief      Return a 3D lattice of Euclidean vectors of a floating point data
@@ -275,24 +288,10 @@ auto tile_blocks(nd::array_t<P, 3> blocks)
 
 
 //=============================================================================
-inline auto to_numeric_array(nd::uivec_t<3> i)
-{
-    return numeric::array(i[0], i[1], i[2]);
-};
-
-inline auto to_uivec(numeric::array_t<unsigned long, 3> a)
-{
-    return nd::uivec(a[0], a[1], a[2]);
-};
-
-
-
-
-//=============================================================================
 template<typename P>
-auto tile_blocks_27(std::map<nd::uivec_t<3>, nd::array_t<P, 3>> blocks)
+auto tile_blocks(std::map<nd::uivec_t<3>, nd::array_t<P, 3>> blocks, nd::uivec_t<3> shape)
 {
-    return tile_blocks(nd::make_array([blocks] (auto bi) { return blocks.at(bi); }, nd::uivec(3, 3, 3)));
+    return tile_blocks(nd::make_array([blocks] (auto bi) { return blocks.at(bi); }, shape));
 }
 
 
