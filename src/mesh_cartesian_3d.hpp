@@ -66,6 +66,16 @@ inline auto to_uivec(numeric::array_t<unsigned long, 3> a)
     return nd::uivec(a[0], a[1], a[2]);
 };
 
+inline auto kronecker_delta(axis_3d axis)
+{
+    switch (axis)
+    {
+        case axis_3d::i: return numeric::array(1, 0, 0);
+        case axis_3d::j: return numeric::array(0, 1, 0);
+        case axis_3d::k: return numeric::array(0, 0, 1);
+    }
+}
+
 
 
 
@@ -365,10 +375,6 @@ auto extend_periodic = [] (nd::uint count)
     };
 };
 
-
-
-
-//=============================================================================
 auto remove_surface = [] (nd::uint count)
 {
     return [c=count] (auto x)
@@ -384,7 +390,7 @@ auto remove_transverse_i = [] (nd::uint count)
 {
     return [c=count] (auto x)
     {
-        return nd::make_array(nd::indexing([x,c] (auto i, auto j, auto k)
+        return nd::make_array(nd::indexing([x, c] (auto i, auto j, auto k)
         {
             return x(i, j + c, k + c);
         }), nd::uivec(shape(x, 0), shape(x, 1) - 2 * c, shape(x, 2) - 2 * c));
@@ -395,7 +401,7 @@ auto remove_transverse_j = [] (nd::uint count)
 {
     return [c=count] (auto x)
     {
-        return nd::make_array(nd::indexing([x,c] (auto i, auto j, auto k)
+        return nd::make_array(nd::indexing([x, c] (auto i, auto j, auto k)
         {
             return x(i + c, j, k + c);
         }), nd::uivec(shape(x, 0) - 2 * c, shape(x, 1), shape(x, 2) - 2 * c));
@@ -406,12 +412,30 @@ auto remove_transverse_k = [] (nd::uint count)
 {
     return [c=count] (auto x)
     {
-        return nd::make_array(nd::indexing([x,c] (auto i, auto j, auto k)
+        return nd::make_array(nd::indexing([x, c] (auto i, auto j, auto k)
         {
             return x(i + c, j + c, k);
         }), nd::uivec(shape(x, 0) - 2 * c, shape(x, 1) - 2 * c, shape(x, 2)));
     };
 };
+
+
+
+
+//=============================================================================
+template<typename P>
+auto remove_transverse(nd::array_t<P, 3> array, unsigned count, axis_3d axis)
+{
+    return nd::make_array([array, count, axis] (auto i0)
+    {
+        return array(to_uivec(to_numeric_array(i0) + count * (1 - kronecker_delta(axis))));
+    }, to_uivec(to_numeric_array(shape(array)) - 2 * count * (1 - kronecker_delta(axis))));
+}
+
+inline auto remove_transverse(unsigned count, axis_3d axis)
+{
+    return [count, axis] (auto array) { return remove_transverse(array, count, axis);};
+}
 
 } // namespace mesh
 
