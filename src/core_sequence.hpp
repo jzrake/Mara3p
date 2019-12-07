@@ -777,6 +777,18 @@ auto drop(SequenceType sequence, unsigned long count)
     return advance(sequence, std::optional(back(take(measure(sequence), count + 1))));
 }
 
+template<std::size_t I, typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
+auto get(SequenceType sequence)
+{
+    return map(sequence, [] (auto x) { return std::get<I>(x); });
+}
+
+template<typename T, typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
+auto get(SequenceType sequence)
+{
+    return map(sequence, [] (auto x) { return std::get<T>(x); });
+}
+
 template<typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
 auto chunk(SequenceType sequence, unsigned long chunk_size)
 {
@@ -829,6 +841,18 @@ auto to_dict(SequenceType sequence)
     return ContainerType<KeyType, ValueType>(begin(sequence), end(sequence));
 }
 
+template<std::size_t Size, typename SequenceType, typename = std::enable_if_t<is_sequence<SequenceType>::value>>
+auto to_std_array(SequenceType sequence)
+{
+    auto result = std::array<value_type_t<SequenceType>, Size>{};
+
+    for (auto [i, x] : take(enumerate(sequence), Size))
+    {
+        result[i] = x;
+    }
+    return result;
+}
+
 template<template<typename...> typename ContainerType>
 auto to()
 {
@@ -839,6 +863,12 @@ template<template<typename...> typename ContainerType>
 auto to_dict()
 {
     return [] (auto sequence) { return to_dict<ContainerType>(sequence); };
+}
+
+template<std::size_t Size>
+auto to_std_array()
+{
+    return [] (auto sequence) { return to_std_array<Size>(sequence); };
 }
 
 template<typename ValueType>
