@@ -31,13 +31,13 @@
 #include <iomanip>
 #include <sstream>
 #include <variant>
-#include "app_hdf5.hpp"
-#include "app_hdf5_dimensional.hpp"
-#include "app_hdf5_geometric.hpp"
-#include "app_hdf5_ndarray.hpp"
-#include "app_hdf5_numeric_array.hpp"
-#include "app_hdf5_ndarray_dimensional.hpp"
-#include "app_hdf5_rational.hpp"
+// #include "app_hdf5.hpp"
+// #include "app_hdf5_dimensional.hpp"
+// #include "app_hdf5_geometric.hpp"
+// #include "app_hdf5_ndarray.hpp"
+// #include "app_hdf5_numeric_array.hpp"
+// #include "app_hdf5_ndarray_dimensional.hpp"
+// #include "app_hdf5_rational.hpp"
 #include "app_ui.hpp"
 #include "core_bqo_tree.hpp"
 #include "core_ndarray.hpp"
@@ -48,11 +48,15 @@
 #include "parallel_dependency_graph.hpp"
 #include "parallel_thread_pool.hpp"
 #include "physics_mhd.hpp"
-#include "scheme_mhd.hpp"
+#include "scheme_mhd_v2.hpp"
 
 
 
-#if 1
+
+using namespace mhd_scheme_v2;
+
+
+
 
 //=============================================================================
 enum class data_field
@@ -70,18 +74,6 @@ enum class extended_status
     not_extended,
     extended,
 };
-
-
-
-
-//=============================================================================
-using cell_primitive_variables_t   = nd::shared_array<mhd::primitive_t, 3>;
-using cell_conserved_density_t     = nd::shared_array<mhd::conserved_density_t, 3>;
-using face_godunov_data_t          = std::array<nd::shared_array<mhd::godunov_data_t, 3>, 3>;
-using face_magnetic_flux_density_t = std::array<nd::shared_array<mhd::unit_magnetic_field, 3>, 3>;
-using edge_electromotive_density_t = std::array<nd::shared_array<mhd::unit_electric_field, 3>, 3>;
-using position_t                   = geometric::euclidean_vector_t<dimensional::unit_length>;
-using multilevel_index_t           = bqo_tree::tree_index_t<3>;
 
 using product_t = std::variant<
     cell_primitive_variables_t,
@@ -104,26 +96,26 @@ using DependencyGraph = mara::DependencyGraph<product_identifier_t, product_t>;
 //=============================================================================
 namespace h5 {
 
-template<typename T>
-void write(const Group& group, std::string name, const std::array<nd::shared_array<T, 3>, 3>& v)
-{
-    write(group.require_group(name), "1", v.at(0));
-    write(group.require_group(name), "2", v.at(1));
-    write(group.require_group(name), "3", v.at(2));
-}
+// template<typename T>
+// void write(const Group& group, std::string name, const std::array<nd::shared_array<T, 3>, 3>& v)
+// {
+//     write(group.require_group(name), "1", v.at(0));
+//     write(group.require_group(name), "2", v.at(1));
+//     write(group.require_group(name), "3", v.at(2));
+// }
 
-void write(const Group& group, std::string name, const product_t& product)
-{
-    std::visit([&group, name] (auto p) { write(group, name, p); }, product);
-}
+// void write(const Group& group, std::string name, const product_t& product)
+// {
+//     std::visit([&group, name] (auto p) { write(group, name, p); }, product);
+// }
 
-std::string legalize(std::string s)
-{
-    return seq::view(s)
-    | seq::map([] (auto c) { return c == '/' ? '@' : c; })
-    | seq::remove_if([] (auto c) { return c == ' '; })
-    | seq::to<std::basic_string>();
-}
+// std::string legalize(std::string s)
+// {
+//     return seq::view(s)
+//     | seq::map([] (auto c) { return c == '/' ? '@' : c; })
+//     | seq::remove_if([] (auto c) { return c == ' '; })
+//     | seq::to<std::basic_string>();
+// }
 
 }
 
@@ -196,59 +188,34 @@ std::string to_string(product_identifier_t id)
 
 
 //=============================================================================
-static auto is_responsible_for = [] (auto) { return true; };
-static auto block_size = 16;
-static auto depth = 1UL;
-static auto block_extent = nd::uivec(1 << depth, 1 << depth, 1 << depth);
-static auto gamma_law_index = 5. / 3;
-
-
-
-
-using namespace std::placeholders;
-using geometric::unit_vector_on;
-using util::apply_to;
-
-
-
-
-// These are riemann solver functions for each of the three axes.
-static auto rs1 = apply_to(std::bind(mhd::riemann_hlle, _1, _2, _3, unit_vector_on(1), gamma_law_index));
-static auto rs2 = apply_to(std::bind(mhd::riemann_hlle, _1, _2, _3, unit_vector_on(2), gamma_law_index));
-static auto rs3 = apply_to(std::bind(mhd::riemann_hlle, _1, _2, _3, unit_vector_on(3), gamma_law_index));
-
-
-
-
-// These are "remove-transverse" functions; they return a rectangular pipe from
-// the middle of a 3D array along a given axis.
-static auto rt1 = mesh::remove_transverse_i(1);
-static auto rt2 = mesh::remove_transverse_j(1);
-static auto rt3 = mesh::remove_transverse_k(1);
-
-
-
-
-// These are "remove-longitudinal" functions; they remove a layer of zones from
-// the ends of a 3D array along a given axis.
-static auto rl1 = nd::select(0, 1, -1);
-static auto rl2 = nd::select(1, 1, -1);
-static auto rl3 = nd::select(2, 1, -1);
-
-
-
-
-//=============================================================================
-void graph_item(std::ostream& os, const DependencyGraph& graph, product_identifier_t key)
+template<typename T>
+auto represent_shape(const nd::shared_array<T, 3>& v)
 {
+    return "("
+    + std::to_string(shape(v, 0)) + " "
+    + std::to_string(shape(v, 1)) + " "
+    + std::to_string(shape(v, 2)) + ")";
+}
+
+template<typename T>
+auto represent_shape(const std::array<nd::shared_array<T, 3>, 3>& v)
+{
+    return represent_shape(v.at(0)) + " " + represent_shape(v.at(1)) + " " + represent_shape(v.at(2));
+}
+
+void represent_graph_item(std::ostream& os, const DependencyGraph& graph, product_identifier_t key)
+{
+    auto shape_string = graph.is_completed(key) ? std::visit([] (auto p) { return represent_shape(p); }, graph.product_at(key)) : std::string("?");
+
     os
     << std::left
-    << std::setw(48)
+    << std::setw(36)
     << std::setfill('.')
     << to_string(key)
     << " status: "
     << to_string(graph.status(key))
-    << '\n';
+    << " shape: "
+    << shape_string;
 }
 
 std::vector<std::string> represent_graph_items(const DependencyGraph& graph)
@@ -257,7 +224,7 @@ std::vector<std::string> represent_graph_items(const DependencyGraph& graph)
     | seq::map([&graph] (auto key)
     {
         std::stringstream ss;
-        graph_item(ss, graph, key);
+        represent_graph_item(ss, graph, key);
         return ss.str();
     })
     | seq::to<std::vector>();
@@ -266,25 +233,11 @@ std::vector<std::string> represent_graph_items(const DependencyGraph& graph)
 
 
 
-//=========================================================================
-template<typename IsResponsibleFor>
-void print_graph_status(const DependencyGraph& graph, IsResponsibleFor is_responsible_for)
-{
-    std::invoke([&] ()
-    {
-        std::cout
-        << std::string(52, '=')
-        << "\nGraph status ("
-        << graph.count_unevaluated(is_responsible_for)
-        << " unevaluated):\n\n";
-
-        for (auto key : graph.keys())
-        {
-            graph_item(std::cout, graph, key);
-        }
-        std::cout << '\n';
-    });
-}
+//=============================================================================
+static auto is_responsible_for = [] (auto) { return true; };
+static auto block_size = 16;
+static auto depth = 1UL;
+static auto block_extent = nd::uivec(1 << depth, 1 << depth, 1 << depth);
 
 
 
@@ -292,12 +245,12 @@ void print_graph_status(const DependencyGraph& graph, IsResponsibleFor is_respon
 //=============================================================================
 using named_rule_t = std::tuple<
     product_identifier_t,
-    std::function<product_t(std::vector<product_t>)>,
+    DependencyGraph::mapping_type,
     std::vector<product_identifier_t>>;
 
 named_rule_t rule(
     product_identifier_t key,
-    std::function<product_t(std::vector<product_t>)> mapping,
+    DependencyGraph::mapping_type mapping,
     std::vector<product_identifier_t> args)
 {
     return named_rule_t{key, mapping, args};
@@ -393,258 +346,28 @@ auto abc_vector_potential(position_t p)
 
 
 //=============================================================================
-auto construct_vertices(multilevel_index_t index)
-{
-    auto N = block_size;
-    auto dx = dimensional::unit_length(1.0 / (1 << index.level));
-    auto x0 = dx * geometric::to_euclidean_vector(numeric::construct<double>(index.coordinates));
-    auto xv = dx * mesh::unit_lattice(N + 1, N + 1, N + 1) + x0;
-    return xv;
-}
-
-
-
-
-//=============================================================================
-auto construct_vector_potential(multilevel_index_t index)
-{
-    return [index] ()
-    {
-        auto A = [] (unsigned dir) { return util::compose(geometric::component(dir), abc_vector_potential); };
-        auto dt = dimensional::unit_time(1.0);
-        auto [xe1, xe2, xe3] = mesh::edge_positions(construct_vertices(index));
-
-        return edge_electromotive_density_t{
-            ((xe1 | nd::map(A(1))) / dt) | nd::to_shared(),
-            ((xe2 | nd::map(A(2))) / dt) | nd::to_shared(),
-            ((xe3 | nd::map(A(3))) / dt) | nd::to_shared(),
-        };
-    };
-}
-
-
-
-
-//=============================================================================
-auto construct_conserved(multilevel_index_t index)
-{
-    return [index] (face_magnetic_flux_density_t bf)
-    {
-        auto p2c = std::bind(mhd::conserved_density, std::placeholders::_1, gamma_law_index);
-        auto [bf1, bf2, bf3] = bf;
-        auto xc = mesh::cell_positions(construct_vertices(index));
-        auto bc = mesh::face_to_cell(bf1, bf2, bf3);
-        auto pc = nd::zip(xc, bc) | nd::map(util::apply_to(basic_primitive));
-        auto uc = pc | nd::map(p2c);
-        return uc | nd::to_shared();
-    };
-}
-
-
-
-
-//=============================================================================
-auto curl(dimensional::unit_length dl)
-{
-    return [dl] (edge_electromotive_density_t ee)
-    {
-        auto dt = dimensional::unit_time(1.0);
-        auto [ee1, ee2, ee3] = ee;
-        auto [cf1, cf2, cf3] = mesh::solenoidal_difference(ee1, ee2, ee3);
-
-        return face_magnetic_flux_density_t{
-            cf1 * dt / dl | nd::to_shared(),
-            cf2 * dt / dl | nd::to_shared(),
-            cf3 * dt / dl | nd::to_shared(),
-        };
-    };
-}
-
-
-
-
-//=============================================================================
-auto extend_cell_primitive_variables(nd::uint block_size, nd::uint count)
-{
-    return [r=block_size - count] (std::vector<product_t> args) -> product_t
-    {
-        auto items = seq::view(args)
-        | seq::map([] (auto p) { return std::get<cell_primitive_variables_t>(p); })
-        | seq::keys(nd::index_space(3, 3, 3))
-        | seq::to_dict<std::map>();
-
-        return mesh::tile_blocks(items, nd::uivec(3, 3, 3)) | mesh::remove_surface(r) | nd::to_shared();
-    };
-}
-
-
-
-
-//=============================================================================
-auto extend_face_magnetic_flux_density(nd::uint block_size, nd::uint count)
-{
-    return [r=block_size - count] (std::vector<product_t> args) -> product_t
-    {
-        auto bfs = seq::get<face_magnetic_flux_density_t>(seq::view(args)) | seq::chunk(9);
-        auto axs = seq::from(mesh::axis_3d::i, mesh::axis_3d::j, mesh::axis_3d::k);
-        auto shp = seq::from(nd::uivec(1, 3, 3), nd::uivec(3, 1, 3), nd::uivec(3, 3, 1));
-
-        auto extend = [r] (unsigned a, auto bf, mesh::axis_3d axis, nd::uivec_t<3> shape)
-        {
-            auto items = seq::adapt(bf)
-            | seq::map([a] (auto x) { return x.at(a); })
-            | seq::keys(nd::index_space(shape))
-            | seq::to_dict<std::map>();
-
-            return mesh::tile_blocks(items, shape)
-            | mesh::remove_transverse(r, axis)
-            | nd::to_shared();
-        };
-
-        return seq::zip(seq::range(3), bfs, axs, shp)
-        | seq::map(util::apply_to(extend))
-        | seq::to_std_array<3>();
-    };
-}
-
-
-
-
-/**
- * @brief      Generate Godunov fluxes and EMF's using piecewise constant
- *             (first-order) extrapolation.
- *
- * @param[in]  pc    Cell-centered primitive quantities, extended by 1 zones on
- *                   all three axes
- * @param[in]  bf    Face B-fields, extended by 1 zone on the transverse axes
- *
- * @return     A 3-array of face-centered Godunov fluxes and EMF's. Each of the
- *             returned arrays are extended by 1 zone on the transverse axes.
- */
-face_godunov_data_t godunov_fluxes(cell_primitive_variables_t pc, face_magnetic_flux_density_t bf)
-{
-    auto to_godunov_data = apply_to([] (auto ff, auto ef) -> mhd::godunov_data_t
-    {
-        return numeric::tuple_cat(ff, numeric::tuple(ef.component_1(), ef.component_2(), ef.component_3()));
-    });
-
-    auto [bf1, bf2, bf3] = bf;
-
-    auto pf1 = nd::zip(pc | nd::select(0, 0, -1), pc | nd::select(0, 1), bf1);
-    auto pf2 = nd::zip(pc | nd::select(1, 0, -1), pc | nd::select(1, 1), bf2);
-    auto pf3 = nd::zip(pc | nd::select(2, 0, -1), pc | nd::select(2, 1), bf3);
-
-    auto gf1 = pf1 | nd::map(rs1) | nd::map(to_godunov_data) | nd::to_shared();
-    auto gf2 = pf2 | nd::map(rs2) | nd::map(to_godunov_data) | nd::to_shared();
-    auto gf3 = pf3 | nd::map(rs3) | nd::map(to_godunov_data) | nd::to_shared();
-
-    return std::array{gf1, gf2, gf3};
-}
-
-
-
-
-/**
- * @brief      Generate EMF values on cell edges by averaging the electric field
- *             estimates from godunov data on the cell faces.
- *
- * @param[in]  gf    The godunoc data on cell faces
- *
- * @return     A 3-array of electric field values at edge midpoints, in the
- *             direction of the respective edge.
- */
-edge_electromotive_density_t electromotive_forces(face_godunov_data_t gf)
-{
-    auto c1 = nd::map([] (auto g) { return numeric::get<5>(g); });
-    auto c2 = nd::map([] (auto g) { return numeric::get<6>(g); });
-    auto c3 = nd::map([] (auto g) { return numeric::get<7>(g); });
-    auto a1 = nd::adjacent_mean(0);
-    auto a2 = nd::adjacent_mean(1);
-    auto a3 = nd::adjacent_mean(2);
-    auto ev = nd::to_shared();
-    auto [gf1, gf2, gf3] = gf;
-
-    auto ee1a = gf2 | c1 | a3;
-    auto ee2a = gf3 | c2 | a1;
-    auto ee3a = gf1 | c3 | a2;
-    auto ee1b = gf3 | c1 | a2;
-    auto ee2b = gf1 | c2 | a3;
-    auto ee3b = gf2 | c3 | a1;
-
-    auto ee1 = 0.5 * (ee1a + ee1b);
-    auto ee2 = 0.5 * (ee2a + ee2b);
-    auto ee3 = 0.5 * (ee3a + ee3b);
-
-    return std::array{ee1|ev, ee2|ev, ee3|ev};
-}
-
-
-
-
-/**
- * @brief      { function_description }
- *
- * @param[in]  uc    { parameter_description }
- * @param[in]  gf    { parameter_description }
- *
- * @return     { description_of_the_return_value }
- */
-cell_conserved_density_t updated_conserved_density(cell_conserved_density_t uc, face_godunov_data_t gf)
-{
-    auto conserved_density_components = [] (auto g)
-    {
-        return numeric::tuple(
-            numeric::get<0>(g),
-            numeric::get<1>(g),
-            numeric::get<2>(g),
-            numeric::get<3>(g),
-            numeric::get<4>(g));
-    };
-
-    auto dt = dimensional::unit_time(1.0);
-    auto dl = dimensional::unit_length(1.0);
-
-    auto [gf1, gf2, gf3] = gf;
-    auto ff1 = gf1 | nd::map(conserved_density_components) | rt1;
-    auto ff2 = gf2 | nd::map(conserved_density_components) | rt2;
-    auto ff3 = gf3 | nd::map(conserved_density_components) | rt3;
-    return (uc - mesh::divergence_difference(ff1, ff2, ff3) * dt / dl) | nd::to_shared();
-}
-
-
-
-
-/**
- * @brief      { function_description }
- *
- * @param[in]  bf    { parameter_description }
- * @param[in]  ee    { parameter_description }
- *
- * @return     { description_of_the_return_value }
- */
-face_magnetic_flux_density_t updated_magnetic_flux_density(face_magnetic_flux_density_t bf, edge_electromotive_density_t ee)
-{
-    auto [bf1, bf2, bf3] = bf;
-    auto [ee1, ee2, ee3] = ee;
-    auto [cf1, cf2, cf3] = mesh::solenoidal_difference(ee1|rl1, ee2|rl2, ee3|rl3);
-
-    auto dt = dimensional::unit_time(1.0);
-    auto dl = dimensional::unit_length(1.0);
-
-    return std::array{
-        (bf1 - cf1 * dt / dl) | nd::to_shared(),
-        (bf2 - cf2 * dt / dl) | nd::to_shared(),
-        (bf3 - cf3 * dt / dl) | nd::to_shared()};
-}
-
-
-
-
-//=============================================================================
 auto block_indexes()
 {
     return seq::adapt(nd::index_space(block_extent))
     | seq::map([] (auto i) { return multilevel_index_t{depth, mesh::to_numeric_array(i)}; });
+}
+
+auto extend_cell_primitive_variables(nd::uint block_size, nd::uint count)
+{
+    return [=] (const std::vector<product_t>& vargs) -> product_t
+    {
+        auto pargs = seq::get<cell_primitive_variables_t>(seq::view(vargs)) | seq::to<std::vector>();
+        return extend_cell_primitive_variables(pargs, block_size, count);
+    };
+}
+
+auto extend_face_magnetic_flux_density(nd::uint block_size, nd::uint count)
+{
+    return [=] (const std::vector<product_t>& vargs) -> product_t
+    {
+        auto pargs = seq::get<face_magnetic_flux_density_t>(seq::view(vargs)) | seq::to<std::vector>();
+        return extend_face_magnetic_flux_density(pargs, block_size, count);
+    };
 }
 
 
@@ -663,9 +386,9 @@ auto initial_condition_rules()
         auto k_bf = key(data_field::face_magnetic_flux_density).block(index);
         auto k_uc = key(data_field::cell_conserved_density)    .block(index);
 
-        auto f_ae = wrap(construct_vector_potential(index));
-        auto f_bf = wrap<edge_electromotive_density_t>(curl(dl));
-        auto f_uc = wrap<face_magnetic_flux_density_t>(construct_conserved(index));
+        auto f_ae = wrap([index] () { return construct_vector_potential(index, block_size, abc_vector_potential); });
+        auto f_bf = wrap<edge_electromotive_density_t>([dl] (auto ee) { return curl(ee, dl); });
+        auto f_uc = wrap<face_magnetic_flux_density_t>([index] (auto bf) { return construct_conserved(index, block_size, bf, basic_primitive); });
 
         auto r_ae = rule(k_ae, f_ae, {});
         auto r_bf = rule(k_bf, f_bf, {k_ae});
@@ -689,7 +412,7 @@ auto recover_primitive_rules(rational::number_t iteration)
         auto bf = key(iteration).block(index).field(data_field::face_magnetic_flux_density);
         auto uc = key(iteration).block(index).field(data_field::cell_conserved_density);
         auto pc = key(iteration).block(index).field(data_field::cell_primitive_variables);
-        auto fm = wrap<cell_conserved_density_t, face_magnetic_flux_density_t>(mara::primitive_array);
+        auto fm = wrap<cell_conserved_density_t, face_magnetic_flux_density_t>(mhd_scheme_v2::primitive_array);
         return rule(pc, fm, {uc, bf});
     })
     | seq::to_dynamic();
@@ -804,8 +527,6 @@ auto build_graph()
 {
     auto graph = DependencyGraph();
 
-    // std::cout << "Building graph..." << std::endl;
-
     for (auto rule : initial_condition_rules())       graph.define(rule);
     for (auto rule : recover_primitive_rules(0))      graph.define(rule);   
     for (auto rule : primitive_extension_rules(0))    graph.define(rule);
@@ -814,55 +535,8 @@ auto build_graph()
     for (auto rule : godunov_data_rules(0))           graph.define(rule);
     for (auto rule : global_primitive_array_rules(0)) graph.define(rule);
 
-    // std::cout << "Done" << std::endl;
-
     return std::move(graph).throw_if_incomplete();
 }
-
-
-
-
-//=============================================================================
-// void execute(DependencyGraph& graph)
-// {
-//     auto scheduler = mara::ThreadPool(1);
-//     auto start = std::chrono::high_resolution_clock::now();
-
-//     while (graph.count_unevaluated(is_responsible_for))
-//     {
-//         for (const auto& key : graph.eligible_rules(is_responsible_for))
-//         {
-//             graph.evaluate_rule(key, scheduler);
-//         }
-
-//         if (! graph.poll(std::chrono::milliseconds(50)).empty())
-//         {
-//             print_graph_status(graph, is_responsible_for);
-//         }
-//     }
-
-//     auto delta = std::chrono::high_resolution_clock::now() - start;
-
-//     std::cout
-//     << "Time to complete graph: "
-//     << 1e-9 * std::chrono::duration_cast<std::chrono::nanoseconds>(delta).count()
-//     << "s"
-//     << std::endl;
-
-//     auto h5f = h5::File("test.h5", "w");
-
-//     for (const auto& [key, product] : graph.items())
-//     {
-//         h5::write(h5f, h5::legalize(to_string(key)), product);
-
-//         if (std::get<1>(key).level == 0)
-//         {
-//             h5::write(h5f, "primitive", product);
-//         }
-//     }
-// }
-
-#endif
 
 
 
@@ -918,3 +592,47 @@ int main()
 
     return 0;
 }
+
+
+
+
+//=============================================================================
+// void execute(DependencyGraph& graph)
+// {
+//     auto scheduler = mara::ThreadPool(1);
+//     auto start = std::chrono::high_resolution_clock::now();
+
+//     while (graph.count_unevaluated(is_responsible_for))
+//     {
+//         for (const auto& key : graph.eligible_rules(is_responsible_for))
+//         {
+//             graph.evaluate_rule(key, scheduler);
+//         }
+
+//         if (! graph.poll(std::chrono::milliseconds(50)).empty())
+//         {
+//             print_graph_status(graph, is_responsible_for);
+//         }
+//     }
+
+//     auto delta = std::chrono::high_resolution_clock::now() - start;
+
+//     std::cout
+//     << "Time to complete graph: "
+//     << 1e-9 * std::chrono::duration_cast<std::chrono::nanoseconds>(delta).count()
+//     << "s"
+//     << std::endl;
+
+//     auto h5f = h5::File("test.h5", "w");
+
+//     for (const auto& [key, product] : graph.items())
+//     {
+//         h5::write(h5f, h5::legalize(to_string(key)), product);
+
+//         if (std::get<1>(key).level == 0)
+//         {
+//             h5::write(h5f, "primitive", product);
+//         }
+//     }
+// }
+

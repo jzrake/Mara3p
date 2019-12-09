@@ -78,9 +78,9 @@ struct session_t
 
 //=============================================================================
 bool is_quit(tb_event ev);
-void draw(state_t state);
+void draw(const state_t& state);
 
-ui::state_t handle_event(ui::state_t state, tb_event ev);
+ui::state_t handle_event(const state_t& state, tb_event ev);
 std::optional<tb_event> peek(int timeout);
 bool fulfill(action action);
 

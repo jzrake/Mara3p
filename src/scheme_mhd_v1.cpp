@@ -26,25 +26,13 @@
 
 
 
-#include "scheme_mhd.hpp"
 #include "core_ndarray.hpp"
 #include "core_ndarray_ops.hpp"
 #include "core_util.hpp"
 #include "mesh_cartesian_3d.hpp"
 #include "physics_mhd.hpp"
+#include "scheme_mhd_v1.hpp"
 #include "scheme_plm_gradient.hpp"
-
-
-
-
-//=============================================================================
-#include <cstdio>
-
-template<typename T>
-void print_shape(const char* message, nd::array_t<T, 3> x)
-{
-    std::printf("%s [%lu %lu %lu]\n", message, shape(x, 0), shape(x, 1), shape(x, 2));
-}
 
 
 

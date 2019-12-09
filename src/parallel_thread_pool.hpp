@@ -106,7 +106,12 @@ public:
 
         enqueue_internal([fn, promised_result, args...]
         {
-            promised_result->set_value(fn(args...));
+            try {
+                promised_result->set_value(fn(args...));
+            }
+            catch (...) {
+                promised_result->set_exception(std::current_exception());
+            }
         });
         return promised_result->get_future();
     }

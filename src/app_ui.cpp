@@ -122,16 +122,17 @@ static void draw_vertical_line(int x, int y, int h, uint16_t fg=TB_WHITE, uint16
     }
 }
 
-static void draw_text(int x, int y, std::string text, uint16_t fg=TB_WHITE, uint16_t bg=TB_DEFAULT)
+static void draw_text(int x, int y, const std::string& text, uint16_t fg=TB_WHITE, uint16_t bg=TB_DEFAULT, unsigned min_right=0)
 {
-    auto str = text.data();
-
-    while (*str)
+    for (auto c : text)
     {
-        uint32_t uni;
-        str += tb_utf8_char_to_unicode(&uni, str);
-        tb_change_cell(x, y, uni, fg, bg);
+        tb_change_cell(x, y, c, fg, bg);
         x++;
+    }
+    while (x < min_right)
+    {
+        tb_change_cell(x, y, ' ', fg, bg);
+        x++;        
     }
 }
 
@@ -158,7 +159,7 @@ static unsigned right_panel_divider_position()
 
 
 //=============================================================================
-void ui::draw(state_t state)
+void ui::draw(const state_t& state)
 {
     int w = tb_width();
     int h = tb_height();
@@ -190,7 +191,6 @@ void ui::draw(state_t state)
     draw_text(right_panel_divider_position() + 2, 7, "reset ..... r",      TB_DEFAULT, wants_reset_simulation ? TB_YELLOW : TB_DEFAULT);
     draw_text(right_panel_divider_position() + 2, 8, "exit ...... ctrl+q", TB_DEFAULT, wants_quit             ? TB_YELLOW : TB_DEFAULT);
 
-
     for (unsigned i = 0; i < num_visible_table_rows(); ++i)
     {
         auto row = state.starting_table_row + i;
@@ -202,7 +202,7 @@ void ui::draw(state_t state)
         {
             break;
         }
-        draw_text(3, 6 + i, state.content_table_items.at(row), TB_WHITE, bg);
+        draw_text(3, 6 + i, state.content_table_items.at(row), TB_WHITE, bg, 120);
     }
     tb_present();
 }
@@ -322,7 +322,7 @@ ui::state_t handle_mouse(tb_event ev, ui::state_t state)
 
 
 //=============================================================================
-ui::state_t ui::handle_event(ui::state_t state, tb_event ev)
+ui::state_t ui::handle_event(const ui::state_t& state, tb_event ev)
 {
     switch (ev.type)
     {

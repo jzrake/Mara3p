@@ -42,7 +42,7 @@
 #include "core_sequence.hpp"
 #include "physics_mhd.hpp"
 #include "mesh_cartesian_3d.hpp"
-#include "scheme_mhd.hpp"
+#include "scheme_mhd_v1.hpp"
 
 
 
