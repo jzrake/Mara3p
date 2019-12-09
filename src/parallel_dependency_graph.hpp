@@ -31,6 +31,7 @@
 #include <future>
 #include <map>
 #include <set>
+#include <string>
 #include <vector>
 
 
@@ -47,6 +48,7 @@ namespace mara {
     enum class evaluation_status
     {
         undefined,
+        error,
         defined,
         eligible,
         pending,
@@ -220,18 +222,30 @@ public:
     std::map<key_type, value_type> poll(std::chrono::duration<Rep, Period> timeout)
     {
         auto completed = std::map<key_type, value_type>();
+        auto errored = std::set<key_type>();
 
         for (auto& [key, future] : pending_products)
         {
             if (future.wait_for(timeout) == std::future_status::ready)
             {
-                products[key] = completed[key] = future.get();
+                try {
+                    products[key] = completed[key] = future.get();
+                }
+                catch (const std::exception& e)
+                {
+                    errored.insert(key);
+                    errors[key] = e.what();
+                }
             }
         }
 
         for (const auto& item : completed)
         {
             pending_products.erase(item.first);
+        }
+        for (const auto& item : errored)
+        {
+            pending_products.erase(item);
         }
         return completed;
     }
@@ -282,6 +296,40 @@ public:
     bool is_pending(key_type key) const
     {
         return pending_products.find(key) != pending_products.end();
+    }
+
+
+
+
+    /**
+     * @brief      Determine whether the graph has tried to evaluate a product
+     *             under the given key, and encountered an error.
+     *
+     * @param[in]  key   The key to check for
+     *
+     * @return     True or false
+     */
+    bool is_error(key_type key) const
+    {
+        return errors.find(key) != errors.end();
+    }
+
+
+
+
+    /**
+     * @brief      Return a string description of the error at the given key, if
+     *             an error occured for that key. Otherwise throw
+     *             std::out_of_range.
+     *
+     * @param[in]  key   The key to check for
+     *
+     * @return     A std::string what the result of the exception's what()
+     *             method
+     */
+    const std::string& error_at(key_type key) const
+    {
+        return errors.at(key);
     }
 
 
@@ -583,6 +631,7 @@ public:
      */
     evaluation_status status(key_type key) const
     {
+        if (is_error    (key)) return evaluation_status::error;
         if (is_completed(key)) return evaluation_status::completed;
         if (is_pending  (key)) return evaluation_status::pending;
         if (is_eligible (key)) return evaluation_status::eligible;
@@ -610,5 +659,6 @@ private:
     std::map<key_type, rule_type>               rules;
     std::map<key_type, value_type>              products;
     std::map<key_type, std::future<value_type>> pending_products;
+    std::map<key_type, std::string>             errors;
     std::map<key_type, std::set<key_type>>      downstream;
 };

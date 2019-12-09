@@ -165,10 +165,10 @@ void ui::draw(const state_t& state)
     int h = tb_height();
 
     tb_clear();
-    draw_box(0, 0, w, h);
-    draw_horizontal_line(1, 4, w - 2);
-    draw_horizontal_line(right_panel_divider_position() + 1, h / 2 + 1, right_panel_width() - 2, h - 6);
-    draw_vertical_line(right_panel_divider_position(), 5, h - 6);
+    draw_box(0, 0, w, h, TB_CYAN);
+    draw_horizontal_line(1, 4, w - 2, TB_CYAN);
+    draw_horizontal_line(right_panel_divider_position() + 1, h / 2 + 1, right_panel_width() - 2, TB_CYAN);
+    draw_vertical_line(right_panel_divider_position(), 5, h - 6, TB_CYAN);
 
 
 
@@ -182,27 +182,35 @@ void ui::draw(const state_t& state)
         ? TB_CYAN : TB_BLUE
         : TB_DEFAULT;
 
-        draw_text(column, 2, tab_names.at(i), TB_WHITE, bg);
+        draw_text(column, 2, tab_names.at(i), TB_WHITE | TB_BOLD, bg);
         column += std::strlen(tab_names.at(i)) + 4;
     }
 
 
-    draw_text(right_panel_divider_position() + 2, 6, "step ...... space",  TB_DEFAULT, wants_evaluation_step  ? TB_YELLOW : TB_DEFAULT);
-    draw_text(right_panel_divider_position() + 2, 7, "reset ..... r",      TB_DEFAULT, wants_reset_simulation ? TB_YELLOW : TB_DEFAULT);
-    draw_text(right_panel_divider_position() + 2, 8, "exit ...... ctrl+q", TB_DEFAULT, wants_quit             ? TB_YELLOW : TB_DEFAULT);
+    draw_text(right_panel_divider_position() + 2, 6, "step ...... space",  TB_BLUE, wants_evaluation_step  ? TB_YELLOW : TB_DEFAULT);
+    draw_text(right_panel_divider_position() + 2, 7, "reset ..... r",      TB_BLUE, wants_reset_simulation ? TB_YELLOW : TB_DEFAULT);
+    draw_text(right_panel_divider_position() + 2, 8, "exit ...... ctrl+q", TB_BLUE, wants_quit             ? TB_YELLOW : TB_DEFAULT);
 
-    for (unsigned i = 0; i < num_visible_table_rows(); ++i)
+
+    if (state.selected_tab == 0)
     {
-        auto row = state.starting_table_row + i;
-        auto bg = state.selected_table_row == row
-        ? state.focused_component == component_type::content_table ? TB_CYAN : TB_BLUE
-        : TB_DEFAULT;
-
-        if (row >= state.content_table_items.size())
+        for (unsigned i = 0; i < num_visible_table_rows(); ++i)
         {
-            break;
+            auto row = state.starting_table_row + i;
+
+            if (row >= state.content_table_items.size())
+            {
+                break;
+            }
+
+            auto bg = state.selected_table_row == row
+            ? state.focused_component == component_type::content_table ? TB_CYAN : TB_BLUE
+            : TB_DEFAULT;
+
+            auto fg = state.content_table_items.at(row).find("error") == std::string::npos ? TB_GREEN : TB_RED;
+
+            draw_text(3, 6 + i, state.content_table_items.at(row), fg, bg, 120);
         }
-        draw_text(3, 6 + i, state.content_table_items.at(row), TB_WHITE, bg, 120);
     }
     tb_present();
 }

@@ -127,7 +127,8 @@ std::string to_string(mara::evaluation_status s)
 {
     switch (s)
     {
-        case mara::evaluation_status::undefined:   return "!";
+        case mara::evaluation_status::undefined:   return "?";
+        case mara::evaluation_status::error:       return "!";
         case mara::evaluation_status::defined:     return "d";
         case mara::evaluation_status::pending:     return ".";
         case mara::evaluation_status::eligible:    return "e";
@@ -205,7 +206,13 @@ auto represent_shape(const std::array<nd::shared_array<T, 3>, 3>& v)
 
 void represent_graph_item(std::ostream& os, const DependencyGraph& graph, product_identifier_t key)
 {
-    auto shape_string = graph.is_completed(key) ? std::visit([] (auto p) { return represent_shape(p); }, graph.product_at(key)) : std::string("?");
+    auto shape_string = graph.is_completed(key)
+    ? std::string("shape: ") + std::visit([] (auto p) { return represent_shape(p); }, graph.product_at(key))
+    : std::string("");
+
+    auto error_string = graph.is_error(key)
+    ? std::string("error: ") + graph.error_at(key)
+    : std::string("");
 
     os
     << std::left
@@ -214,8 +221,9 @@ void represent_graph_item(std::ostream& os, const DependencyGraph& graph, produc
     << to_string(key)
     << " status: "
     << to_string(graph.status(key))
-    << " shape: "
-    << shape_string;
+    << ' '
+    << shape_string
+    << error_string;
 }
 
 std::vector<std::string> represent_graph_items(const DependencyGraph& graph)
@@ -509,6 +517,8 @@ auto global_primitive_array_rules(rational::number_t iteration)
 
     auto tile = [] (std::vector<product_t> block_vector) -> product_t
     {
+        throw std::runtime_error("A problem was encountered!");
+
         auto block_map = seq::view(block_vector)
         | seq::map([] (auto p) { return std::get<cell_primitive_variables_t>(p); })
         | seq::keys(nd::index_space(block_extent))
@@ -580,6 +590,10 @@ int main()
 
         if (! graph.poll(std::chrono::milliseconds(5)).empty())
         {
+            // for (auto item : represent_graph_items(graph))
+            // {
+            //     std::cout << item << std::endl;
+            // }
             ui_state.content_table_items = represent_graph_items(graph);
             ui::draw(ui_state);
         }
