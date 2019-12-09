@@ -59,6 +59,8 @@ using magnetic_field_vector_t    = geometric::euclidean_vector_t<unit_magnetic_f
 using electric_field_vector_t    = geometric::euclidean_vector_t<unit_electric_field>;
 using vector_potential_t         = geometric::euclidean_vector_t<unit_vector_potential>;
 using velocity_vector_t          = geometric::euclidean_vector_t<unit_velocity>;
+using electric_field_tuple       = numeric::tuple_t<unit_electric_field, unit_electric_field, unit_electric_field>;
+using godunov_data_t             = decltype(numeric::tuple_cat(flux_vector_t(), electric_field_tuple()));
 
 using primitive_t = numeric::tuple_t<
     unit_mass_density,

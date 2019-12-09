@@ -89,6 +89,16 @@ auto tuple(std::tuple<Ts...> t)
     return tuple_t<Ts...>{t};
 }
 
+template<typename... TupleTypes>
+auto tuple_cat(TupleTypes... ts)
+{
+    return tuple(std::tuple_cat(ts.impl...));
+}
+
+
+
+
+//=============================================================================
 template<std::size_t I, typename... Ts, typename = std::enable_if_t<I < sizeof...(Ts)>>
 const auto& get(const tuple_t<Ts...>& t)
 {
