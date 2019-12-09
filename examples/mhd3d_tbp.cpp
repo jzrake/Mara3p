@@ -804,7 +804,7 @@ auto build_graph()
 {
     auto graph = DependencyGraph();
 
-    std::cout << "Building graph..." << std::endl;
+    // std::cout << "Building graph..." << std::endl;
 
     for (auto rule : initial_condition_rules())       graph.define(rule);
     for (auto rule : recover_primitive_rules(0))      graph.define(rule);   
@@ -814,7 +814,7 @@ auto build_graph()
     for (auto rule : godunov_data_rules(0))           graph.define(rule);
     for (auto rule : global_primitive_array_rules(0)) graph.define(rule);
 
-    std::cout << "Done" << std::endl;
+    // std::cout << "Done" << std::endl;
 
     return std::move(graph).throw_if_incomplete();
 }
@@ -823,44 +823,44 @@ auto build_graph()
 
 
 //=============================================================================
-void execute(DependencyGraph& graph)
-{
-    auto scheduler = mara::ThreadPool(1);
-    auto start = std::chrono::high_resolution_clock::now();
+// void execute(DependencyGraph& graph)
+// {
+//     auto scheduler = mara::ThreadPool(1);
+//     auto start = std::chrono::high_resolution_clock::now();
 
-    while (graph.count_unevaluated(is_responsible_for))
-    {
-        for (const auto& key : graph.eligible_rules(is_responsible_for))
-        {
-            graph.evaluate_rule(key, scheduler);
-        }
+//     while (graph.count_unevaluated(is_responsible_for))
+//     {
+//         for (const auto& key : graph.eligible_rules(is_responsible_for))
+//         {
+//             graph.evaluate_rule(key, scheduler);
+//         }
 
-        if (! graph.poll(std::chrono::milliseconds(50)).empty())
-        {
-            print_graph_status(graph, is_responsible_for);
-        }
-    }
+//         if (! graph.poll(std::chrono::milliseconds(50)).empty())
+//         {
+//             print_graph_status(graph, is_responsible_for);
+//         }
+//     }
 
-    auto delta = std::chrono::high_resolution_clock::now() - start;
+//     auto delta = std::chrono::high_resolution_clock::now() - start;
 
-    std::cout
-    << "Time to complete graph: "
-    << 1e-9 * std::chrono::duration_cast<std::chrono::nanoseconds>(delta).count()
-    << "s"
-    << std::endl;
+//     std::cout
+//     << "Time to complete graph: "
+//     << 1e-9 * std::chrono::duration_cast<std::chrono::nanoseconds>(delta).count()
+//     << "s"
+//     << std::endl;
 
-    auto h5f = h5::File("test.h5", "w");
+//     auto h5f = h5::File("test.h5", "w");
 
-    for (const auto& [key, product] : graph.items())
-    {
-        h5::write(h5f, h5::legalize(to_string(key)), product);
+//     for (const auto& [key, product] : graph.items())
+//     {
+//         h5::write(h5f, h5::legalize(to_string(key)), product);
 
-        if (std::get<1>(key).level == 0)
-        {
-            h5::write(h5f, "primitive", product);
-        }
-    }
-}
+//         if (std::get<1>(key).level == 0)
+//         {
+//             h5::write(h5f, "primitive", product);
+//         }
+//     }
+// }
 
 #endif
 
@@ -873,7 +873,6 @@ int main()
     auto scheduler = mara::ThreadPool(1);
     auto graph = build_graph();
 
-
     auto tb = ui::session_t();
     auto ui_state = ui::state_t();
 
@@ -883,25 +882,37 @@ int main()
 
     while (true)
     {
-        if (auto event = ui::peek(5); event.has_value())
+        if (ui::fulfill(ui::action::quit))
         {
-            if (ui::is_quit(event.value()))
-            {
-                break;
-            }
-            ui::draw(ui_state = ui::handle_event(ui_state, event.value()));
+            break;
         }
 
-        for (const auto& key : graph.eligible_rules(is_responsible_for))
+        if (ui::fulfill(ui::action::evaluation_step))
         {
-            graph.evaluate_rule(key, scheduler);
+            for (const auto& key : graph.eligible_rules(is_responsible_for))
+            {
+                graph.evaluate_rule(key, scheduler);
+            }
+        }
+
+        if (ui::fulfill(ui::action::reset_simulation))
+        {
+            scheduler.restart(1);
+            graph = build_graph();
+
+            ui_state.content_table_items = represent_graph_items(graph);
+            ui::draw(ui_state);
         }
 
         if (! graph.poll(std::chrono::milliseconds(5)).empty())
         {
             ui_state.content_table_items = represent_graph_items(graph);
-
             ui::draw(ui_state);
+        }
+
+        if (auto event = ui::peek(5); event.has_value())
+        {
+            ui::draw(ui_state = ui::handle_event(ui_state, event.value()));
         }
     }
 

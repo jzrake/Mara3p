@@ -49,6 +49,13 @@ enum class component_type
     options_panel,
 };
 
+enum class action
+{
+    quit,
+    evaluation_step,
+    reset_simulation,
+};
+
 
 //=============================================================================
 struct state_t
@@ -75,5 +82,6 @@ void draw(state_t state);
 
 ui::state_t handle_event(ui::state_t state, tb_event ev);
 std::optional<tb_event> peek(int timeout);
+bool fulfill(action action);
 
 } // namespace ui

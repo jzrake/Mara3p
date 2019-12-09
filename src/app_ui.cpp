@@ -33,6 +33,39 @@
 
 
 //=============================================================================
+static bool wants_quit             = false;
+static bool wants_evaluation_step  = false;
+static bool wants_reset_simulation = false;
+
+
+
+
+//=============================================================================
+bool ui::fulfill(action action)
+{
+    auto check_and_reset = [] (bool& value)
+    {
+        if (value)
+        {
+            value = false;
+            return true;
+        }
+        return false;
+    };
+
+    switch (action)
+    {
+        case action::quit            : return check_and_reset(wants_quit);
+        case action::evaluation_step : return check_and_reset(wants_evaluation_step);
+        case action::reset_simulation: return check_and_reset(wants_reset_simulation);
+    }
+    return false;
+}
+
+
+
+
+//=============================================================================
 ui::session_t::session_t()
 {
     tb_init();
@@ -111,6 +144,16 @@ static unsigned num_visible_table_rows()
     return tb_height() - 8;
 }
 
+static unsigned right_panel_width()
+{
+    return 40;
+}
+
+static unsigned right_panel_divider_position()
+{
+    return tb_width() - right_panel_width();
+}
+
 
 
 
@@ -123,8 +166,8 @@ void ui::draw(state_t state)
     tb_clear();
     draw_box(0, 0, w, h);
     draw_horizontal_line(1, 4, w - 2);
-    draw_horizontal_line(w - 29, h / 2 + 1, 28, h - 6);
-    draw_vertical_line(w - 30, 5, h - 6);
+    draw_horizontal_line(right_panel_divider_position() + 1, h / 2 + 1, right_panel_width() - 2, h - 6);
+    draw_vertical_line(right_panel_divider_position(), 5, h - 6);
 
 
 
@@ -143,6 +186,9 @@ void ui::draw(state_t state)
     }
 
 
+    draw_text(right_panel_divider_position() + 2, 6, "step ...... space",  TB_DEFAULT, wants_evaluation_step  ? TB_YELLOW : TB_DEFAULT);
+    draw_text(right_panel_divider_position() + 2, 7, "reset ..... r",      TB_DEFAULT, wants_reset_simulation ? TB_YELLOW : TB_DEFAULT);
+    draw_text(right_panel_divider_position() + 2, 8, "exit ...... ctrl+q", TB_DEFAULT, wants_quit             ? TB_YELLOW : TB_DEFAULT);
 
 
     for (unsigned i = 0; i < num_visible_table_rows(); ++i)
@@ -253,7 +299,12 @@ static ui::state_t handle_key(tb_event ev, ui::state_t state)
     case TB_KEY_ARROW_LEFT   : if (state.selected_tab > 0) state.selected_tab -= 1; return state;
     case TB_KEY_ARROW_RIGHT  : if (state.selected_tab < 2) state.selected_tab += 1; return state;
     case TB_KEY_TAB          : return move_focus_forward(state);
+    case TB_KEY_SPACE        : wants_evaluation_step = true; return state;
     }
+
+    if (ui::is_quit(ev))  wants_quit = true;
+    if (ev.ch == 'r')     wants_reset_simulation = true;
+
     return state;
 }
 
