@@ -41,27 +41,25 @@
 namespace mara {
 
 
-    template<typename, typename>
-    class DependencyGraph;
 
 
-    enum class evaluation_status
-    {
-        undefined,
-        error,
-        defined,
-        eligible,
-        pending,
-        completed,
-    };
-}
+//=============================================================================
+enum class evaluation_status
+{
+    undefined,
+    error,
+    defined,
+    eligible,
+    pending,
+    completed,
+};
 
 
 
 
 //=============================================================================
 template<typename KeyType, typename ValueType>
-class mara::DependencyGraph
+class DependencyGraph
 {
 public:
 
@@ -662,3 +660,23 @@ private:
     std::map<key_type, std::string>             errors;
     std::map<key_type, std::set<key_type>>      downstream;
 };
+
+
+
+
+//=============================================================================
+inline std::string to_string(evaluation_status s)
+{
+    switch (s)
+    {
+        case evaluation_status::undefined:   return "?";
+        case evaluation_status::error:       return "!";
+        case evaluation_status::defined:     return "d";
+        case evaluation_status::pending:     return ".";
+        case evaluation_status::eligible:    return "e";
+        case evaluation_status::completed:   return "c";
+        default: return "";
+    }
+}
+
+} // namespace mara

@@ -29,6 +29,7 @@
 #pragma once
 #include <numeric>
 #include <stdexcept>
+#include <string>
 
 
 
@@ -155,6 +156,15 @@ template<long N1, unsigned long D1, long N2, unsigned long D2>
 auto operator/(static_number_t<N1, D1> a, static_number_t<N2, D2> b)
 {
     return a * reciprocal(b);
+}
+
+
+
+
+//=============================================================================
+inline std::string to_string(rational::number_t n)
+{
+    return std::to_string(n.num) + "/" + std::to_string(n.den);
 }
 
 } // namespace rational

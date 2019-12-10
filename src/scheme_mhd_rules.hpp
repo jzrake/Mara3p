@@ -27,10 +27,10 @@
 
 
 #pragma once
+#include <string>
 #include <variant>
 #include "core_rational.hpp"
 #include "core_sequence.hpp"
-#include "parallel_dependency_graph.hpp"
 #include "physics_mhd.hpp"
 #include "scheme_mhd_v2.hpp"
 
@@ -72,22 +72,15 @@ using product_t = std::variant<
     mhd_scheme_v2::face_magnetic_flux_density_t,
     mhd_scheme_v2::edge_electromotive_density_t>;
 
-using product_identifier_t = std::tuple<
-    rational::number_t,
-    mhd_scheme_v2::multilevel_index_t,
-    data_field,
-    extended_status>;
-
-using DependencyGraph = mara::DependencyGraph<product_identifier_t, product_t>;
-using mapping_type    = DependencyGraph::mapping_type;
+using product_mapping_t    = std::function<product_t(std::vector<product_t>)>;
+using product_identifier_t = std::tuple<rational::number_t, mhd_scheme_v2::multilevel_index_t, data_field, extended_status>;
+using named_rule_t         = std::tuple<product_identifier_t, product_mapping_t, std::vector<product_identifier_t>>;
 
 
 
 
 //=============================================================================
-using named_rule_t = std::tuple<product_identifier_t, mapping_type, std::vector<product_identifier_t>>;
-
-inline named_rule_t rule(product_identifier_t key, mapping_type mapping, std::vector<product_identifier_t> args)
+inline named_rule_t rule(product_identifier_t key, product_mapping_t mapping, std::vector<product_identifier_t> args)
 {
     return named_rule_t{key, mapping, args};
 }
@@ -96,7 +89,7 @@ inline named_rule_t rule(product_identifier_t key, mapping_type mapping, std::ve
 
 
 //=============================================================================
-seq::dynamic_sequence_t<named_rule_t> initial_condition_rules     (nd::uint depth, nd::uint block_size);
+seq::dynamic_sequence_t<named_rule_t> initial_condition_rules     (nd::uint depth, nd::uint block_size, mhd_scheme_v2::primitive_function_t, mhd_scheme_v2::vector_potential_function_t);
 seq::dynamic_sequence_t<named_rule_t> recover_primitive_rules     (nd::uint depth, nd::uint block_size, rational::number_t iteration);
 seq::dynamic_sequence_t<named_rule_t> primitive_extension_rules   (nd::uint depth, nd::uint block_size, rational::number_t iteration);
 seq::dynamic_sequence_t<named_rule_t> magnetic_extension_rules    (nd::uint depth, nd::uint block_size, rational::number_t iteration);
@@ -143,6 +136,8 @@ struct key_factory_t
         };
     }
 
+
+    //=============================================================================
     product_identifier_t id;
 };
 
@@ -158,6 +153,53 @@ inline key_factory_t key(data_field field)
 inline key_factory_t key(rational::number_t iteration)
 {
     return key_factory_t().iteration(iteration);
+}
+
+
+
+
+//=============================================================================
+inline std::string to_string(mhd_scheme_v2::multilevel_index_t i)
+{
+    return std::to_string(i.level)
+    + ":["
+    + std::to_string(i.coordinates[0]) + ", "
+    + std::to_string(i.coordinates[1]) + ", "
+    + std::to_string(i.coordinates[2]) + "]";
+}
+
+inline std::string to_string(data_field f)
+{
+    switch (f)
+    {
+        case data_field::cell_primitive_variables:     return "P";
+        case data_field::cell_conserved_density:       return "U";
+        case data_field::face_godunov_data:            return "F";
+        case data_field::face_magnetic_flux_density:   return "B";
+        case data_field::edge_electromotive_density:   return "E";
+        case data_field::edge_vector_potential:        return "A";
+        default: return "";
+    }
+}
+
+inline std::string to_string(extended_status s)
+{
+    switch (s)
+    {
+        case extended_status::not_extended:  return " [] ";
+        case extended_status::extended:      return "[[]]";
+        default: return "";
+    }
+}
+
+inline std::string to_string(product_identifier_t id)
+{
+    auto [a, b, c, d] = id;
+    return
+      to_string(a) + " - "
+    + to_string(b) + " - "
+    + to_string(c) + " - "
+    + to_string(d);
 }
 
 } // namespace mhd_rules

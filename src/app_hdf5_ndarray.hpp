@@ -105,6 +105,18 @@ struct hdf5_container_conversion_post_read<nd::unique_array<ValueType, Rank>>
     }
 };
 
+
+
+
+//=============================================================================
+template<typename T>
+void write(const Group& group, std::string name, const std::array<nd::shared_array<T, 3>, 3>& v)
+{
+    write(group.require_group(name), "1", v.at(0));
+    write(group.require_group(name), "2", v.at(1));
+    write(group.require_group(name), "3", v.at(2));
+}
+
 } // namespace h5
 
 

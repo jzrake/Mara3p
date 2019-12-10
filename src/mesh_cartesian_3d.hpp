@@ -28,6 +28,7 @@
 
 #pragma once
 #include <map>
+#include <string>
 #include <vector>
 #include "core_geometric.hpp"
 #include "core_ndarray.hpp"
@@ -439,6 +440,25 @@ inline auto remove_transverse(unsigned count, axis_3d axis)
 }
 
 } // namespace mesh
+
+
+
+
+//=============================================================================
+template<typename T>
+auto to_string(const nd::shared_array<T, 3>& v)
+{
+    return "("
+    + std::to_string(shape(v, 0)) + " "
+    + std::to_string(shape(v, 1)) + " "
+    + std::to_string(shape(v, 2)) + ")";
+}
+
+template<typename T>
+auto to_string(const std::array<nd::shared_array<T, 3>, 3>& v)
+{
+    return to_string(v.at(0)) + " " + to_string(v.at(1)) + " " + to_string(v.at(2));
+}
 
 
 

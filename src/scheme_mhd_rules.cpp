@@ -105,28 +105,11 @@ static auto wrap(FunctionType f)
 
 
 //=============================================================================
-auto basic_primitive(position_t p, mhd::magnetic_field_vector_t b)
-{
-    return mhd::primitive(1.0, {}, 1.0, b);
-}
-
-auto abc_vector_potential(position_t p)
-{
-    auto k = 2.0 * M_PI / dimensional::unit_length(1.0);
-    auto [A, B, C] = std::tuple(1.0, 1.0, 1.0);
-    auto [x, y, z] = as_tuple(p);
-    auto b0 = 1.0;
-    auto ax = A * std::sin(k * z) + C * std::cos(k * y);
-    auto ay = B * std::sin(k * x) + A * std::cos(k * z);
-    auto az = C * std::sin(k * y) + B * std::cos(k * x);
-    return b0 * mhd::vector_potential_t{ax, ay, az};
-};
-
-
-
-
-//=============================================================================
-seq::dynamic_sequence_t<named_rule_t> mhd_rules::initial_condition_rules(nd::uint depth, nd::uint block_size)
+seq::dynamic_sequence_t<named_rule_t> mhd_rules::initial_condition_rules(
+    nd::uint depth,
+    nd::uint block_size,
+    mhd_scheme_v2::primitive_function_t primitive,
+    mhd_scheme_v2::vector_potential_function_t vector_potential)
 {
     auto nb = unsigned(1 << depth);
     auto dl = dimensional::unit_length(1.0 / block_size / nb);
@@ -138,9 +121,9 @@ seq::dynamic_sequence_t<named_rule_t> mhd_rules::initial_condition_rules(nd::uin
         auto k_bf = key(data_field::face_magnetic_flux_density).block(index);
         auto k_uc = key(data_field::cell_conserved_density)    .block(index);
 
-        auto f_ae = wrap([=] () { return construct_vector_potential(index, block_size, abc_vector_potential); });
+        auto f_ae = wrap([=] () { return construct_vector_potential(index, block_size, vector_potential); });
         auto f_bf = wrap<edge_electromotive_density_t>([=] (auto ee) { return curl(ee, dl); });
-        auto f_uc = wrap<face_magnetic_flux_density_t>([=] (auto bf) { return construct_conserved(index, block_size, bf, basic_primitive); });
+        auto f_uc = wrap<face_magnetic_flux_density_t>([=] (auto bf) { return construct_conserved(index, block_size, bf, primitive); });
 
         auto r_ae = rule(k_ae, f_ae, {});
         auto r_bf = rule(k_bf, f_bf, {k_ae});
