@@ -63,6 +63,7 @@ struct state_t
     unsigned selected_tab = 0;
     unsigned selected_table_row = 0;
     unsigned starting_table_row = 0;
+    unsigned concurrent_task_count = 0;
     component_type focused_component;
     std::vector<std::string> content_table_items;
 };

@@ -48,47 +48,14 @@
 #include "parallel_dependency_graph.hpp"
 #include "parallel_thread_pool.hpp"
 #include "physics_mhd.hpp"
+#include "scheme_mhd_rules.hpp"
 #include "scheme_mhd_v2.hpp"
 
 
 
 
 using namespace mhd_scheme_v2;
-
-
-
-
-//=============================================================================
-enum class data_field
-{
-    cell_primitive_variables,
-    cell_conserved_density,
-    face_godunov_data,
-    face_magnetic_flux_density,
-    edge_electromotive_density,
-    edge_vector_potential,
-};
-
-enum class extended_status
-{
-    not_extended,
-    extended,
-};
-
-using product_t = std::variant<
-    cell_primitive_variables_t,
-    cell_conserved_density_t,
-    face_godunov_data_t,
-    face_magnetic_flux_density_t,
-    edge_electromotive_density_t>;
-
-using product_identifier_t = std::tuple<
-    rational::number_t,
-    multilevel_index_t,
-    data_field,
-    extended_status>;
-
-using DependencyGraph = mara::DependencyGraph<product_identifier_t, product_t>;
+using namespace mhd_rules;
 
 
 
@@ -242,310 +209,21 @@ std::vector<std::string> represent_graph_items(const DependencyGraph& graph)
 
 
 //=============================================================================
-static auto is_responsible_for = [] (auto) { return true; };
-static auto block_size = 16;
-static auto depth = 1UL;
-static auto block_extent = nd::uivec(1 << depth, 1 << depth, 1 << depth);
-
-
-
-
-//=============================================================================
-using named_rule_t = std::tuple<
-    product_identifier_t,
-    DependencyGraph::mapping_type,
-    std::vector<product_identifier_t>>;
-
-named_rule_t rule(
-    product_identifier_t key,
-    DependencyGraph::mapping_type mapping,
-    std::vector<product_identifier_t> args)
-{
-    return named_rule_t{key, mapping, args};
-}
-
-
-
-
-//=============================================================================
-struct key_factory_t
-{
-    key_factory_t iteration(rational::number_t v)                        const { auto n = id; std::get<0>(n) = v; return {n}; }
-    key_factory_t block    (multilevel_index_t v)                        const { auto n = id; std::get<1>(n) = v; return {n}; }
-    key_factory_t field    (data_field v)                                const { auto n = id; std::get<2>(n) = v; return {n}; }
-    key_factory_t extended (extended_status v=extended_status::extended) const { auto n = id; std::get<3>(n) = v; return {n}; }
-
-    operator product_identifier_t() const
-    {
-        return id;
-    }
-
-    auto bind_block() const { return [this] (multilevel_index_t v) { return block(v).id; }; }
-
-    product_identifier_t id;
-};
-
-key_factory_t key(data_field field)
-{
-    return key_factory_t().field(field);
-}
-
-key_factory_t key(rational::number_t iteration)
-{
-    return key_factory_t().iteration(iteration);
-}
-
-
-
-
-//=============================================================================
-template<typename FunctionType>
-auto wrap(FunctionType f)
-{
-    return [f] (std::vector<product_t>) -> product_t
-    {
-        return f();
-    };
-}
-
-template<typename Arg1, typename FunctionType>
-auto wrap(FunctionType f)
-{
-    return [f] (std::vector<product_t> args) -> product_t
-    {
-        const auto& arg1 = std::get<Arg1>(args.at(0));
-        return f(arg1);
-    };
-}
-
-template<typename Arg1, typename Arg2, typename FunctionType>
-auto wrap(FunctionType f)
-{
-    return [f] (std::vector<product_t> args) -> product_t
-    {
-        const auto& arg1 = std::get<Arg1>(args.at(0));
-        const auto& arg2 = std::get<Arg2>(args.at(1));
-        return f(arg1, arg2);
-    };
-}
-
-
-
-
-//=============================================================================
-auto basic_primitive(position_t p, mhd::magnetic_field_vector_t b)
-{
-    return mhd::primitive(1.0, {}, 1.0, b);
-}
-
-auto abc_vector_potential(position_t p)
-{
-    auto k = 2.0 * M_PI / dimensional::unit_length(1.0);
-    auto [A, B, C] = std::tuple(1.0, 1.0, 1.0);
-    auto [x, y, z] = as_tuple(p);
-    auto b0 = 1.0;
-    auto ax = A * std::sin(k * z) + C * std::cos(k * y);
-    auto ay = B * std::sin(k * x) + A * std::cos(k * z);
-    auto az = C * std::sin(k * y) + B * std::cos(k * x);
-    return b0 * mhd::vector_potential_t{ax, ay, az};
-};
-
-
-
-
-//=============================================================================
-auto block_indexes()
-{
-    return seq::adapt(nd::index_space(block_extent))
-    | seq::map([] (auto i) { return multilevel_index_t{depth, mesh::to_numeric_array(i)}; });
-}
-
-auto extend_cell_primitive_variables(nd::uint block_size, nd::uint count)
-{
-    return [=] (const std::vector<product_t>& vargs) -> product_t
-    {
-        auto pargs = seq::get<cell_primitive_variables_t>(seq::view(vargs)) | seq::to<std::vector>();
-        return extend_cell_primitive_variables(pargs, block_size, count);
-    };
-}
-
-auto extend_face_magnetic_flux_density(nd::uint block_size, nd::uint count)
-{
-    return [=] (const std::vector<product_t>& vargs) -> product_t
-    {
-        auto pargs = seq::get<face_magnetic_flux_density_t>(seq::view(vargs)) | seq::to<std::vector>();
-        return extend_face_magnetic_flux_density(pargs, block_size, count);
-    };
-}
-
-
-
-
-//=============================================================================
-auto initial_condition_rules()
-{
-    auto nb = unsigned(1 << depth);
-    auto dl = dimensional::unit_length(1.0 / block_size / nb);
-
-    return block_indexes()
-    | seq::map([dl] (auto index)
-    {
-        auto k_ae = key(data_field::edge_vector_potential)     .block(index);
-        auto k_bf = key(data_field::face_magnetic_flux_density).block(index);
-        auto k_uc = key(data_field::cell_conserved_density)    .block(index);
-
-        auto f_ae = wrap([index] () { return construct_vector_potential(index, block_size, abc_vector_potential); });
-        auto f_bf = wrap<edge_electromotive_density_t>([dl] (auto ee) { return curl(ee, dl); });
-        auto f_uc = wrap<face_magnetic_flux_density_t>([index] (auto bf) { return construct_conserved(index, block_size, bf, basic_primitive); });
-
-        auto r_ae = rule(k_ae, f_ae, {});
-        auto r_bf = rule(k_bf, f_bf, {k_ae});
-        auto r_uc = rule(k_uc, f_uc, {k_bf});
-
-        return seq::from(r_ae, r_bf, r_uc);
-    })
-    | seq::flat()
-    | seq::to_dynamic();
-}
-
-
-
-
-//=============================================================================
-auto recover_primitive_rules(rational::number_t iteration)
-{
-    return block_indexes()
-    | seq::map([iteration] (auto index)
-    {
-        auto bf = key(iteration).block(index).field(data_field::face_magnetic_flux_density);
-        auto uc = key(iteration).block(index).field(data_field::cell_conserved_density);
-        auto pc = key(iteration).block(index).field(data_field::cell_primitive_variables);
-        auto fm = wrap<cell_conserved_density_t, face_magnetic_flux_density_t>(mhd_scheme_v2::primitive_array);
-        return rule(pc, fm, {uc, bf});
-    })
-    | seq::to_dynamic();
-}
-
-
-
-
-//=============================================================================
-auto primitive_extension_rules(rational::number_t iteration)
-{
-    return block_indexes()
-    | seq::map([iteration] (auto index) -> named_rule_t
-    {
-        auto pc = key(data_field::cell_primitive_variables).iteration(iteration);
-
-        auto neighbor_ids = mesh::neighbors_27(mesh::to_uivec(index.coordinates), block_extent)
-        | seq::map([] (auto i) { return multilevel_index_t{depth, mesh::to_numeric_array(i)}; })
-        | seq::map(pc.bind_block())
-        | seq::to<std::vector>();
-
-        return rule(pc.extended().block(index), extend_cell_primitive_variables(block_size, 1), neighbor_ids);
-    })
-    | seq::to_dynamic();
-}
-
-
-
-
-//=============================================================================
-auto magnetic_extension_rules(rational::number_t iteration)
-{
-    return block_indexes()
-    | seq::map([iteration] (auto index) -> named_rule_t
-    {
-        auto bf = key(data_field::face_magnetic_flux_density).iteration(iteration);
-        auto n1 = mesh::neighbors_9(mesh::to_uivec(index.coordinates), block_extent, mesh::axis_3d::i);
-        auto n2 = mesh::neighbors_9(mesh::to_uivec(index.coordinates), block_extent, mesh::axis_3d::j);
-        auto n3 = mesh::neighbors_9(mesh::to_uivec(index.coordinates), block_extent, mesh::axis_3d::k);
-
-        auto neighbor_ids = seq::concat(n1, n2, n3)
-        | seq::map([] (auto i) { return multilevel_index_t{depth, mesh::to_numeric_array(i)}; })
-        | seq::map(bf.bind_block())
-        | seq::to<std::vector>();
-
-        return rule(bf.extended().block(index), extend_face_magnetic_flux_density(block_size, 1), neighbor_ids);
-    })
-    | seq::to_dynamic();
-}
-
-
-
-
-//=============================================================================
-auto godunov_data_rules(rational::number_t iteration)
-{
-    return block_indexes()
-    | seq::map([iteration] (auto index) -> named_rule_t
-    {
-        auto pc = key(data_field::cell_primitive_variables)  .iteration(iteration).block(index).extended();
-        auto bf = key(data_field::face_magnetic_flux_density).iteration(iteration).block(index).extended();
-        auto gf = key(data_field::face_godunov_data)         .iteration(iteration).block(index);
-        auto fm = wrap<cell_primitive_variables_t, face_magnetic_flux_density_t>(godunov_fluxes);
-        return rule(gf, fm, {pc, bf});
-    })
-    | seq::to_dynamic();
-}
-
-
-
-
-//=============================================================================
-auto electromotive_force_rules(rational::number_t iteration)
-{
-    return block_indexes()
-    | seq::map([iteration] (auto index) -> named_rule_t
-    {
-        auto ee = key(data_field::edge_electromotive_density).iteration(iteration).block(index);
-        auto gf = key(data_field::face_godunov_data         ).iteration(iteration).block(index);
-        auto fm = wrap<face_godunov_data_t>(electromotive_forces);
-        return rule(ee, fm, {gf});
-    })
-    | seq::to_dynamic();
-}
-
-
-
-
-//=============================================================================
-auto global_primitive_array_rules(rational::number_t iteration)
-{
-    auto pc = key(data_field::cell_primitive_variables).iteration(iteration);
-    auto arg_keys = block_indexes() | seq::map(pc.bind_block()) | seq::to<std::vector>();
-
-    auto tile = [] (std::vector<product_t> block_vector) -> product_t
-    {
-        throw std::runtime_error("A problem was encountered!");
-
-        auto block_map = seq::view(block_vector)
-        | seq::map([] (auto p) { return std::get<cell_primitive_variables_t>(p); })
-        | seq::keys(nd::index_space(block_extent))
-        | seq::to_dict<std::map>();
-
-        return mesh::tile_blocks(block_map, block_extent) | nd::to_shared();
-    };
-    return seq::just(rule(pc, tile, arg_keys)) | seq::to_dynamic();
-}
-
-
-
-
-//=============================================================================
 auto build_graph()
 {
     auto graph = DependencyGraph();
+    auto depth = 2;
+    auto block_size = 16;
 
-    for (auto rule : initial_condition_rules())       graph.define(rule);
-    for (auto rule : recover_primitive_rules(0))      graph.define(rule);   
-    for (auto rule : primitive_extension_rules(0))    graph.define(rule);
-    for (auto rule : magnetic_extension_rules(0))     graph.define(rule);
-    for (auto rule : electromotive_force_rules(0))    graph.define(rule);
-    for (auto rule : godunov_data_rules(0))           graph.define(rule);
-    for (auto rule : global_primitive_array_rules(0)) graph.define(rule);
+    for (auto rule : mhd_rules::initial_condition_rules     (depth, block_size))    graph.define(rule);
+    for (auto rule : mhd_rules::recover_primitive_rules     (depth, block_size, 0)) graph.define(rule);   
+    for (auto rule : mhd_rules::primitive_extension_rules   (depth, block_size, 0)) graph.define(rule);
+    for (auto rule : mhd_rules::magnetic_extension_rules    (depth, block_size, 0)) graph.define(rule);
+    for (auto rule : mhd_rules::electromotive_force_rules   (depth, block_size, 0)) graph.define(rule);
+    for (auto rule : mhd_rules::godunov_data_rules          (depth, block_size, 0)) graph.define(rule);
+    for (auto rule : mhd_rules::global_primitive_array_rules(depth, block_size, 0)) graph.define(rule);
 
-    return std::move(graph).throw_if_incomplete();
+    return std::move(graph).throw_if_lacking_definitions();
 }
 
 
@@ -554,13 +232,15 @@ auto build_graph()
 //=============================================================================
 int main()
 {
-    auto scheduler = mara::ThreadPool(1);
+    auto thread_count = 1;
+    auto scheduler = mara::ThreadPool(thread_count);
     auto graph = build_graph();
 
     auto tb = ui::session_t();
     auto ui_state = ui::state_t();
 
     ui_state.content_table_items = represent_graph_items(graph);
+    ui_state.concurrent_task_count = scheduler.job_count();
     ui::draw(ui_state);
 
 
@@ -573,7 +253,7 @@ int main()
 
         if (ui::fulfill(ui::action::evaluation_step))
         {
-            for (const auto& key : graph.eligible_rules(is_responsible_for))
+            for (const auto& key : graph.eligible_rules())
             {
                 graph.evaluate_rule(key, scheduler);
             }
@@ -581,20 +261,18 @@ int main()
 
         if (ui::fulfill(ui::action::reset_simulation))
         {
-            scheduler.restart(1);
+            scheduler.restart(thread_count);
             graph = build_graph();
 
             ui_state.content_table_items = represent_graph_items(graph);
+            ui_state.concurrent_task_count = scheduler.job_count();
             ui::draw(ui_state);
         }
 
         if (! graph.poll(std::chrono::milliseconds(5)).empty())
         {
-            // for (auto item : represent_graph_items(graph))
-            // {
-            //     std::cout << item << std::endl;
-            // }
             ui_state.content_table_items = represent_graph_items(graph);
+            ui_state.concurrent_task_count = scheduler.job_count();
             ui::draw(ui_state);
         }
 
@@ -649,4 +327,3 @@ int main()
 //         }
 //     }
 // }
-

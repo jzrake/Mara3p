@@ -192,6 +192,10 @@ void ui::draw(const state_t& state)
     draw_text(right_panel_divider_position() + 2, 8, "exit ...... ctrl+q", TB_BLUE, wants_quit             ? TB_YELLOW : TB_DEFAULT);
 
 
+    draw_text(right_panel_divider_position() + 2, h / 2 + 2, "Job count: " + std::to_string(state.concurrent_task_count));
+
+
+
     if (state.selected_tab == 0)
     {
         for (unsigned i = 0; i < num_visible_table_rows(); ++i)
@@ -320,8 +324,8 @@ ui::state_t handle_mouse(tb_event ev, ui::state_t state)
 {
     switch (ev.key)
     {
-        case TB_KEY_MOUSE_WHEEL_UP:   return scroll_table(state, +1);
-        case TB_KEY_MOUSE_WHEEL_DOWN: return scroll_table(state, -1);
+        case TB_KEY_MOUSE_WHEEL_UP:   return scroll_table(state, -1);
+        case TB_KEY_MOUSE_WHEEL_DOWN: return scroll_table(state, +1);
     }
     return state;
 }

@@ -167,7 +167,7 @@ auto build_graph()
     graph.insert_rule("abcdefgh", mult, "abcd", "efgh");
     graph.insert_rule("aebfcgdh", mult, "aebf", "cgdh");
 
-    return std::move(graph).throw_if_incomplete();
+    return std::move(graph).throw_if_lacking_definitions();
 }
 
 

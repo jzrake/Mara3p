@@ -537,9 +537,9 @@ public:
      * @note       This function is likely to be used in a graph factory
      *             function, e.g.
      *             
-     *             return std::move(graph).throw_if_incomplete();
+     *             return std::move(graph).throw_if_lacking_definitions();
      */
-    DependencyGraph throw_if_incomplete() &&
+    DependencyGraph throw_if_lacking_definitions() &&
     {
         try {
             for (const auto& [k, r] : rules)
@@ -550,7 +550,7 @@ public:
         }
         catch (const std::out_of_range&)
         {
-            throw std::runtime_error("DependencyGraph::throw_if_incomplete");
+            throw std::runtime_error("DependencyGraph::throw_if_lacking_definitions");
         }
     }
 

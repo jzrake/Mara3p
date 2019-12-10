@@ -97,6 +97,11 @@ public:
         }
     }
 
+    std::size_t job_count()
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        return pending_tasks.size() + running_tasks.size();
+    }
 
     template<typename Function, typename... Args>
     auto enqueue(Function&& fn, Args&&... args)
