@@ -76,6 +76,19 @@ public:
 
 
     /**
+     * @brief      Return the number of total rules defined
+     *
+     * @return     A std::size_t
+     */
+    std::size_t size() const
+    {
+        return rules.size();
+    }
+
+
+
+
+    /**
      * @brief      Return true if the addition of the given rule would create a
      *             dependency cycle in the graph. This checks for whether any of
      *             the expression's symbols are downstream of its key.
@@ -211,7 +224,7 @@ public:
      *             currently pending, and move them to the internal map of
      *             completed items.
      *
-     * @param[in]  timeout  The amount of time to wait for pending items to
+     * @param[in]  timeout  The amount of time to wait for each pending item to
      *                      finish
      *
      * @return     A map of the newly completed items

@@ -27,6 +27,8 @@
 
 
 #pragma once
+#include <chrono>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -57,15 +59,20 @@ enum class action
 };
 
 
+
+
 //=============================================================================
 struct state_t
 {
+    component_type focused_component;
+
     unsigned selected_tab = 0;
     unsigned selected_table_row = 0;
     unsigned starting_table_row = 0;
-    unsigned concurrent_task_count = 0;
-    component_type focused_component;
-    std::vector<std::string> content_table_items;
+
+    std::function<unsigned()>            concurrent_task_count;
+    std::function<unsigned()>            content_table_size;
+    std::function<std::string(unsigned)> content_table_item;
 };
 
 struct session_t
@@ -80,9 +87,21 @@ struct session_t
 //=============================================================================
 bool is_quit(tb_event ev);
 void draw(const state_t& state);
+bool fulfill(action action);
 
 ui::state_t handle_event(const state_t& state, tb_event ev);
-std::optional<tb_event> peek(int timeout);
-bool fulfill(action action);
+
+template<class Rep, class Period>
+std::optional<tb_event> poll(std::chrono::duration<Rep, Period> timeout)
+{
+    auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(timeout);
+    tb_event ev;
+
+    if (tb_peek_event(&ev, dt.count()) > 0)
+    {
+        return ev;
+    }
+    return {};
+}
 
 } // namespace ui

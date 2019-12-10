@@ -81,6 +81,25 @@ ui::session_t::~session_t()
 
 
 //=============================================================================
+static unsigned num_visible_table_rows()
+{
+    return tb_height() - 8;
+}
+
+static unsigned right_panel_width()
+{
+    return 40;
+}
+
+static unsigned right_panel_divider_position()
+{
+    return tb_width() - right_panel_width();
+}
+
+
+
+
+//=============================================================================
 static void draw_box(int x, int y, int w, int h, uint16_t fg=TB_WHITE, uint16_t bg=TB_DEFAULT)
 {
     int x0 = x;
@@ -136,23 +155,48 @@ static void draw_text(int x, int y, const std::string& text, uint16_t fg=TB_WHIT
     }
 }
 
-
-
-
-//=============================================================================
-static unsigned num_visible_table_rows()
+static void draw_usage_tips()
 {
-    return tb_height() - 8;
+    draw_text(right_panel_divider_position() + 2, 6, "step ...... space",  TB_BLUE, wants_evaluation_step  ? TB_YELLOW : TB_DEFAULT);
+    draw_text(right_panel_divider_position() + 2, 7, "reset ..... r",      TB_BLUE, wants_reset_simulation ? TB_YELLOW : TB_DEFAULT);
+    draw_text(right_panel_divider_position() + 2, 8, "exit ...... ctrl+q", TB_BLUE, wants_quit             ? TB_YELLOW : TB_DEFAULT);
 }
 
-static unsigned right_panel_width()
+static void draw_navigation_tabs(const ui::state_t& state)
 {
-    return 40;
+    auto tab_names = std::array{"Execution Graph", "Performance", "File Browser"};
+    auto column = 3;
+
+    for (int i = 0; i < 3; ++i)
+    {
+        auto bg = state.selected_tab == i ? state.focused_component == ui::component_type::tab_bar
+        ? TB_CYAN : TB_BLUE
+        : TB_DEFAULT;
+
+        draw_text(column, 2, tab_names.at(i), TB_WHITE | TB_BOLD, bg);
+        column += std::strlen(tab_names.at(i)) + 4;
+    }
 }
 
-static unsigned right_panel_divider_position()
+static void draw_content_table(const ui::state_t& state)
 {
-    return tb_width() - right_panel_width();
+    for (unsigned i = 0; i < num_visible_table_rows(); ++i)
+    {
+        auto row = state.starting_table_row + i;
+
+        if (row >= state.content_table_size())
+        {
+            break;
+        }
+
+        auto bg = state.selected_table_row == row
+        ? state.focused_component == ui::component_type::content_table ? TB_CYAN : TB_BLUE
+        : TB_DEFAULT;
+
+        auto fg = state.content_table_item(row).find("error") == std::string::npos ? TB_GREEN : TB_RED;
+
+        draw_text(3, 6 + i, state.content_table_item(row), fg, bg, 120);
+    }
 }
 
 
@@ -165,73 +209,21 @@ void ui::draw(const state_t& state)
     int h = tb_height();
 
     tb_clear();
+
     draw_box(0, 0, w, h, TB_CYAN);
     draw_horizontal_line(1, 4, w - 2, TB_CYAN);
     draw_horizontal_line(right_panel_divider_position() + 1, h / 2 + 1, right_panel_width() - 2, TB_CYAN);
     draw_vertical_line(right_panel_divider_position(), 5, h - 6, TB_CYAN);
-
-
-
-
-    auto tab_names = std::array{"Execution Graph", "Performance", "File Browser"};
-    auto column = 3;
-
-    for (int i = 0; i < 3; ++i)
-    {
-        auto bg = state.selected_tab == i ? state.focused_component == component_type::tab_bar
-        ? TB_CYAN : TB_BLUE
-        : TB_DEFAULT;
-
-        draw_text(column, 2, tab_names.at(i), TB_WHITE | TB_BOLD, bg);
-        column += std::strlen(tab_names.at(i)) + 4;
-    }
-
-
-    draw_text(right_panel_divider_position() + 2, 6, "step ...... space",  TB_BLUE, wants_evaluation_step  ? TB_YELLOW : TB_DEFAULT);
-    draw_text(right_panel_divider_position() + 2, 7, "reset ..... r",      TB_BLUE, wants_reset_simulation ? TB_YELLOW : TB_DEFAULT);
-    draw_text(right_panel_divider_position() + 2, 8, "exit ...... ctrl+q", TB_BLUE, wants_quit             ? TB_YELLOW : TB_DEFAULT);
-
-
-    draw_text(right_panel_divider_position() + 2, h / 2 + 2, "Job count: " + std::to_string(state.concurrent_task_count));
-
-
+    draw_navigation_tabs(state);
+    draw_usage_tips();
+    draw_text(right_panel_divider_position() + 2, h / 2 + 2, "Job count: " + std::to_string(state.concurrent_task_count()));
 
     if (state.selected_tab == 0)
     {
-        for (unsigned i = 0; i < num_visible_table_rows(); ++i)
-        {
-            auto row = state.starting_table_row + i;
-
-            if (row >= state.content_table_items.size())
-            {
-                break;
-            }
-
-            auto bg = state.selected_table_row == row
-            ? state.focused_component == component_type::content_table ? TB_CYAN : TB_BLUE
-            : TB_DEFAULT;
-
-            auto fg = state.content_table_items.at(row).find("error") == std::string::npos ? TB_GREEN : TB_RED;
-
-            draw_text(3, 6 + i, state.content_table_items.at(row), fg, bg, 120);
-        }
+        draw_content_table(state);
     }
+
     tb_present();
-}
-
-
-
-
-//=============================================================================
-std::optional<tb_event> ui::peek(int timeout)
-{
-    tb_event ev;
-
-    if (tb_peek_event(&ev, timeout) > 0)
-    {
-        return ev;
-    }
-    return {};
 }
 
 
@@ -261,7 +253,7 @@ ui::state_t move_focus_forward(ui::state_t state)
 
 static ui::state_t scroll_table(ui::state_t state, int difference)
 {
-    if (int(state.starting_table_row) + difference + num_visible_table_rows() <= state.content_table_items.size() &&
+    if (int(state.starting_table_row) + difference + num_visible_table_rows() <= state.content_table_size() &&
         int(state.starting_table_row) + difference >= 0)
     {
         state.starting_table_row += difference;
@@ -286,7 +278,7 @@ static ui::state_t select_prev_table_item(ui::state_t state)
 
 static ui::state_t select_next_table_item(ui::state_t state)
 {
-    if (state.selected_table_row < state.content_table_items.size() - 1)
+    if (state.selected_table_row < state.content_table_size() - 1)
     {
         state.selected_table_row += 1;
 

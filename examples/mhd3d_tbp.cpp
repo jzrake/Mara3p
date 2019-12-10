@@ -95,15 +95,17 @@ void represent_graph_item(std::ostream& os, const DependencyGraph& graph, produc
     << error_string;
 }
 
+std::string represent_graph_item(const DependencyGraph& graph, product_identifier_t key)
+{
+    std::stringstream ss;
+    represent_graph_item(ss, graph, key);
+    return ss.str();
+}
+
 std::vector<std::string> represent_graph_items(const DependencyGraph& graph)
 {
     return seq::view(graph.keys())
-    | seq::map([&graph] (auto key)
-    {
-        std::stringstream ss;
-        represent_graph_item(ss, graph, key);
-        return ss.str();
-    })
+    | seq::map([&graph] (auto key) { return represent_graph_item(graph, key); })
     | seq::to<std::vector>();
 }
 
@@ -162,8 +164,10 @@ int main()
     auto tb = ui::session_t();
     auto ui_state = ui::state_t();
 
-    ui_state.content_table_items = represent_graph_items(graph);
-    ui_state.concurrent_task_count = scheduler.job_count();
+
+    ui_state.content_table_size = [&graph] () { return graph.size(); };
+    ui_state.content_table_item = [&graph, keys=graph.keys()] (unsigned row) { return represent_graph_item(graph, keys.at(row)); };
+    ui_state.concurrent_task_count = [&scheduler] () { return scheduler.job_count(); };
     ui::draw(ui_state);
 
 
@@ -180,26 +184,22 @@ int main()
             {
                 graph.evaluate_rule(key, scheduler);
             }
+            ui::draw(ui_state);
         }
 
         if (ui::fulfill(ui::action::reset_simulation))
         {
             scheduler.restart(thread_count);
             graph = build_graph();
-
-            ui_state.content_table_items = represent_graph_items(graph);
-            ui_state.concurrent_task_count = scheduler.job_count();
             ui::draw(ui_state);
         }
 
-        if (! graph.poll(std::chrono::milliseconds(5)).empty())
+        if (! graph.poll(std::chrono::milliseconds(0)).empty())
         {
-            ui_state.content_table_items = represent_graph_items(graph);
-            ui_state.concurrent_task_count = scheduler.job_count();
             ui::draw(ui_state);
         }
 
-        if (auto event = ui::peek(5); event.has_value())
+        if (auto event = ui::poll(std::chrono::milliseconds(5)); event.has_value())
         {
             ui::draw(ui_state = ui::handle_event(ui_state, event.value()));
         }
