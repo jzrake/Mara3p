@@ -162,7 +162,7 @@ public:
      *
      * @tparam     T     The value type to vend out
      *
-     * @return     An isntance of T obtained from the internal buffer
+     * @return     An instance of T obtained from the internal buffer
      */
     template<typename T>
     T vend()

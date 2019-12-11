@@ -390,7 +390,7 @@ constexpr uint rank(array_t<ProviderType, Rank>)
 }
 
 template<typename ProviderType, uint Rank>
-uint size(array_t<ProviderType, Rank> array)
+uint size(const array_t<ProviderType, Rank>& array)
 {
     return product(array.shape);
 }

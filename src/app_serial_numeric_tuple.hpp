@@ -26,34 +26,30 @@
 
 
 
-#define DO_UNIT_TESTS
-#include "app_config.hpp"
-#include "app_hdf5.hpp"
-#include "app_hdf5_dimensional.hpp"
-#include "app_hdf5_ndarray.hpp"
-#include "app_hdf5_ndarray_dimensional.hpp"
-#include "app_hdf5_numeric_array.hpp"
-#include "app_hdf5_rational.hpp"
-#include "app_hdf5_std_map.hpp"
-#include "app_hdf5_std_variant.hpp"
+#pragma once
 #include "app_serial.hpp"
-#include "app_serial_ndarray.hpp"
+#include "core_numeric_tuple.hpp"
 
 
 
 
 //=============================================================================
-int test_app()
+template<typename... Ts>
+struct serial::type_descriptor_t<const numeric::tuple_t<Ts...>>
 {
-    test_hdf5();
-    test_hdf5_dimensional();
-    test_hdf5_ndarray();
-    test_hdf5_ndarray_dimensional();
-    test_hdf5_numeric_array();
-    test_hdf5_rational();
-    test_hdf5_std_variant();
-    test_hdf5_std_map();
-    test_serial();
-    test_serial_ndarray();
-    return 0;
-}
+    template<typename Serializer>
+    void operator()(Serializer& s, const numeric::tuple_t<Ts...>& value) const
+    {
+        std::apply([&s] (const auto&... x) { (..., s(x)); }, value.impl);
+    }
+};
+
+template<typename... Ts>
+struct serial::type_descriptor_t<numeric::tuple_t<Ts...>>
+{
+    template<typename Serializer>
+    void operator()(Serializer& s, numeric::tuple_t<Ts...>& value) const
+    {
+        std::apply([&s] (auto&... x) { (..., s(x)); }, value.impl);
+    }
+};

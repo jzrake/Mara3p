@@ -26,34 +26,55 @@
 
 
 
-#define DO_UNIT_TESTS
-#include "app_config.hpp"
-#include "app_hdf5.hpp"
-#include "app_hdf5_dimensional.hpp"
-#include "app_hdf5_ndarray.hpp"
-#include "app_hdf5_ndarray_dimensional.hpp"
-#include "app_hdf5_numeric_array.hpp"
-#include "app_hdf5_rational.hpp"
-#include "app_hdf5_std_map.hpp"
-#include "app_hdf5_std_variant.hpp"
+#pragma once
+#include <variant>
 #include "app_serial.hpp"
-#include "app_serial_ndarray.hpp"
 
 
 
 
 //=============================================================================
-int test_app()
+namespace detail {
+
+template<typename VariantType, std::size_t... I>
+void construct_variant(std::size_t index, VariantType& value, std::index_sequence<I...>)
 {
-    test_hdf5();
-    test_hdf5_dimensional();
-    test_hdf5_ndarray();
-    test_hdf5_ndarray_dimensional();
-    test_hdf5_numeric_array();
-    test_hdf5_rational();
-    test_hdf5_std_variant();
-    test_hdf5_std_map();
-    test_serial();
-    test_serial_ndarray();
-    return 0;
+    (..., [&value, index] () { if (I == index) value = std::variant_alternative_t<I, VariantType>(); }());
 }
+
+}
+
+
+
+
+//=============================================================================
+template<typename... T>
+struct serial::container_shape_descriptor_t<std::variant<T...>>
+{
+    template<typename Serializer>
+    auto operator()(Serializer& s, const std::variant<T...>& value)
+    {
+        s(value.index());
+    }
+};
+
+template<typename... T>
+struct serial::container_shape_setter_t<std::variant<T...>>
+{
+    template<typename Serializer>
+    void operator()(Serializer& s, std::variant<T...>& value) const
+    {
+        auto index = s.template vend<std::size_t>();
+        detail::construct_variant<std::variant<T...>>(index, value, std::make_index_sequence<std::variant_size_v<std::variant<T...>>>());
+    }
+};
+
+template<typename... T>
+struct serial::type_descriptor_t<std::variant<T...>>
+{
+    template<typename Serializer>
+    void operator()(Serializer& s, std::variant<T...>& value) const
+    {
+        std::visit([&s] (auto& v) { s(v); }, value);
+    }
+};
