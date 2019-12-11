@@ -391,7 +391,7 @@ public:
     std::vector<key_type> eligible_rules(std::function<bool(key_type)> is_responsible_for=true_predicate()) const
     {
         auto result = std::vector<key_type>();
-        
+
         for (const auto& [key, rule] : rules)
         {
             if (is_eligible(key, is_responsible_for))

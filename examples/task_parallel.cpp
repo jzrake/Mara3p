@@ -77,23 +77,6 @@ std::set<int> recipients(const std::set<KeyType>& keys, const std::map<KeyType, 
 
 
 
-//=============================================================================
-std::string to_string(mara::evaluation_status s)
-{
-    switch (s)
-    {
-        case mara::evaluation_status::undefined:   return "!";
-        case mara::evaluation_status::defined:     return "d";
-        case mara::evaluation_status::pending:     return ".";
-        case mara::evaluation_status::eligible:    return "e";
-        case mara::evaluation_status::completed:   return "c";
-        default: return "";
-    }
-}
-
-
-
-
 //=========================================================================
 template<typename KeyType, typename ValueType, typename ResponsibleForType>
 void print_graph_status(const mara::DependencyGraph<KeyType, ValueType>& graph, ResponsibleForType is_responsible_for)
@@ -193,7 +176,7 @@ int main()
     {
         for (const auto& key : graph.eligible_rules(is_responsible_for))
         {
-            graph.evaluate_rule(key, scheduler);                
+            graph.evaluate_rule(key, scheduler);
         }
 
         for (const auto& [k, p] : graph.poll(std::chrono::milliseconds(10)))

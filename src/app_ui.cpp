@@ -36,6 +36,7 @@
 static bool wants_quit             = false;
 static bool wants_evaluation_step  = false;
 static bool wants_reset_simulation = false;
+static bool step_evaluations_continuously = false;
 
 
 
@@ -43,11 +44,14 @@ static bool wants_reset_simulation = false;
 //=============================================================================
 bool ui::fulfill(action action)
 {
-    auto check_and_reset = [] (bool& value)
+    auto check_and_reset = [] (bool& value, bool continuous)
     {
         if (value)
         {
-            value = false;
+            if (! continuous)
+            {
+                value = false;
+            }
             return true;
         }
         return false;
@@ -55,9 +59,9 @@ bool ui::fulfill(action action)
 
     switch (action)
     {
-        case action::quit            : return check_and_reset(wants_quit);
-        case action::evaluation_step : return check_and_reset(wants_evaluation_step);
-        case action::reset_simulation: return check_and_reset(wants_reset_simulation);
+        case action::quit            : return check_and_reset(wants_quit, false);
+        case action::evaluation_step : return check_and_reset(wants_evaluation_step, step_evaluations_continuously);
+        case action::reset_simulation: return check_and_reset(wants_reset_simulation, false);
     }
     return false;
 }
@@ -157,9 +161,10 @@ static void draw_text(int x, int y, const std::string& text, uint16_t fg=TB_WHIT
 
 static void draw_usage_tips()
 {
-    draw_text(right_panel_divider_position() + 2, 6, "step ...... space",  TB_BLUE, wants_evaluation_step  ? TB_YELLOW : TB_DEFAULT);
-    draw_text(right_panel_divider_position() + 2, 7, "reset ..... r",      TB_BLUE, wants_reset_simulation ? TB_YELLOW : TB_DEFAULT);
-    draw_text(right_panel_divider_position() + 2, 8, "exit ...... ctrl+q", TB_BLUE, wants_quit             ? TB_YELLOW : TB_DEFAULT);
+    draw_text(right_panel_divider_position() + 2, 6, "play / pause .... p",      TB_BLUE, step_evaluations_continuously ? TB_YELLOW : TB_DEFAULT);
+    draw_text(right_panel_divider_position() + 2, 6, "step ............ space",  TB_BLUE, wants_evaluation_step  ? TB_YELLOW : TB_DEFAULT);
+    draw_text(right_panel_divider_position() + 2, 7, "reset ........... r",      TB_BLUE, wants_reset_simulation ? TB_YELLOW : TB_DEFAULT);
+    draw_text(right_panel_divider_position() + 2, 8, "exit ............ ctrl+q", TB_BLUE, wants_quit             ? TB_YELLOW : TB_DEFAULT);
 }
 
 static void draw_navigation_tabs(const ui::state_t& state)
@@ -195,7 +200,7 @@ static void draw_content_table(const ui::state_t& state)
 
         auto fg = state.content_table_item(row).find("error") == std::string::npos ? TB_GREEN : TB_RED;
 
-        draw_text(3, 6 + i, state.content_table_item(row), fg, bg, 120);
+        draw_text(3, 6 + i, state.content_table_item(row), fg, bg, right_panel_divider_position() - 1);
     }
 }
 
@@ -216,7 +221,7 @@ void ui::draw(const state_t& state)
     draw_vertical_line(right_panel_divider_position(), 5, h - 6, TB_CYAN);
     draw_navigation_tabs(state);
     draw_usage_tips();
-    draw_text(right_panel_divider_position() + 2, h / 2 + 2, "Job count: " + std::to_string(state.concurrent_task_count()));
+    draw_text(right_panel_divider_position() + 2, h / 2 + 2, "Job count: " + std::to_string(state.concurrent_task_count()), TB_YELLOW);
 
     if (state.selected_tab == 0)
     {
@@ -290,6 +295,12 @@ static ui::state_t select_next_table_item(ui::state_t state)
     return state;
 }
 
+static ui::state_t select_table_at_position(ui::state_t state, int y)
+{
+    state.selected_table_row = y - 6 + state.starting_table_row;
+    return state;
+}
+
 
 
 
@@ -308,7 +319,12 @@ static ui::state_t handle_key(tb_event ev, ui::state_t state)
 
     if (ui::is_quit(ev))  wants_quit = true;
     if (ev.ch == 'r')     wants_reset_simulation = true;
+    if (ev.ch == 'p')     step_evaluations_continuously = ! step_evaluations_continuously;
 
+    if (step_evaluations_continuously)
+    {
+        wants_evaluation_step = true;
+    }
     return state;
 }
 
@@ -316,6 +332,7 @@ ui::state_t handle_mouse(tb_event ev, ui::state_t state)
 {
     switch (ev.key)
     {
+        case TB_KEY_MOUSE_LEFT:       return select_table_at_position(state, ev.y);
         case TB_KEY_MOUSE_WHEEL_UP:   return scroll_table(state, -1);
         case TB_KEY_MOUSE_WHEEL_DOWN: return scroll_table(state, +1);
     }

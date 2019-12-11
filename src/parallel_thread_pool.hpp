@@ -27,10 +27,11 @@
 
 
 #pragma once
-#include <vector>
+#include <algorithm>
+#include <future>
 #include <mutex>
 #include <thread>
-#include <future>
+#include <vector>
 
 
 
