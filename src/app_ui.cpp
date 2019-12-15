@@ -74,6 +74,7 @@ ui::session_t::session_t()
 {
     tb_init();
     tb_select_input_mode(TB_INPUT_ESC | TB_INPUT_MOUSE);
+    tb_select_output_mode(TB_OUTPUT_NORMAL);
 }
 
 ui::session_t::~session_t()
@@ -162,14 +163,14 @@ static void draw_text(int x, int y, const std::string& text, uint16_t fg=TB_WHIT
 static void draw_usage_tips()
 {
     draw_text(right_panel_divider_position() + 2, 6, "play / pause .... p",      TB_BLUE, step_evaluations_continuously ? TB_YELLOW : TB_DEFAULT);
-    draw_text(right_panel_divider_position() + 2, 6, "step ............ space",  TB_BLUE, wants_evaluation_step  ? TB_YELLOW : TB_DEFAULT);
-    draw_text(right_panel_divider_position() + 2, 7, "reset ........... r",      TB_BLUE, wants_reset_simulation ? TB_YELLOW : TB_DEFAULT);
-    draw_text(right_panel_divider_position() + 2, 8, "exit ............ ctrl+q", TB_BLUE, wants_quit             ? TB_YELLOW : TB_DEFAULT);
+    draw_text(right_panel_divider_position() + 2, 7, "step ............ space",  TB_BLUE, wants_evaluation_step  ? TB_YELLOW : TB_DEFAULT);
+    draw_text(right_panel_divider_position() + 2, 8, "reset ........... r",      TB_BLUE, wants_reset_simulation ? TB_YELLOW : TB_DEFAULT);
+    draw_text(right_panel_divider_position() + 2, 9, "exit ............ ctrl+q", TB_BLUE, wants_quit             ? TB_YELLOW : TB_DEFAULT);
 }
 
 static void draw_navigation_tabs(const ui::state_t& state)
 {
-    auto tab_names = std::array{"Execution Graph", "Performance", "File Browser"};
+    auto tab_names = std::array{"Runtime", "Performance", "File Browser"};
     auto column = 3;
 
     for (int i = 0; i < 3; ++i)

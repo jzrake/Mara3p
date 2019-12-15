@@ -136,6 +136,7 @@ public:
         if (cyclic(key, argument_keys))
             throw std::invalid_argument("DependencyGraph::insert_rule (rule would create a dependency cycle)");
 
+        sorted_keys.push_back(key);
         rules[key] = std::pair(mapping, argument_keys);
         downstream[key] = downstream_keys(key);
 
@@ -612,17 +613,19 @@ public:
      *
      * @return     A std::vector<key_type>
      */
-    std::vector<key_type> keys() const
+    const std::vector<key_type>& keys() const
     {
-        auto result = std::vector<key_type>();
-
-        for (const auto& item : rules)
-        {
-            result.push_back(item.first);
-        }
-        return result;
+        return sorted_keys;
     }
 
+
+
+
+    /**
+     * @brief      Return a map of all products in the graph
+     *
+     * @return     A std::map<key_type, value_type>
+     */
     const std::map<key_type, value_type>& items() const
     {
         return products;
@@ -667,6 +670,7 @@ private:
 
 
     //=========================================================================
+    std::vector<key_type>                       sorted_keys;
     std::map<key_type, rule_type>               rules;
     std::map<key_type, value_type>              products;
     std::map<key_type, std::future<value_type>> pending_products;

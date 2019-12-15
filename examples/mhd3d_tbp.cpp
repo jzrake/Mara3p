@@ -73,8 +73,10 @@ std::string legalize(std::string s)
 
 
 //=============================================================================
-void represent_graph_item(std::ostream& os, const DependencyGraph& graph, product_identifier_t key)
+void represent_graph_item(std::ostream& os, const DependencyGraph& graph, unsigned row)
 {
+    auto key = graph.keys().at(row);
+
     auto shape_string = graph.is_completed(key)
     ? std::string("shape: ") + std::visit([] (auto p) { return to_string(p); }, graph.product_at(key))
     : std::string("");
@@ -95,17 +97,17 @@ void represent_graph_item(std::ostream& os, const DependencyGraph& graph, produc
     << error_string;
 }
 
-std::string represent_graph_item(const DependencyGraph& graph, product_identifier_t key)
+std::string represent_graph_item(const DependencyGraph& graph, unsigned row)
 {
     std::stringstream ss;
-    represent_graph_item(ss, graph, key);
+    represent_graph_item(ss, graph, row);
     return ss.str();
 }
 
 std::vector<std::string> represent_graph_items(const DependencyGraph& graph)
 {
-    return seq::view(graph.keys())
-    | seq::map([&graph] (auto key) { return represent_graph_item(graph, key); })
+    return seq::range(graph.size())
+    | seq::map([&graph] (auto row) { return represent_graph_item(graph, row); })
     | seq::to<std::vector>();
 }
 
@@ -133,22 +135,62 @@ auto abc_vector_potential(position_t p)
 
 
 
+static auto depth = 1;
+static auto block_size = 32;
+
+
+
+
 //=============================================================================
-auto build_graph()
+void enter_initial_conditions_rules(DependencyGraph& graph)
 {
-    auto graph = DependencyGraph();
-    auto depth = 2;
-    auto block_size = 16;
+    using namespace mhd_rules;
 
-    for (auto rule : mhd_rules::initial_condition_rules     (depth, block_size, basic_primitive, abc_vector_potential)) graph.define(rule);
-    for (auto rule : mhd_rules::recover_primitive_rules     (depth, block_size, 0)) graph.define(rule);   
-    for (auto rule : mhd_rules::primitive_extension_rules   (depth, block_size, 0)) graph.define(rule);
-    for (auto rule : mhd_rules::magnetic_extension_rules    (depth, block_size, 0)) graph.define(rule);
-    for (auto rule : mhd_rules::electromotive_force_rules   (depth, block_size, 0)) graph.define(rule);
-    for (auto rule : mhd_rules::godunov_data_rules          (depth, block_size, 0)) graph.define(rule);
-    for (auto rule : mhd_rules::global_primitive_array_rules(depth, block_size, 0)) graph.define(rule);
+    for (auto rule : initial_condition_rules(depth, block_size, basic_primitive, abc_vector_potential))
+    {
+        graph.define(rule);
+    }
+}
 
-    return std::move(graph).throw_if_lacking_definitions();
+void enter_iteration_rules(DependencyGraph& graph, rational::number_t iteration)
+{
+    using namespace mhd_rules;
+
+    for (auto rule : recover_primitive_rules     (depth, block_size, iteration)) graph.define(rule);   
+    for (auto rule : primitive_extension_rules   (depth, block_size, iteration)) graph.define(rule);
+    for (auto rule : magnetic_extension_rules    (depth, block_size, iteration)) graph.define(rule);
+    for (auto rule : electromotive_force_rules   (depth, block_size, iteration)) graph.define(rule);
+    for (auto rule : godunov_data_rules          (depth, block_size, iteration)) graph.define(rule);
+    for (auto rule : global_primitive_array_rules(depth, block_size, iteration)) graph.define(rule);
+}
+
+void reset(DependencyGraph& graph)
+{
+    graph = DependencyGraph();
+    enter_initial_conditions_rules(graph);
+    // enter_iteration_rules(graph, 0);
+}
+
+
+
+
+//=============================================================================
+void step_graph(DependencyGraph& graph, mara::ThreadPool& thread_pool)
+{
+    static int iteration = 0;
+
+    if (graph.eligible_rules().empty() && iteration < 3)
+    {
+        enter_iteration_rules(graph, iteration);
+        iteration += 1;
+    }
+    else
+    {
+        for (const auto& key : graph.eligible_rules())
+        {
+            graph.evaluate_rule(key, thread_pool);
+        }
+    }
 }
 
 
@@ -157,19 +199,19 @@ auto build_graph()
 //=============================================================================
 int main()
 {
-    auto thread_count = 1;
-    auto scheduler = mara::ThreadPool(thread_count);
-    auto graph = build_graph();
+    auto thread_count = 12;
+    auto thread_pool = mara::ThreadPool(thread_count);
+    auto graph = DependencyGraph();
 
     auto tb = ui::session_t();
     auto ui_state = ui::state_t();
 
+    reset(graph);
 
     ui_state.content_table_size = [&graph] () { return graph.size(); };
-    ui_state.content_table_item = [&graph, keys=graph.keys()] (unsigned row) { return represent_graph_item(graph, keys.at(row)); };
-    ui_state.concurrent_task_count = [&scheduler] () { return scheduler.job_count(); };
+    ui_state.content_table_item = [&graph] (unsigned row) { return represent_graph_item(graph, row); };
+    ui_state.concurrent_task_count = [&thread_pool] () { return thread_pool.job_count(); };
     ui::draw(ui_state);
-
 
     while (true)
     {
@@ -178,19 +220,16 @@ int main()
             break;
         }
 
-        if (ui::fulfill(ui::action::evaluation_step))
+        if (ui::fulfill(ui::action::reset_simulation))
         {
-            for (const auto& key : graph.eligible_rules())
-            {
-                graph.evaluate_rule(key, scheduler);
-            }
+            thread_pool.restart(thread_count);
+            reset(graph);
             ui::draw(ui_state);
         }
 
-        if (ui::fulfill(ui::action::reset_simulation))
+        if (ui::fulfill(ui::action::evaluation_step))
         {
-            scheduler.restart(thread_count);
-            graph = build_graph();
+            step_graph(graph, thread_pool);
             ui::draw(ui_state);
         }
 
