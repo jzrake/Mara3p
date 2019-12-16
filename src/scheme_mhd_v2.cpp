@@ -72,19 +72,6 @@ static auto rl3 = nd::select(2, 1, -1);
 
 
 //=============================================================================
-static auto construct_vertices(multilevel_index_t index, unsigned block_size)
-{
-    auto N = block_size;
-    auto dx = dimensional::unit_length(1.0 / (1 << index.level));
-    auto x0 = dx * geometric::to_euclidean_vector(numeric::construct<double>(index.coordinates));
-    auto xv = dx * mesh::unit_lattice(N + 1, N + 1, N + 1) + x0;
-    return xv;
-}
-
-
-
-
-//=============================================================================
 cell_primitive_variables_t mhd_scheme_v2::primitive_array(cell_conserved_density_t uc, face_magnetic_flux_density_t bf)
 {
     auto c2p = apply_to(std::bind(mhd::recover_primitive, _1, _2, gamma_law_index));
@@ -104,7 +91,7 @@ edge_electromotive_density_t mhd_scheme_v2::construct_vector_potential(
 {
     auto A = [vector_potential] (unsigned dir) { return util::compose(geometric::component(dir), vector_potential); };
     auto dt = dimensional::unit_time(1.0);
-    auto [xe1, xe2, xe3] = mesh::edge_positions(construct_vertices(index, block_size));
+    auto [xe1, xe2, xe3] = mesh::edge_positions(mesh::construct_vertices<dimensional::unit_length>(index.level, index.coordinates, block_size));
 
     return {
         ((xe1 | nd::map(A(1))) / dt) | nd::to_shared(),
@@ -125,7 +112,7 @@ cell_conserved_density_t mhd_scheme_v2::construct_conserved(
 {
     auto p2c = std::bind(mhd::conserved_density, _1, gamma_law_index);
     auto [bf1, bf2, bf3] = bf;
-    auto xc = mesh::cell_positions(construct_vertices(index, block_size));
+    auto xc = mesh::cell_positions(mesh::construct_vertices<dimensional::unit_length>(index.level, index.coordinates, block_size));
     auto bc = mesh::face_to_cell(bf1, bf2, bf3);
     auto pc = nd::zip(xc, bc) | nd::map(apply_to(primitive_function));
     auto uc = pc | nd::map(p2c);

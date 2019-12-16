@@ -410,6 +410,12 @@ uint shape(const array_t<ProviderType, Rank>& array, uint axis)
     return array.shape[axis];
 }
 
+template<typename ProviderType, uint Rank>
+const auto& shape_tuple(const array_t<ProviderType, Rank>& array)
+{
+    return array.shape.impl;
+}
+
 
 
 

@@ -26,6 +26,7 @@
 
 
 
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <variant>
@@ -37,6 +38,7 @@
 #include "app_hdf5_ndarray_dimensional.hpp"
 #include "app_hdf5_rational.hpp"
 #include "app_ui.hpp"
+#include "app_vtk.hpp"
 #include "parallel_dependency_graph.hpp"
 #include "parallel_thread_pool.hpp"
 #include "scheme_mhd_rules.hpp"
@@ -161,14 +163,13 @@ void enter_iteration_rules(DependencyGraph& graph, rational::number_t iteration)
     for (auto rule : magnetic_extension_rules    (depth, block_size, iteration)) graph.define(rule);
     for (auto rule : electromotive_force_rules   (depth, block_size, iteration)) graph.define(rule);
     for (auto rule : godunov_data_rules          (depth, block_size, iteration)) graph.define(rule);
-    for (auto rule : global_primitive_array_rules(depth, block_size, iteration)) graph.define(rule);
+    // for (auto rule : global_primitive_array_rules(depth, block_size, iteration)) graph.define(rule);
 }
 
 void reset(DependencyGraph& graph)
 {
     graph = DependencyGraph();
     enter_initial_conditions_rules(graph);
-    // enter_iteration_rules(graph, 0);
 }
 
 
@@ -197,11 +198,62 @@ void step_graph(DependencyGraph& graph, mara::ThreadPool& thread_pool)
 
 
 //=============================================================================
+auto vtk_output_side_effects()
+{
+    auto keys = mhd_rules::block_indexes(depth, block_size)
+    | seq::map([] (auto index)
+    {
+        return key(data_field::cell_primitive_variables).block(index).id;
+    });
+
+    return block_indexes(depth, block_size)
+    | seq::map([] (auto index)
+    {
+        return [index] (const product_t& product)
+        {
+            auto order = dot(mesh::to_uivec(index.coordinates), nd::strides_row_major(mesh::block_extent(depth)));
+            auto fname = "prim." + std::to_string(order) + ".vtk";
+            auto out   = std::fstream(fname, std::fstream::out | std::fstream::trunc | std::fstream::binary);
+            auto xv    = mesh::construct_vertices<dimensional::unit_length>(index.level, index.coordinates, block_size);
+            auto bc    = std::get<cell_primitive_variables_t>(product) | nd::map(mhd::magnetic_field_vector) | nd::to_shared();
+
+            vtk::write(out, "primitive_fields", nd::to_shared(xv), std::pair("B", bc));
+        };
+    })
+    | seq::keys(keys);
+}
+
+
+
+
+//=============================================================================
+template<typename FunctionType>
+bool side_effects(const std::map<product_identifier_t, FunctionType>& side_effects, const std::map<product_identifier_t, product_t>& updated_items)
+{
+    for (const auto& [k, p] : updated_items)
+    {
+        if (side_effects.count(k))
+        {
+            side_effects.at(k)(p);
+        }
+    }
+    return ! updated_items.empty();
+}
+
+
+
+
+//=============================================================================
 int main()
 {
     auto thread_count = 12;
     auto thread_pool = mara::ThreadPool(thread_count);
     auto graph = DependencyGraph();
+
+
+    auto side_effects_map = vtk_output_side_effects()
+    | seq::to_dict<std::map>();
+
 
     auto tb = ui::session_t();
     auto ui_state = ui::state_t();
@@ -233,7 +285,7 @@ int main()
             ui::draw(ui_state);
         }
 
-        if (! graph.poll(std::chrono::milliseconds(0)).empty())
+        if (side_effects(side_effects_map, graph.poll(std::chrono::milliseconds(0))))
         {
             ui::draw(ui_state);
         }

@@ -38,17 +38,6 @@ using namespace mhd_rules;
 
 
 //=============================================================================
-static nd::uivec_t<3> block_extent(nd::uint depth)
-{
-    return nd::uivec(1 << depth, 1 << depth, 1 << depth);
-}
-
-static auto block_indexes(nd::uint depth, nd::uint block_size)
-{
-    return seq::adapt(nd::index_space(block_extent(depth)))
-    | seq::map([depth] (auto i) { return multilevel_index_t{depth, mesh::to_numeric_array(i)}; });
-}
-
 static auto extend_cell_primitive_variables(nd::uint block_size, nd::uint count)
 {
     return [=] (const std::vector<product_t>& vargs) -> product_t
@@ -164,7 +153,7 @@ seq::dynamic_sequence_t<named_rule_t> mhd_rules::primitive_extension_rules(nd::u
     {
         auto pc = key(data_field::cell_primitive_variables).iteration(iteration);
 
-        auto neighbor_ids = mesh::neighbors_27(mesh::to_uivec(index.coordinates), block_extent(depth))
+        auto neighbor_ids = mesh::neighbors_27(mesh::to_uivec(index.coordinates), mesh::block_extent(depth))
         | seq::map([=] (auto i) { return multilevel_index_t{depth, mesh::to_numeric_array(i)}; })
         | seq::map(pc.bind_block())
         | seq::to<std::vector>();
@@ -184,9 +173,9 @@ seq::dynamic_sequence_t<named_rule_t> mhd_rules::magnetic_extension_rules(nd::ui
     | seq::map([=] (auto index) -> named_rule_t
     {
         auto bf = key(data_field::face_magnetic_flux_density).iteration(iteration);
-        auto n1 = mesh::neighbors_9(mesh::to_uivec(index.coordinates), block_extent(depth), mesh::axis_3d::i);
-        auto n2 = mesh::neighbors_9(mesh::to_uivec(index.coordinates), block_extent(depth), mesh::axis_3d::j);
-        auto n3 = mesh::neighbors_9(mesh::to_uivec(index.coordinates), block_extent(depth), mesh::axis_3d::k);
+        auto n1 = mesh::neighbors_9(mesh::to_uivec(index.coordinates), mesh::block_extent(depth), mesh::axis_3d::i);
+        auto n2 = mesh::neighbors_9(mesh::to_uivec(index.coordinates), mesh::block_extent(depth), mesh::axis_3d::j);
+        auto n3 = mesh::neighbors_9(mesh::to_uivec(index.coordinates), mesh::block_extent(depth), mesh::axis_3d::k);
 
         auto neighbor_ids = seq::concat(n1, n2, n3)
         | seq::map([=] (auto i) { return multilevel_index_t{depth, mesh::to_numeric_array(i)}; })
@@ -246,10 +235,10 @@ seq::dynamic_sequence_t<named_rule_t> mhd_rules::global_primitive_array_rules(nd
     {
         auto block_map = seq::view(block_vector)
         | seq::map([] (auto p) { return std::get<cell_primitive_variables_t>(p); })
-        | seq::keys(nd::index_space(block_extent(depth)))
+        | seq::keys(nd::index_space(mesh::block_extent(depth)))
         | seq::to_dict<std::map>();
 
-        return mesh::tile_blocks(block_map, block_extent(depth)) | nd::to_shared();
+        return mesh::tile_blocks(block_map, mesh::block_extent(depth)) | nd::to_shared();
     };
     return seq::just(rule(pc, tile, arg_keys)) | seq::to_dynamic();
 }

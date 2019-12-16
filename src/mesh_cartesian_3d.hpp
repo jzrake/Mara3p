@@ -78,6 +78,11 @@ inline auto kronecker_delta(axis_3d axis)
     }
 }
 
+inline nd::uivec_t<3> block_extent(nd::uint depth)
+{
+    return nd::uivec(1 << depth, 1 << depth, 1 << depth);
+}
+
 
 
 
@@ -103,6 +108,31 @@ auto unit_lattice(nd::uint ni, nd::uint nj, nd::uint nk)
         nd::linspace(0.0, 1.0, nj),
         nd::linspace(0.0, 1.0, nk))
     | nd::map(util::apply_to(geometric::euclidean_vector<T>));
+}
+
+
+
+
+/**
+ * @brief      Return a 3D array of vertex location vectors at the given index
+ *             of a multi-level mesh.
+ *
+ * @param[in]  level        The block level
+ * @param[in]  coordinates  The block coordinates
+ * @param[in]  block_size   The number of cells per block, per side
+ *
+ * @tparam     T            The data type used for the euclidean vectors
+ *
+ * @return     A 3D array of 3D vectors
+ */
+template<typename T=double>
+auto construct_vertices(unsigned long level, numeric::array_t<unsigned long, 3> coordinates, nd::uint block_size)
+{
+    auto N = block_size;
+    auto dx = T(1.0 / (1 << level));
+    auto x0 = dx * geometric::to_euclidean_vector(numeric::construct<double>(coordinates));
+    auto xv = dx * unit_lattice(N + 1, N + 1, N + 1) + x0;
+    return xv;
 }
 
 

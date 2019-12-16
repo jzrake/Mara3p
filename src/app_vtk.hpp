@@ -34,6 +34,12 @@
 
 
 //=============================================================================
+namespace vtk {
+
+
+
+
+//=============================================================================
 template<typename T, typename = std::enable_if_t<std::is_trivially_copyable_v<T>>>
 std::array<char, sizeof(T)> swap_bytes(T value)
 {
@@ -139,7 +145,7 @@ void write_cell_data(std::ostream& os, std::string name, nd::shared_array<geomet
 
 //=============================================================================
 template<typename VertexPositionType, typename... CellDataArrayTypes>
-void write_vtk(std::ostream& os,
+void write(std::ostream& os,
     const char* dataset_name,
     nd::shared_array<geometric::euclidean_vector_t<VertexPositionType>, 3> vertices,
     std::pair<const char*, CellDataArrayTypes>... cell_fields)
@@ -151,3 +157,5 @@ void write_vtk(std::ostream& os,
     write_cell_data_prelude(os, {ni - 1, nj - 1, nk - 1});
     (..., write_cell_data(os, cell_fields.first, cell_fields.second));
 }
+
+} // namespace vtk

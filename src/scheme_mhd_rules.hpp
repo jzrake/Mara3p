@@ -85,6 +85,12 @@ inline named_rule_t rule(product_identifier_t key, product_mapping_t mapping, st
     return named_rule_t{key, mapping, args};
 }
 
+inline auto block_indexes(nd::uint depth, nd::uint block_size)
+{
+    return seq::adapt(nd::index_space(mesh::block_extent(depth)))
+    | seq::map([depth] (auto i) { return mhd_scheme_v2::multilevel_index_t{depth, mesh::to_numeric_array(i)}; });
+}
+
 
 
 
@@ -145,6 +151,16 @@ struct key_factory_t
 
 
 //=============================================================================
+inline bool operator==(key_factory_t factory, product_identifier_t id)
+{
+    return factory.id == id;
+}
+
+inline bool operator==(product_identifier_t id, key_factory_t factory)
+{
+    return id == factory.id;
+}
+
 inline key_factory_t key(data_field field)
 {
     return key_factory_t().field(field);
