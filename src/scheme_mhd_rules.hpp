@@ -102,6 +102,8 @@ seq::dynamic_sequence_t<named_rule_t> magnetic_extension_rules    (nd::uint dept
 seq::dynamic_sequence_t<named_rule_t> godunov_data_rules          (nd::uint depth, nd::uint block_size, rational::number_t iteration);
 seq::dynamic_sequence_t<named_rule_t> electromotive_force_rules   (nd::uint depth, nd::uint block_size, rational::number_t iteration);
 seq::dynamic_sequence_t<named_rule_t> global_primitive_array_rules(nd::uint depth, nd::uint block_size, rational::number_t iteration);
+seq::dynamic_sequence_t<named_rule_t> update_conserved_rules      (nd::uint depth, nd::uint block_size, rational::number_t iteration, dimensional::unit_time dt);
+seq::dynamic_sequence_t<named_rule_t> update_magnetic_rules       (nd::uint depth, nd::uint block_size, rational::number_t iteration, dimensional::unit_time dt);
 
 
 

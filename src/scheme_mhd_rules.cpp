@@ -242,3 +242,55 @@ seq::dynamic_sequence_t<named_rule_t> mhd_rules::global_primitive_array_rules(nd
     };
     return seq::just(rule(pc, tile, arg_keys)) | seq::to_dynamic();
 }
+
+
+
+
+//=============================================================================
+seq::dynamic_sequence_t<named_rule_t> mhd_rules::update_conserved_rules(nd::uint depth, nd::uint block_size, rational::number_t iteration, dimensional::unit_time dt)
+{
+    return block_indexes(depth, block_size)
+    | seq::map([=] (auto index) -> named_rule_t
+    {
+        auto gf0 = key(data_field::face_godunov_data)     .block(index).iteration(iteration - 1);
+        auto uc0 = key(data_field::cell_conserved_density).block(index).iteration(iteration - 1);
+        auto uc1 = key(data_field::cell_conserved_density).block(index).iteration(iteration);
+
+        auto fm = [dt, index] (std::vector<product_t> args)
+        {
+            auto uc = std::get<cell_conserved_density_t>(args.at(0));
+            auto gf = std::get<face_godunov_data_t>     (args.at(1));
+            auto dl = dimensional::unit_length(1.0) / double(1 << index.level);
+
+            return updated_conserved_density(uc, gf, dt, dl);
+        };
+        return rule(uc1, fm, {uc0, gf0});
+    })
+    | seq::to_dynamic();
+}
+
+
+
+
+//=============================================================================
+seq::dynamic_sequence_t<named_rule_t> mhd_rules::update_magnetic_rules(nd::uint depth, nd::uint block_size, rational::number_t iteration, dimensional::unit_time dt)
+{
+    return block_indexes(depth, block_size)
+    | seq::map([=] (auto index) -> named_rule_t
+    {
+        auto ee0 = key(data_field::edge_electromotive_density).block(index).iteration(iteration - 1);
+        auto bf0 = key(data_field::face_magnetic_flux_density).block(index).iteration(iteration - 1);
+        auto bf1 = key(data_field::face_magnetic_flux_density).block(index).iteration(iteration);
+
+        auto fm = [dt, index] (std::vector<product_t> args)
+        {
+            auto bf = std::get<face_magnetic_flux_density_t>(args.at(0));
+            auto ee = std::get<edge_electromotive_density_t>(args.at(1));
+            auto dl = dimensional::unit_length(1.0) / double(1 << index.level);
+
+            return updated_magnetic_flux_density(bf, ee, dt, dl);
+        };
+        return rule(bf1, fm, {bf0, ee0});
+    })
+    | seq::to_dynamic();
+}

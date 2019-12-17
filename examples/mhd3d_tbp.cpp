@@ -158,12 +158,15 @@ void enter_iteration_rules(DependencyGraph& graph, rational::number_t iteration)
 {
     using namespace mhd_rules;
 
+    auto dt = dimensional::unit_time(0.1);
+
     for (auto rule : recover_primitive_rules     (depth, block_size, iteration)) graph.define(rule);   
     for (auto rule : primitive_extension_rules   (depth, block_size, iteration)) graph.define(rule);
     for (auto rule : magnetic_extension_rules    (depth, block_size, iteration)) graph.define(rule);
     for (auto rule : electromotive_force_rules   (depth, block_size, iteration)) graph.define(rule);
     for (auto rule : godunov_data_rules          (depth, block_size, iteration)) graph.define(rule);
-    // for (auto rule : global_primitive_array_rules(depth, block_size, iteration)) graph.define(rule);
+    for (auto rule : update_conserved_rules      (depth, block_size, iteration + 1, dt)) graph.define(rule);
+    for (auto rule : update_magnetic_rules       (depth, block_size, iteration + 1, dt)) graph.define(rule);
 }
 
 void reset(DependencyGraph& graph)
