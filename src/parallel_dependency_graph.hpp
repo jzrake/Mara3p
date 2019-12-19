@@ -89,6 +89,35 @@ public:
 
 
     /**
+     * @brief      Determine if any rules have been defined
+     *
+     * @return     True or false
+     */
+    bool empty() const
+    {
+        return rules.empty();
+    }
+
+
+
+
+    /**
+     * @brief      Clears the graph
+     */
+    void clear()
+    {
+        sorted_keys.clear();
+        rules.clear();
+        products.clear();
+        pending_products.clear();
+        errors.clear();
+        downstream.clear();
+    }
+
+
+
+
+    /**
      * @brief      Return true if the addition of the given rule would create a
      *             dependency cycle in the graph. This checks for whether any of
      *             the expression's symbols are downstream of its key.

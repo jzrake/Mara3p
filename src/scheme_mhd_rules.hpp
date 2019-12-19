@@ -30,7 +30,6 @@
 #include <string>
 #include <variant>
 #include "core_rational.hpp"
-#include "core_sequence.hpp"
 #include "physics_mhd.hpp"
 #include "scheme_mhd_v2.hpp"
 
@@ -72,8 +71,9 @@ using product_t = std::variant<
     mhd_scheme_v2::face_magnetic_flux_density_t,
     mhd_scheme_v2::edge_electromotive_density_t>;
 
+using multilevel_index_t   = mhd_scheme_v2::multilevel_index_t;
 using product_mapping_t    = std::function<product_t(std::vector<product_t>)>;
-using product_identifier_t = std::tuple<rational::number_t, mhd_scheme_v2::multilevel_index_t, data_field, extended_status>;
+using product_identifier_t = std::tuple<rational::number_t, multilevel_index_t, data_field, extended_status>;
 using named_rule_t         = std::tuple<product_identifier_t, product_mapping_t, std::vector<product_identifier_t>>;
 
 
@@ -85,25 +85,18 @@ inline named_rule_t rule(product_identifier_t key, product_mapping_t mapping, st
     return named_rule_t{key, mapping, args};
 }
 
-inline auto block_indexes(nd::uint depth, nd::uint block_size)
-{
-    return seq::adapt(nd::index_space(mesh::block_extent(depth)))
-    | seq::map([depth] (auto i) { return mhd_scheme_v2::multilevel_index_t{depth, mesh::to_numeric_array(i)}; });
-}
-
 
 
 
 //=============================================================================
-seq::dynamic_sequence_t<named_rule_t> initial_condition_rules     (nd::uint depth, nd::uint block_size, mhd_scheme_v2::primitive_function_t, mhd_scheme_v2::vector_potential_function_t);
-seq::dynamic_sequence_t<named_rule_t> recover_primitive_rules     (nd::uint depth, nd::uint block_size, rational::number_t iteration);
-seq::dynamic_sequence_t<named_rule_t> primitive_extension_rules   (nd::uint depth, nd::uint block_size, rational::number_t iteration);
-seq::dynamic_sequence_t<named_rule_t> magnetic_extension_rules    (nd::uint depth, nd::uint block_size, rational::number_t iteration);
-seq::dynamic_sequence_t<named_rule_t> godunov_data_rules          (nd::uint depth, nd::uint block_size, rational::number_t iteration);
-seq::dynamic_sequence_t<named_rule_t> electromotive_force_rules   (nd::uint depth, nd::uint block_size, rational::number_t iteration);
-seq::dynamic_sequence_t<named_rule_t> global_primitive_array_rules(nd::uint depth, nd::uint block_size, rational::number_t iteration);
-seq::dynamic_sequence_t<named_rule_t> update_conserved_rules      (nd::uint depth, nd::uint block_size, rational::number_t iteration, dimensional::unit_time dt);
-seq::dynamic_sequence_t<named_rule_t> update_magnetic_rules       (nd::uint depth, nd::uint block_size, rational::number_t iteration, dimensional::unit_time dt);
+std::array<named_rule_t, 3> initial_condition(multilevel_index_t index, nd::uint block_size, mhd_scheme_v2::primitive_function_t, mhd_scheme_v2::vector_potential_function_t);
+named_rule_t recover_primitive  (multilevel_index_t index, rational::number_t iteration);
+named_rule_t extend_primitive   (multilevel_index_t index, rational::number_t iteration, nd::uint block_size);
+named_rule_t extend_magnetic    (multilevel_index_t index, rational::number_t iteration, nd::uint block_size);
+named_rule_t godunov_data       (multilevel_index_t index, rational::number_t iteration);
+named_rule_t electromotive_force(multilevel_index_t index, rational::number_t iteration);
+named_rule_t update_conserved   (multilevel_index_t index, rational::number_t iteration, dimensional::unit_time dt);
+named_rule_t update_magnetic    (multilevel_index_t index, rational::number_t iteration, dimensional::unit_time dt);
 
 
 
@@ -115,7 +108,7 @@ struct key_factory_t
 
     //=============================================================================
     key_factory_t iteration(rational::number_t v)                        const { auto n = id; std::get<0>(n) = v; return {n}; }
-    key_factory_t block    (mhd_scheme_v2::multilevel_index_t v)         const { auto n = id; std::get<1>(n) = v; return {n}; }
+    key_factory_t block    (multilevel_index_t v)                        const { auto n = id; std::get<1>(n) = v; return {n}; }
     key_factory_t field    (data_field v)                                const { auto n = id; std::get<2>(n) = v; return {n}; }
     key_factory_t extended (extended_status v=extended_status::extended) const { auto n = id; std::get<3>(n) = v; return {n}; }
 
@@ -138,7 +131,7 @@ struct key_factory_t
      */
     auto bind_block() const
     {
-        return [id=id] (mhd_scheme_v2::multilevel_index_t v)
+        return [id=id] (multilevel_index_t v)
         {
             return key_factory_t{id}.block(v).id;
         };
@@ -177,7 +170,7 @@ inline key_factory_t key(rational::number_t iteration)
 
 
 //=============================================================================
-inline std::string to_string(mhd_scheme_v2::multilevel_index_t i)
+inline std::string to_string(multilevel_index_t i)
 {
     return std::to_string(i.level)
     + ":["

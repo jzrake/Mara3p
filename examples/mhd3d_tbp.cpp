@@ -30,13 +30,13 @@
 #include <iomanip>
 #include <sstream>
 #include <variant>
-#include "app_hdf5.hpp"
-#include "app_hdf5_dimensional.hpp"
-#include "app_hdf5_geometric.hpp"
-#include "app_hdf5_ndarray.hpp"
-#include "app_hdf5_numeric_array.hpp"
-#include "app_hdf5_ndarray_dimensional.hpp"
-#include "app_hdf5_rational.hpp"
+// #include "app_hdf5.hpp"
+// #include "app_hdf5_dimensional.hpp"
+// #include "app_hdf5_geometric.hpp"
+// #include "app_hdf5_ndarray.hpp"
+// #include "app_hdf5_numeric_array.hpp"
+// #include "app_hdf5_ndarray_dimensional.hpp"
+// #include "app_hdf5_rational.hpp"
 #include "app_ui.hpp"
 #include "app_vtk.hpp"
 #include "parallel_dependency_graph.hpp"
@@ -56,18 +56,18 @@ using DependencyGraph = mara::DependencyGraph<product_identifier_t, product_t>;
 //=============================================================================
 namespace h5 {
 
-void write(const Group& group, std::string name, const product_t& product)
-{
-    std::visit([&group, name] (auto p) { write(group, name, p); }, product);
-}
+// void write(const Group& group, std::string name, const product_t& product)
+// {
+//     std::visit([&group, name] (auto p) { write(group, name, p); }, product);
+// }
 
-std::string legalize(std::string s)
-{
-    return seq::view(s)
-    | seq::map([] (auto c) { return c == '/' ? '@' : c; })
-    | seq::remove_if([] (auto c) { return c == ' '; })
-    | seq::to<std::basic_string>();
-}
+// std::string legalize(std::string s)
+// {
+//     return seq::view(s)
+//     | seq::map([] (auto c) { return c == '/' ? '@' : c; })
+//     | seq::remove_if([] (auto c) { return c == ' '; })
+//     | seq::to<std::basic_string>();
+// }
 
 }
 
@@ -144,14 +144,20 @@ static auto block_size = 32;
 
 
 //=============================================================================
+auto block_indexes(nd::uint depth)
+{
+    return seq::adapt(nd::index_space(mesh::block_extent(depth)))
+    | seq::map([depth] (auto i) { return multilevel_index_t{depth, mesh::to_numeric_array(i)}; });
+}
+
 void enter_initial_conditions_rules(DependencyGraph& graph)
 {
     using namespace mhd_rules;
 
-    for (auto rule : initial_condition_rules(depth, block_size, basic_primitive, abc_vector_potential))
-    {
-        graph.define(rule);
-    }
+    for (auto index : block_indexes(depth))
+        for (auto rule : initial_condition(index, block_size, basic_primitive, abc_vector_potential))
+            graph.define(rule);
+
 }
 
 void enter_iteration_rules(DependencyGraph& graph, rational::number_t iteration)
@@ -160,42 +166,56 @@ void enter_iteration_rules(DependencyGraph& graph, rational::number_t iteration)
 
     auto dt = dimensional::unit_time(0.1);
 
-    for (auto rule : recover_primitive_rules     (depth, block_size, iteration)) graph.define(rule);   
-    for (auto rule : primitive_extension_rules   (depth, block_size, iteration)) graph.define(rule);
-    for (auto rule : magnetic_extension_rules    (depth, block_size, iteration)) graph.define(rule);
-    for (auto rule : electromotive_force_rules   (depth, block_size, iteration)) graph.define(rule);
-    for (auto rule : godunov_data_rules          (depth, block_size, iteration)) graph.define(rule);
-    for (auto rule : update_conserved_rules      (depth, block_size, iteration + 1, dt)) graph.define(rule);
-    for (auto rule : update_magnetic_rules       (depth, block_size, iteration + 1, dt)) graph.define(rule);
-}
-
-void reset(DependencyGraph& graph)
-{
-    graph = DependencyGraph();
-    enter_initial_conditions_rules(graph);
+    for (auto index : block_indexes(depth))
+    {
+        graph.define(recover_primitive   (index, iteration));
+        graph.define(extend_primitive    (index, iteration, block_size));
+        graph.define(extend_magnetic     (index, iteration, block_size));
+        graph.define(electromotive_force (index, iteration));
+        graph.define(godunov_data        (index, iteration));
+        graph.define(update_conserved    (index, iteration + 1, dt));
+        graph.define(update_magnetic     (index, iteration + 1, dt));
+    }
 }
 
 
 
 
 //=============================================================================
-void step_graph(DependencyGraph& graph, mara::ThreadPool& thread_pool)
+class RuntimeCoordinator
 {
-    static int iteration = 0;
-
-    if (graph.eligible_rules().empty() && iteration < 3)
+public:
+    void reset(DependencyGraph& graph)
     {
-        enter_iteration_rules(graph, iteration);
-        iteration += 1;
+        graph.clear();
+        iteration = 0;
     }
-    else
+
+    void update_definitions(DependencyGraph& graph)
     {
-        for (const auto& key : graph.eligible_rules())
+        if (graph.empty())
         {
-            graph.evaluate_rule(key, thread_pool);
+            enter_initial_conditions_rules(graph);
+        }
+        else
+        {
+            enter_iteration_rules(graph, iteration);
+            iteration = iteration + 1;
         }
     }
-}
+
+    void collect_garbage(DependencyGraph& graph) const
+    {
+    }
+
+    rational::number_t current_iteration() const
+    {
+        return iteration;
+    }
+
+private:
+    rational::number_t iteration;
+};
 
 
 
@@ -203,19 +223,18 @@ void step_graph(DependencyGraph& graph, mara::ThreadPool& thread_pool)
 //=============================================================================
 auto vtk_output_side_effects()
 {
-    auto keys = mhd_rules::block_indexes(depth, block_size)
-    | seq::map([] (auto index)
+    auto keys = block_indexes(depth) | seq::map([] (auto index)
     {
         return key(data_field::cell_primitive_variables).block(index).id;
     });
 
-    return block_indexes(depth, block_size)
+    return block_indexes(depth)
     | seq::map([] (auto index)
     {
         return [index] (const product_t& product)
         {
             auto order = dot(mesh::to_uivec(index.coordinates), nd::strides_row_major(mesh::block_extent(depth)));
-            auto fname = "prim." + std::to_string(order) + ".vtk";
+            auto fname = "primitive." + std::to_string(order) + ".vtk";
             auto out   = std::fstream(fname, std::fstream::out | std::fstream::trunc | std::fstream::binary);
             auto xv    = mesh::construct_vertices<dimensional::unit_length>(index.level, index.coordinates, block_size);
             auto bc    = std::get<cell_primitive_variables_t>(product) | nd::map(mhd::magnetic_field_vector) | nd::to_shared();
@@ -249,9 +268,10 @@ bool side_effects(const std::map<product_identifier_t, FunctionType>& side_effec
 //=============================================================================
 int main()
 {
-    auto thread_count = 12;
+    auto thread_count = 2;
     auto thread_pool = mara::ThreadPool(thread_count);
-    auto graph = DependencyGraph();
+    auto coordinator = RuntimeCoordinator();
+    auto graph       = DependencyGraph();
 
 
     auto side_effects_map = vtk_output_side_effects()
@@ -261,15 +281,20 @@ int main()
     auto tb = ui::session_t();
     auto ui_state = ui::state_t();
 
-    reset(graph);
 
     ui_state.content_table_size = [&graph] () { return graph.size(); };
     ui_state.content_table_item = [&graph] (unsigned row) { return represent_graph_item(graph, row); };
     ui_state.concurrent_task_count = [&thread_pool] () { return thread_pool.job_count(); };
     ui::draw(ui_state);
 
+
     while (true)
     {
+        if (long(coordinator.current_iteration()) == 2)
+        {
+            break;
+        }
+
         if (ui::fulfill(ui::action::quit))
         {
             break;
@@ -277,14 +302,27 @@ int main()
 
         if (ui::fulfill(ui::action::reset_simulation))
         {
-            thread_pool.restart(thread_count);
-            reset(graph);
+            thread_pool.reset(thread_count);
+            coordinator.reset(graph);
             ui::draw(ui_state);
         }
 
         if (ui::fulfill(ui::action::evaluation_step))
         {
-            step_graph(graph, thread_pool);
+            auto eligible = graph.eligible_rules();
+
+            if (eligible.empty())
+            {
+                coordinator.update_definitions(graph);
+            }
+            else
+            {
+                for (const auto& key : eligible)
+                {
+                    graph.evaluate_rule(key, thread_pool);
+                }
+            }
+
             ui::draw(ui_state);
         }
 

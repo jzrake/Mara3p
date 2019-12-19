@@ -60,7 +60,7 @@ public:
 
     ThreadPool(int num_workers=4)
     {
-        restart(num_workers);
+        reset(num_workers);
     }
 
 
@@ -70,7 +70,7 @@ public:
     }
 
 
-    void restart(int num_workers)
+    void reset(int num_workers)
     {
         stop_all();
         threads.clear();
