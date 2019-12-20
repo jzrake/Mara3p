@@ -92,7 +92,7 @@ void represent_graph_item(std::ostream& os, const DependencyGraph& graph, unsign
     << std::setw(36)
     << std::setfill('.')
     << to_string(key)
-    << " status: " 
+    << " status: "
     << to_string(graph.status(key))
     << ' ' << shape_string
     << ' ' << error_string;
@@ -265,10 +265,12 @@ public:
 
 
 //=============================================================================
-void drive(mara::ThreadPool& thread_pool, DependencyGraph& graph, RuntimeCoordinator& coordinator, SideEffects& side_effects)
+void drive(mara::ThreadPool& thread_pool, DependencyGraph& graph, RuntimeCoordinator& coordinator, SideEffects& side_effects, std::ostream& log)
 {
     if (! graph.count_unevaluated())
     {
+        log << "iteration: " << long(coordinator.current_iteration()) << std::endl;
+
         coordinator.update_definitions(graph);
         graph.collect_garbage();
     }
@@ -285,17 +287,32 @@ void drive(mara::ThreadPool& thread_pool, DependencyGraph& graph, RuntimeCoordin
 
 
 
+bool has_flag(int argc, const char* argv[], const char* flag)
+{
+    for (int i = 1; i < argc; ++i)
+    {
+        if (std::strcmp(argv[i], flag) == 0)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+
+
+
 //=============================================================================
-int main()
+int main(int argc, const char* argv[])
 {
     auto thread_count = 1;
     auto thread_pool  = mara::ThreadPool(thread_count);
     auto coordinator  = RuntimeCoordinator();
     auto graph        = DependencyGraph();
     auto side_effects = SideEffects();
+    auto log_stream   = std::stringstream();
 
-
-    auto termbox      = ui::session_t();
+    auto termbox      = ui::session_t(! has_flag(argc, argv, "-i"));
     auto ui_state     = ui::state_t();
 
     ui_state.content_table_size    = [&graph] () { return graph.size(); };
@@ -304,11 +321,11 @@ int main()
     ui::draw(ui_state);
 
 
-    while (long(coordinator.current_iteration()) < 100)
-    {       
+    while (long(coordinator.current_iteration()) < 10)
+    {
         if (ui::fulfill(ui::action::evaluation_step))
         {
-            drive(thread_pool, graph, coordinator, side_effects);
+            drive(thread_pool, graph, coordinator, side_effects, log_stream);
         }
 
         if (ui::fulfill(ui::action::reset_simulation))
@@ -326,6 +343,12 @@ int main()
         if (auto event = ui::poll(std::chrono::milliseconds(20)); event.has_value())
         {
             ui_state = ui::handle_event(ui_state, event.value());
+        }
+
+        if (! log_stream.str().empty())
+        {
+            std::printf("%s", log_stream.str().data());
+            log_stream.str(std::string());
         }
         ui::draw(ui_state);
     }

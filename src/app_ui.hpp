@@ -77,7 +77,7 @@ struct state_t
 
 struct session_t
 {
-    session_t();
+    session_t(bool is_dummy_session=false);
     ~session_t();
 };
 
@@ -86,6 +86,7 @@ struct session_t
 
 //=============================================================================
 bool is_quit(tb_event ev);
+bool is_dummy_session();
 void draw(const state_t& state);
 bool fulfill(action action);
 
@@ -94,12 +95,15 @@ ui::state_t handle_event(const state_t& state, tb_event ev);
 template<class Rep, class Period>
 std::optional<tb_event> poll(std::chrono::duration<Rep, Period> timeout)
 {
-    auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(timeout);
-    tb_event ev;
-
-    if (tb_peek_event(&ev, dt.count()) > 0)
+    if (! is_dummy_session())
     {
-        return ev;
+        auto dt = std::chrono::duration_cast<std::chrono::milliseconds>(timeout);
+        tb_event ev;
+
+        if (tb_peek_event(&ev, dt.count()) > 0)
+        {
+            return ev;
+        }
     }
     return {};
 }

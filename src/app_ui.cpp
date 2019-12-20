@@ -33,6 +33,7 @@
 
 
 //=============================================================================
+static bool dummy_session          = false;
 static bool wants_quit             = false;
 static bool wants_evaluation_step  = false;
 static bool wants_reset_simulation = false;
@@ -70,16 +71,29 @@ bool ui::fulfill(action action)
 
 
 //=============================================================================
-ui::session_t::session_t()
+ui::session_t::session_t(bool is_dummy)
 {
-    tb_init();
-    tb_select_input_mode(TB_INPUT_ESC | TB_INPUT_MOUSE);
-    tb_select_output_mode(TB_OUTPUT_NORMAL);
+    dummy_session = is_dummy;
+
+    if (! dummy_session)
+    {
+        tb_init();
+        tb_select_input_mode(TB_INPUT_ESC | TB_INPUT_MOUSE);
+        tb_select_output_mode(TB_OUTPUT_NORMAL);        
+    }
+    else
+    {
+        wants_evaluation_step = true;
+        step_evaluations_continuously = true;
+    }
 }
 
 ui::session_t::~session_t()
 {
-    tb_shutdown();
+    if (! dummy_session)
+    {
+        tb_shutdown();        
+    }
 }
 
 
@@ -211,6 +225,11 @@ static void draw_content_table(const ui::state_t& state)
 //=============================================================================
 void ui::draw(const state_t& state)
 {
+    if (dummy_session)
+    {
+        return;
+    }
+
     int w = tb_width();
     int h = tb_height();
 
@@ -239,6 +258,11 @@ void ui::draw(const state_t& state)
 bool ui::is_quit(tb_event ev)
 {
     return ev.key == TB_KEY_CTRL_Q;
+}
+
+bool ui::is_dummy_session()
+{
+    return dummy_session;
 }
 
 
