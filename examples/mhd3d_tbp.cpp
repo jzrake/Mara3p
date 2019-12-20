@@ -69,7 +69,55 @@ namespace h5 {
 //     | seq::to<std::basic_string>();
 // }
 
+} // namespace h5
+
+
+
+
+static auto depth = 1;
+static auto block_size = 32;
+
+
+
+
+//=============================================================================
+bool has_flag(int argc, const char* argv[], const char* flag)
+{
+    for (int i = 1; i < argc; ++i)
+    {
+        if (std::strcmp(argv[i], flag) == 0)
+        {
+            return true;
+        }
+    }
+    return false;
 }
+
+std::string format_int(int value, int count)
+{
+    auto ss = std::stringstream();
+    ss << std::setfill('0') << std::setw(count) << value;
+    return ss.str();
+}
+
+
+
+
+//=============================================================================
+namespace vtk {
+
+void write_primitive_fields(multilevel_index_t index, const product_t& product)
+{
+    auto order = dot(mesh::to_uivec(index.coordinates), nd::strides_row_major(mesh::block_extent(depth)));
+    auto fname = "primitive." + format_int(order, 4) + ".vtk";
+    auto out   = std::fstream(fname, std::fstream::out | std::fstream::trunc | std::fstream::binary);
+    auto xv    = mesh::construct_vertices<dimensional::unit_length>(index.level, index.coordinates, block_size);
+    auto bc    = std::get<cell_primitive_variables_t>(product) | nd::map(mhd::magnetic_field_vector) | nd::to_shared();
+
+    vtk::write(out, "Primitive", nd::to_shared(xv), std::pair("B", bc));
+}
+
+} // namespace vtk
 
 
 
@@ -136,12 +184,6 @@ auto abc_vector_potential(position_t p)
 
 
 
-static auto depth = 2;
-static auto block_size = 32;
-
-
-
-
 //=============================================================================
 auto block_indexes(nd::uint depth)
 {
@@ -181,6 +223,72 @@ void enter_iteration_rules(DependencyGraph& graph, rational::number_t iteration)
 
 
 //=============================================================================
+auto vtk_output_side_effects(long iteration)
+{
+    auto keys = block_indexes(depth) | seq::map([iteration] (auto index)
+    {
+        return key(data_field::cell_primitive_variables).block(index).iteration(iteration).id;
+    });
+
+    return block_indexes(depth) | seq::map([] (auto index) -> std::function<void(product_t)>
+    {
+        return std::bind(vtk::write_primitive_fields, index, std::placeholders::_1);
+    }) | seq::keys(keys);
+}
+
+
+
+
+//=============================================================================
+class SideEffects
+{
+public:
+    std::size_t size() const
+    {
+        return side_effects.size();
+    }
+
+    auto key_at(unsigned row) const
+    {
+        for (const auto& s : side_effects)
+            if (! row--)
+                return s.first;
+        throw std::out_of_range("SideEffects::key_at");
+    }
+
+    void apply(const std::map<product_identifier_t, product_t>& updated_items, std::ostream& log)
+    {
+        for (const auto& [k, p] : updated_items)
+        {
+            if (side_effects.count(k))
+            {
+                log << "SideEffects::apply - " << to_string(k) << std::endl;
+                side_effects.at(k)(p);
+                side_effects.erase(k);
+            }
+        }
+    }
+
+    void update(const std::map<product_identifier_t, std::function<void(product_t)>>& new_side_effects)
+    {
+        for (const auto& item : new_side_effects)
+        {
+            if (side_effects.count(item.first))
+            {
+                throw std::runtime_error("SideEffects::update (side effect already defined)");
+            }
+            side_effects.insert(item);
+        }
+    }
+
+private:
+    std::map<product_identifier_t, std::function<void(product_t)>> side_effects;
+};
+
+
+
+
+//=============================================================================
 class RuntimeCoordinator
 {
 public:
@@ -190,7 +298,7 @@ public:
         iteration = 0;
     }
 
-    void update_definitions(DependencyGraph& graph)
+    void update(DependencyGraph& graph, SideEffects& side_effects)
     {
         if (graph.empty())
         {
@@ -199,6 +307,11 @@ public:
         else
         {
             enter_iteration_rules(graph, iteration);
+
+            if (long(iteration) % 10 == 0)
+            {
+                side_effects.update(vtk_output_side_effects(iteration + 10) | seq::to_dict<std::map>());
+            }
             iteration = iteration + 1;
         }
     }
@@ -216,62 +329,13 @@ private:
 
 
 //=============================================================================
-auto vtk_output_side_effects()
-{
-    auto keys = block_indexes(depth) | seq::map([] (auto index)
-    {
-        return key(data_field::cell_primitive_variables).block(index).iteration(10).id;
-    });
-
-    return block_indexes(depth)
-    | seq::map([] (auto index)
-    {
-        return [index] (const product_t& product)
-        {
-            auto order = dot(mesh::to_uivec(index.coordinates), nd::strides_row_major(mesh::block_extent(depth)));
-            auto fname = "primitive." + std::to_string(order) + ".vtk";
-            auto out   = std::fstream(fname, std::fstream::out | std::fstream::trunc | std::fstream::binary);
-            auto xv    = mesh::construct_vertices<dimensional::unit_length>(index.level, index.coordinates, block_size);
-            auto bc    = std::get<cell_primitive_variables_t>(product) | nd::map(mhd::magnetic_field_vector) | nd::to_shared();
-
-            vtk::write(out, "primitive_fields", nd::to_shared(xv), std::pair("B", bc));
-        };
-    })
-    | seq::keys(keys);
-}
-
-
-
-
-//=============================================================================
-class SideEffects
-{
-public:
-    void apply(const std::map<product_identifier_t, product_t>& updated_items) const
-    {
-        auto side_effects = vtk_output_side_effects() | seq::to_dict<std::map>();
-
-        for (const auto& [k, p] : updated_items)
-        {
-            if (side_effects.count(k))
-            {
-                side_effects.at(k)(p);
-            }
-        }
-    }
-};
-
-
-
-
-//=============================================================================
 void drive(mara::ThreadPool& thread_pool, DependencyGraph& graph, RuntimeCoordinator& coordinator, SideEffects& side_effects, std::ostream& log)
 {
     if (! graph.count_unevaluated())
     {
         log << "iteration: " << long(coordinator.current_iteration()) << std::endl;
 
-        coordinator.update_definitions(graph);
+        coordinator.update(graph, side_effects);
         graph.collect_garbage();
     }
     else
@@ -281,22 +345,7 @@ void drive(mara::ThreadPool& thread_pool, DependencyGraph& graph, RuntimeCoordin
             graph.evaluate_rule(key, thread_pool);
         }
     }
-    side_effects.apply(graph.poll(std::chrono::milliseconds(0)));
-}
-
-
-
-
-bool has_flag(int argc, const char* argv[], const char* flag)
-{
-    for (int i = 1; i < argc; ++i)
-    {
-        if (std::strcmp(argv[i], flag) == 0)
-        {
-            return true;
-        }
-    }
-    return false;
+    side_effects.apply(graph.poll(std::chrono::milliseconds(0)), log);
 }
 
 
@@ -311,17 +360,25 @@ int main(int argc, const char* argv[])
     auto graph        = DependencyGraph();
     auto side_effects = SideEffects();
     auto log_stream   = std::stringstream();
-
+    auto log_vector   = std::vector<std::string>();
     auto termbox      = ui::session_t(! has_flag(argc, argv, "-i"));
     auto ui_state     = ui::state_t();
 
-    ui_state.content_table_size    = [&graph] () { return graph.size(); };
-    ui_state.content_table_item    = [&graph] (unsigned row) { return represent_graph_item(graph, row); };
+    ui_state.runtime_size          = [&graph] ()             { return graph.size(); };
+    ui_state.runtime_item          = [&graph] (unsigned row) { return represent_graph_item(graph, row); };
+
+    ui_state.side_effects_size     = [&side_effects] ()             { return side_effects.size(); };
+    ui_state.side_effects_item     = [&side_effects] (unsigned row) { return to_string(side_effects.key_at(row)); };
+
+    ui_state.log_view_size         = [&log_vector] ()             { return log_vector.size(); };
+    ui_state.log_view_item         = [&log_vector] (unsigned row) { return log_vector.at(row); };
+
+
     ui_state.concurrent_task_count = [&thread_pool] () { return thread_pool.job_count(); };
     ui::draw(ui_state);
 
 
-    while (long(coordinator.current_iteration()) < 10)
+    while (long(coordinator.current_iteration()) < 100)
     {
         if (ui::fulfill(ui::action::evaluation_step))
         {
@@ -347,11 +404,17 @@ int main(int argc, const char* argv[])
 
         if (! log_stream.str().empty())
         {
-            std::printf("%s", log_stream.str().data());
+            if (ui::is_dummy_session())
+            {
+                std::printf("%s", log_stream.str().data());
+            }
+            else
+            {
+                log_vector.push_back(log_stream.str());
+            }
             log_stream.str(std::string());
         }
         ui::draw(ui_state);
     }
-
     return 0;
 }

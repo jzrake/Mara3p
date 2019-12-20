@@ -164,6 +164,8 @@ static void draw_text(int x, int y, const std::string& text, uint16_t fg=TB_WHIT
 {
     for (auto c : text)
     {
+        if (c == '\n')
+            c = ' ';
         tb_change_cell(x, y, c, fg, bg);
         x++;
     }
@@ -184,8 +186,8 @@ static void draw_usage_tips()
 
 static void draw_navigation_tabs(const ui::state_t& state)
 {
-    auto tab_names = std::array{"Runtime", "Performance", "File Browser"};
-    auto column = 3;
+    auto tab_names = std::array{"Runtime", "Side Effects", "Log View"};
+    auto column = 2;
 
     for (int i = 0; i < 3; ++i)
     {
@@ -198,24 +200,47 @@ static void draw_navigation_tabs(const ui::state_t& state)
     }
 }
 
-static void draw_content_table(const ui::state_t& state)
+static void draw_table(const ui::state_t& state)
 {
-    for (unsigned i = 0; i < num_visible_table_rows(); ++i)
+    std::function<unsigned()>            size_func = nullptr;
+    std::function<std::string(unsigned)> item_func = nullptr;
+    int starting_row = 0;
+    int selected_row = 0;
+
+    switch (state.selected_tab)
     {
-        auto row = state.starting_table_row + i;
-
-        if (row >= state.content_table_size())
-        {
+        case 0:
+            size_func = state.runtime_size;
+            item_func = state.runtime_item;
+            starting_row = state.starting_runtime_row;
+            selected_row = state.selected_runtime_row;
             break;
-        }
+        case 1:
+            size_func = state.side_effects_size;
+            item_func = state.side_effects_item;
+            starting_row = state.starting_side_effects_row;
+            selected_row = state.selected_side_effects_row;
+            break;
+        case 2:
+            size_func = state.log_view_size;
+            item_func = state.log_view_item;
+            starting_row = state.starting_log_view_row;
+            selected_row = state.selected_log_view_row;
+            break;
+    }
 
-        auto bg = state.selected_table_row == row
-        ? state.focused_component == ui::component_type::content_table ? TB_CYAN : TB_BLUE
-        : TB_DEFAULT;
+    if (size_func == nullptr) size_func = [] () { return 0; };
+    if (item_func == nullptr) item_func = [] (unsigned row) { return "NO DATA"; };
 
-        auto fg = state.content_table_item(row).find("error") == std::string::npos ? TB_GREEN : TB_RED;
+    bool has_focus = state.focused_component == ui::component_type::table;
 
-        draw_text(3, 6 + i, state.content_table_item(row), fg, bg, right_panel_divider_position() - 1);
+    for (unsigned i = 0; i < std::min(num_visible_table_rows(), size_func() - starting_row); ++i)
+    {
+        auto row = starting_row + i;
+        auto bg = selected_row == row ? (has_focus ? TB_CYAN : TB_BLUE) : TB_DEFAULT;
+        auto fg = item_func(row).find("error") == std::string::npos ? TB_GREEN : TB_RED;
+
+        draw_text(3, 6 + i, item_func(row), fg, bg, right_panel_divider_position() - 1);
     }
 }
 
@@ -243,11 +268,7 @@ void ui::draw(const state_t& state)
     draw_usage_tips();
     draw_text(right_panel_divider_position() + 2, h / 2 + 2, "Job count: " + std::to_string(state.concurrent_task_count()), TB_YELLOW);
 
-    if (state.selected_tab == 0)
-    {
-        draw_content_table(state);
-    }
-
+    draw_table(state);
     tb_present();
 }
 
@@ -273,8 +294,8 @@ ui::state_t move_focus_forward(ui::state_t state)
 {
     switch (state.focused_component)
     {
-         case ui::component_type::tab_bar:       state.focused_component = ui::component_type::content_table; break;
-         case ui::component_type::content_table: state.focused_component = ui::component_type::detail_view; break;
+         case ui::component_type::tab_bar:       state.focused_component = ui::component_type::table; break;
+         case ui::component_type::table:         state.focused_component = ui::component_type::detail_view; break;
          case ui::component_type::detail_view:   state.focused_component = ui::component_type::options_panel; break;
          case ui::component_type::options_panel: state.focused_component = ui::component_type::tab_bar; break;
     }
@@ -283,46 +304,90 @@ ui::state_t move_focus_forward(ui::state_t state)
 
 static ui::state_t scroll_table(ui::state_t state, int difference)
 {
-    if (int(state.starting_table_row) + difference + num_visible_table_rows() <= state.content_table_size() &&
-        int(state.starting_table_row) + difference >= 0)
+    auto scroll = [difference] (unsigned& starting, unsigned size)
     {
-        state.starting_table_row += difference;
-        return state;
+        if (int(starting) + difference + num_visible_table_rows() <= size &&
+            int(starting) + difference >= 0)
+        {
+            starting += difference;
+        }
+    };
+    switch (state.selected_tab)
+    {
+        case 0: scroll(state.starting_runtime_row,      state.runtime_size()); break;
+        case 1: scroll(state.starting_side_effects_row, state.side_effects_size()); break;
+        case 2: scroll(state.starting_log_view_row,     state.log_view_size()); break;
     }
     return state;
 }
 
 static ui::state_t select_prev_table_item(ui::state_t state)
 {
-    if (state.selected_table_row > 0)
+    auto dec = [] (unsigned& selected, unsigned& starting)
     {
-        state.selected_table_row -= 1;
-
-        if (state.selected_table_row < state.starting_table_row)
+        if (selected > 0)
         {
-            state.starting_table_row -= 1;
+            selected -= 1;
+
+            if (selected < starting)
+            {
+                starting -= 1;
+            }
         }
+    };
+    switch (state.selected_tab)
+    {
+        case 0: dec(state.selected_runtime_row,      state.starting_runtime_row); break;
+        case 1: dec(state.selected_side_effects_row, state.starting_side_effects_row); break;
+        case 2: dec(state.selected_log_view_row,     state.starting_log_view_row); break;
     }
     return state;
 }
 
 static ui::state_t select_next_table_item(ui::state_t state)
 {
-    if (state.selected_table_row < state.content_table_size() - 1)
+    auto inc = [&state] (unsigned& selected, unsigned& starting)
     {
-        state.selected_table_row += 1;
+        unsigned size = 0;
 
-        if (state.selected_table_row >= state.starting_table_row + num_visible_table_rows())
+        switch (state.selected_tab)
         {
-            state.starting_table_row += 1;
+            case 0: size = state.runtime_size      ? state.runtime_size()      : 0; break;
+            case 1: size = state.side_effects_size ? state.side_effects_size() : 0; break;
+            case 2: size = state.log_view_size     ? state.log_view_size()     : 0; break;
         }
+
+        if (selected < size - 1)
+        {
+            selected += 1;
+
+            if (selected >= starting + num_visible_table_rows())
+            {
+                starting += 1;
+            }
+        }
+    };
+    switch (state.selected_tab)
+    {
+        case 0: inc(state.selected_runtime_row,      state.starting_runtime_row); break;
+        case 1: inc(state.selected_side_effects_row, state.starting_side_effects_row); break;
+        case 2: inc(state.selected_log_view_row,     state.starting_log_view_row); break;
     }
     return state;
 }
 
 static ui::state_t select_table_at_position(ui::state_t state, int y)
 {
-    state.selected_table_row = y - 6 + state.starting_table_row;
+    auto sel = [y] (unsigned& selected, unsigned starting)
+    {
+        selected = y - 6 + starting;
+    };
+    switch (state.selected_tab)
+    {
+        case 0: sel(state.selected_runtime_row,      state.starting_runtime_row); break;
+        case 1: sel(state.selected_side_effects_row, state.starting_side_effects_row); break;
+        case 2: sel(state.selected_log_view_row,     state.starting_log_view_row); break;
+    }
     return state;
 }
 

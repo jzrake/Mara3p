@@ -31,7 +31,6 @@
 #include <functional>
 #include <optional>
 #include <string>
-#include <vector>
 #include <termbox.h>
 
 
@@ -46,7 +45,7 @@ namespace ui
 enum class component_type
 {
     tab_bar,
-    content_table,
+    table,
     detail_view,
     options_panel,
 };
@@ -64,15 +63,26 @@ enum class action
 //=============================================================================
 struct state_t
 {
+    unsigned selected_tab = 0;
+
     component_type focused_component;
 
-    unsigned selected_tab = 0;
-    unsigned selected_table_row = 0;
-    unsigned starting_table_row = 0;
+    unsigned selected_runtime_row = 0;
+    unsigned starting_runtime_row = 0;
+    std::function<unsigned()>            runtime_size;
+    std::function<std::string(unsigned)> runtime_item;
 
-    std::function<unsigned()>            concurrent_task_count;
-    std::function<unsigned()>            content_table_size;
-    std::function<std::string(unsigned)> content_table_item;
+    unsigned selected_side_effects_row = 0;
+    unsigned starting_side_effects_row = 0;
+    std::function<unsigned()>            side_effects_size;
+    std::function<std::string(unsigned)> side_effects_item;
+
+    unsigned selected_log_view_row = 0;
+    unsigned starting_log_view_row = 0;
+    std::function<unsigned()>            log_view_size;
+    std::function<std::string(unsigned)> log_view_item;
+
+    std::function<unsigned()> concurrent_task_count;
 };
 
 struct session_t
