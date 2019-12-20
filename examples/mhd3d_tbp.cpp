@@ -80,7 +80,7 @@ void represent_graph_item(std::ostream& os, const DependencyGraph& graph, unsign
     auto key = graph.keys().at(row);
 
     auto shape_string = graph.is_completed(key)
-    ? std::string("shape: ") + std::visit([] (auto p) { return to_string(p); }, graph.product_at(key))
+    ? std::visit([] (auto p) { return to_string(p); }, graph.product_at(key))
     : std::string("");
 
     auto error_string = graph.is_error(key)
@@ -92,11 +92,10 @@ void represent_graph_item(std::ostream& os, const DependencyGraph& graph, unsign
     << std::setw(36)
     << std::setfill('.')
     << to_string(key)
-    << " status: "
+    << " status: " 
     << to_string(graph.status(key))
-    << ' '
-    << shape_string
-    << error_string;
+    << ' ' << shape_string
+    << ' ' << error_string;
 }
 
 std::string represent_graph_item(const DependencyGraph& graph, unsigned row)
@@ -137,7 +136,7 @@ auto abc_vector_potential(position_t p)
 
 
 
-static auto depth = 1;
+static auto depth = 2;
 static auto block_size = 32;
 
 
@@ -164,7 +163,7 @@ void enter_iteration_rules(DependencyGraph& graph, rational::number_t iteration)
 {
     using namespace mhd_rules;
 
-    auto dt = dimensional::unit_time(0.1);
+    auto dt = dimensional::unit_time(0.01);
 
     for (auto index : block_indexes(depth))
     {
@@ -202,10 +201,6 @@ public:
             enter_iteration_rules(graph, iteration);
             iteration = iteration + 1;
         }
-    }
-
-    void collect_garbage(DependencyGraph& graph) const
-    {
     }
 
     rational::number_t current_iteration() const
@@ -268,7 +263,7 @@ bool side_effects(const std::map<product_identifier_t, FunctionType>& side_effec
 //=============================================================================
 int main()
 {
-    auto thread_count = 2;
+    auto thread_count = 1;
     auto thread_pool = mara::ThreadPool(thread_count);
     auto coordinator = RuntimeCoordinator();
     auto graph       = DependencyGraph();
@@ -290,7 +285,7 @@ int main()
 
     while (true)
     {
-        if (long(coordinator.current_iteration()) == 2)
+        if (long(coordinator.current_iteration()) == 100)
         {
             break;
         }
@@ -309,20 +304,18 @@ int main()
 
         if (ui::fulfill(ui::action::evaluation_step))
         {
-            auto eligible = graph.eligible_rules();
-
-            if (eligible.empty())
+            if (! graph.count_unevaluated())
             {
                 coordinator.update_definitions(graph);
+                graph.collect_garbage();
             }
             else
             {
-                for (const auto& key : eligible)
+                for (const auto& key : graph.eligible_rules())
                 {
                     graph.evaluate_rule(key, thread_pool);
                 }
             }
-
             ui::draw(ui_state);
         }
 

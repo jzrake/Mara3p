@@ -122,8 +122,8 @@ std::array<named_rule_t, 3> mhd_rules::initial_condition(multilevel_index_t inde
 //=============================================================================
 named_rule_t mhd_rules::recover_primitive(multilevel_index_t index, rational::number_t iteration)
 {
-    auto bf = key(iteration).block(index).field(data_field::face_magnetic_flux_density);
     auto uc = key(iteration).block(index).field(data_field::cell_conserved_density);
+    auto bf = key(iteration).block(index).field(data_field::face_magnetic_flux_density);
     auto pc = key(iteration).block(index).field(data_field::cell_primitive_variables);
     auto fm = wrap<cell_conserved_density_t, face_magnetic_flux_density_t>(mhd_scheme_v2::primitive_array);
     return rule(pc, fm, {uc, bf});

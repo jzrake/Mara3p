@@ -109,7 +109,7 @@ public:
         sorted_keys.clear();
         rules.clear();
         products.clear();
-        pending_products.clear();
+        pending.clear();
         errors.clear();
         downstream.clear();
     }
@@ -243,7 +243,7 @@ public:
         if (is_completed(key))
             throw std::invalid_argument("DependencyGraph::evaluate_rule (already evaluated)");
 
-        pending_products[key] = scheduler.enqueue(rules.at(key).first, argument_values(key));
+        pending[key] = scheduler.enqueue(rules.at(key).first, argument_values(key));
     }
 
 
@@ -265,7 +265,7 @@ public:
         auto completed = std::map<key_type, value_type>();
         auto errored = std::set<key_type>();
 
-        for (auto& [key, future] : pending_products)
+        for (auto& [key, future] : pending)
         {
             if (future.wait_for(timeout) == std::future_status::ready)
             {
@@ -282,11 +282,11 @@ public:
 
         for (const auto& item : completed)
         {
-            pending_products.erase(item.first);
+            pending.erase(item.first);
         }
         for (const auto& item : errored)
         {
-            pending_products.erase(item);
+            pending.erase(item);
         }
         return completed;
     }
@@ -336,7 +336,7 @@ public:
      */
     bool is_pending(key_type key) const
     {
-        return pending_products.find(key) != pending_products.end();
+        return pending.find(key) != pending.end();
     }
 
 
@@ -664,6 +664,60 @@ public:
 
 
     /**
+     * @brief      Determine whether a rule with the given key is eligible for
+     *             collection
+     *
+     * @param[in]  key                 The key to check for
+     * @param[in]  is_responsible_for  The predicate (must return false if the
+     *                                 rule under the given key is delegated to
+     *                                 a remote process).
+     *
+     * @return     True or false
+     */
+    bool is_collectible(key_type key, std::function<bool(key_type)> is_responsible_for=true_predicate()) const
+    {
+        if (! is_completed(key) && is_responsible_for(key))
+        {
+            return false;
+        }
+        for (auto k : downstream.at(key))
+        {
+            if (! is_completed(k) && is_responsible_for(k))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+
+
+
+    /**
+     * @brief      Remove from the graph all rules that are evaluated, and whose
+     *             downstream products are also evaluated
+     *
+     * @param[in]  is_responsible_for  The predicate (must return false if the
+     *                                 rule under the given key is delegated to
+     *                                 a remote process).
+     */
+    void collect_garbage(std::function<bool(key_type)> is_responsible_for=true_predicate())
+    {
+        auto all_keys = sorted_keys;
+
+        for (auto key : all_keys)
+        {
+            if (is_collectible(key, is_responsible_for))
+            {
+                erase(key);
+            }
+        }
+    }
+
+
+
+
+    /**
      * @brief      Return a status code indicating whether a rule under the
      *             given key is non-existent, defined but neither evaluated nor
      *             pending, pending evaluation, eligible, or completed.
@@ -697,12 +751,28 @@ private:
         return std::find(v.begin(), v.end(), k) != v.end();
     }
 
+    void erase(key_type key)
+    {
+        for (auto k : upstream_keys(key))
+        {
+            if (downstream.count(k))
+            {
+                downstream.at(k).erase(key);
+            }
+        }
+        sorted_keys.erase(std::find(sorted_keys.begin(), sorted_keys.end(), key));
+        rules      .erase(key);
+        products   .erase(key);
+        pending    .erase(key);
+        errors     .erase(key);
+        downstream .erase(key);
+    }
 
     //=========================================================================
     std::vector<key_type>                       sorted_keys;
     std::map<key_type, rule_type>               rules;
     std::map<key_type, value_type>              products;
-    std::map<key_type, std::future<value_type>> pending_products;
+    std::map<key_type, std::future<value_type>> pending;
     std::map<key_type, std::string>             errors;
     std::map<key_type, std::set<key_type>>      downstream;
 };
