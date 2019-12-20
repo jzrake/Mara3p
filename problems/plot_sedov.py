@@ -35,24 +35,33 @@ def light_pulse_position(h5f):
 
 
 
+def shock_position(h5f):
+    vertices = h5f['vertices']
+    pressure = h5f['primitive'][...][:,0]
+    return vertices[np.argmax(pressure)]
+
+
+
+
 def configure_axes(ax1, ax2, ax3, filename, focus=0.0):
     h5f = h5py.File(filename, 'r')
-    lc = light_pulse_position(h5f)
+    # lc = light_pulse_position(h5f)
+    lc = shock_position(h5f)
 
     for ax in [ax1, ax2, ax3]:
         ax.axvline(lc, c='k', ls='--', lw=0.5)
 
         if focus:
-            ax.set_xlim(lc / (1 + focus), lc * (1 + 0.01))
+            ax.set_xlim(lc / (1 + focus), lc * (1 + focus))
             ax.set_yscale('log')
         else:
             ax.set_xlim(1.0, 1000.0)
             ax.set_xscale('log')
             ax.set_yscale('log')
 
-    # ax1.set_ylim(1e-4, 1e2)
-    # ax2.set_ylim(1e-8, 1e3)
-    ax3.set_ylim(1e-2, 2e2)
+    # ax1.set_ylim(1e1, 1e5)
+    # ax2.set_ylim(1e-3, 1e2)
+    # ax3.set_ylim(1.4e-1, 0.4)
     ax1.set_ylabel(r'$\rho$')
     ax2.set_ylabel(r'$p$')
     ax3.set_ylabel(r'$\Gamma \beta$')
@@ -68,10 +77,14 @@ def plot_variables(ax1, ax2, ax3, filename, edges=False, **kwargs):
     density    = h5f['primitive'][...][:,0]
     gamma_beta = h5f['primitive'][...][:,1]
     pressure   = h5f['primitive'][...][:,4]
+    entropy    = pressure / density**(4./3)
 
     ax1.step(vertices[:-1], density, **kwargs)
-    ax2.step(vertices[:-1], pressure, **kwargs)
+    ax2.step(vertices[:-1], entropy, **kwargs)
     ax3.step(vertices[:-1], gamma_beta, **kwargs)
+
+    ax1.plot(vertices[...], 10*vertices[...]**-3)
+    ax1.plot(vertices[...], 10*vertices[...]**-2)
 
     if edges:
         for v in vertices[:-1]:

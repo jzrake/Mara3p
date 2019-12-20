@@ -52,11 +52,11 @@ def plot_slice(fig, filename, field=None, **kwargs):
 
     h5f = h5py.File(filename, 'r')
 
-    print("total mass ..... ", h5f['conserved'][...][..., 0].mean())
-    print("total px ....... ", h5f['conserved'][...][..., 1].mean())
-    print("total py ....... ", h5f['conserved'][...][..., 2].mean())
-    print("total pz ....... ", h5f['conserved'][...][..., 3].mean())
-    print("total energy ... ", h5f['conserved'][...][..., 4].mean())
+    # print("total mass ..... ", h5f['conserved'][...][..., 0].mean())
+    # print("total px ....... ", h5f['conserved'][...][..., 1].mean())
+    # print("total py ....... ", h5f['conserved'][...][..., 2].mean())
+    # print("total pz ....... ", h5f['conserved'][...][..., 3].mean())
+    # print("total energy ... ", h5f['conserved'][...][..., 4].mean())
 
     dx = load_slice(h5f, 'x', field).T
     dy = load_slice(h5f, 'y', field).T
