@@ -220,7 +220,7 @@ auto vtk_output_side_effects()
 {
     auto keys = block_indexes(depth) | seq::map([] (auto index)
     {
-        return key(data_field::cell_primitive_variables).block(index).id;
+        return key(data_field::cell_primitive_variables).block(index).iteration(10).id;
     });
 
     return block_indexes(depth)
@@ -244,17 +244,42 @@ auto vtk_output_side_effects()
 
 
 //=============================================================================
-template<typename FunctionType>
-bool side_effects(const std::map<product_identifier_t, FunctionType>& side_effects, const std::map<product_identifier_t, product_t>& updated_items)
+class SideEffects
 {
-    for (const auto& [k, p] : updated_items)
+public:
+    void apply(const std::map<product_identifier_t, product_t>& updated_items) const
     {
-        if (side_effects.count(k))
+        auto side_effects = vtk_output_side_effects() | seq::to_dict<std::map>();
+
+        for (const auto& [k, p] : updated_items)
         {
-            side_effects.at(k)(p);
+            if (side_effects.count(k))
+            {
+                side_effects.at(k)(p);
+            }
         }
     }
-    return ! updated_items.empty();
+};
+
+
+
+
+//=============================================================================
+void drive(mara::ThreadPool& thread_pool, DependencyGraph& graph, RuntimeCoordinator& coordinator, SideEffects& side_effects)
+{
+    if (! graph.count_unevaluated())
+    {
+        coordinator.update_definitions(graph);
+        graph.collect_garbage();
+    }
+    else
+    {
+        for (const auto& key : graph.eligible_rules())
+        {
+            graph.evaluate_rule(key, thread_pool);
+        }
+    }
+    side_effects.apply(graph.poll(std::chrono::milliseconds(0)));
 }
 
 
@@ -264,35 +289,26 @@ bool side_effects(const std::map<product_identifier_t, FunctionType>& side_effec
 int main()
 {
     auto thread_count = 1;
-    auto thread_pool = mara::ThreadPool(thread_count);
-    auto coordinator = RuntimeCoordinator();
-    auto graph       = DependencyGraph();
+    auto thread_pool  = mara::ThreadPool(thread_count);
+    auto coordinator  = RuntimeCoordinator();
+    auto graph        = DependencyGraph();
+    auto side_effects = SideEffects();
 
 
-    auto side_effects_map = vtk_output_side_effects()
-    | seq::to_dict<std::map>();
+    auto termbox      = ui::session_t();
+    auto ui_state     = ui::state_t();
 
-
-    auto tb = ui::session_t();
-    auto ui_state = ui::state_t();
-
-
-    ui_state.content_table_size = [&graph] () { return graph.size(); };
-    ui_state.content_table_item = [&graph] (unsigned row) { return represent_graph_item(graph, row); };
+    ui_state.content_table_size    = [&graph] () { return graph.size(); };
+    ui_state.content_table_item    = [&graph] (unsigned row) { return represent_graph_item(graph, row); };
     ui_state.concurrent_task_count = [&thread_pool] () { return thread_pool.job_count(); };
     ui::draw(ui_state);
 
 
-    while (true)
-    {
-        if (long(coordinator.current_iteration()) == 100)
+    while (long(coordinator.current_iteration()) < 100)
+    {       
+        if (ui::fulfill(ui::action::evaluation_step))
         {
-            break;
-        }
-
-        if (ui::fulfill(ui::action::quit))
-        {
-            break;
+            drive(thread_pool, graph, coordinator, side_effects);
         }
 
         if (ui::fulfill(ui::action::reset_simulation))
@@ -302,32 +318,17 @@ int main()
             ui::draw(ui_state);
         }
 
-        if (ui::fulfill(ui::action::evaluation_step))
+        if (ui::fulfill(ui::action::quit))
         {
-            if (! graph.count_unevaluated())
-            {
-                coordinator.update_definitions(graph);
-                graph.collect_garbage();
-            }
-            else
-            {
-                for (const auto& key : graph.eligible_rules())
-                {
-                    graph.evaluate_rule(key, thread_pool);
-                }
-            }
-            ui::draw(ui_state);
+            break;
         }
 
-        if (side_effects(side_effects_map, graph.poll(std::chrono::milliseconds(0))))
+        if (auto event = ui::poll(std::chrono::milliseconds(20)); event.has_value())
         {
-            ui::draw(ui_state);
+            ui_state = ui::handle_event(ui_state, event.value());
         }
-
-        if (auto event = ui::poll(std::chrono::milliseconds(5)); event.has_value())
-        {
-            ui::draw(ui_state = ui::handle_event(ui_state, event.value()));
-        }
+        ui::draw(ui_state);
     }
+
     return 0;
 }

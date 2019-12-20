@@ -695,7 +695,7 @@ public:
 
     /**
      * @brief      Remove from the graph all rules that are evaluated, and whose
-     *             downstream products are also evaluated
+     *             downstream products are also evaluated.
      *
      * @param[in]  is_responsible_for  The predicate (must return false if the
      *                                 rule under the given key is delegated to
