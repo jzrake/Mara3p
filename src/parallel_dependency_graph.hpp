@@ -189,6 +189,11 @@ public:
         insert_rule(std::get<0>(named_rule), std::get<1>(named_rule), std::get<2>(named_rule));
     }
 
+    void insert(std::tuple<key_type, mapping_type, std::vector<key_type>> named_rule)
+    {
+        insert_rule(std::get<0>(named_rule), std::get<1>(named_rule), std::get<2>(named_rule));
+    }
+
 
 
 

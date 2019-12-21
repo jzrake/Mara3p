@@ -99,6 +99,7 @@ bool is_quit(tb_event ev);
 bool is_dummy_session();
 void draw(const state_t& state);
 bool fulfill(action action);
+bool check(action action);
 
 ui::state_t handle_event(const state_t& state, tb_event ev);
 

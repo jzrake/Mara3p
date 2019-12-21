@@ -67,6 +67,17 @@ bool ui::fulfill(action action)
     return false;
 }
 
+bool ui::check(action action)
+{
+    switch (action)
+    {
+        case action::quit            : return wants_quit;
+        case action::evaluation_step : return wants_evaluation_step;
+        case action::reset_simulation: return wants_reset_simulation;
+    }
+    return false;
+}
+
 
 
 
@@ -181,7 +192,7 @@ static void draw_usage_tips()
     draw_text(right_panel_divider_position() + 2, 6, "play / pause .... p",      TB_BLUE, step_evaluations_continuously ? TB_YELLOW : TB_DEFAULT);
     draw_text(right_panel_divider_position() + 2, 7, "step ............ space",  TB_BLUE, wants_evaluation_step  ? TB_YELLOW : TB_DEFAULT);
     draw_text(right_panel_divider_position() + 2, 8, "reset ........... r",      TB_BLUE, wants_reset_simulation ? TB_YELLOW : TB_DEFAULT);
-    draw_text(right_panel_divider_position() + 2, 9, "exit ............ ctrl+q", TB_BLUE, wants_quit             ? TB_YELLOW : TB_DEFAULT);
+    draw_text(right_panel_divider_position() + 2, 9, "exit ............ q",      TB_BLUE, wants_quit             ? TB_YELLOW : TB_DEFAULT);
 }
 
 static void draw_navigation_tabs(const ui::state_t& state)
@@ -278,7 +289,7 @@ void ui::draw(const state_t& state)
 //=============================================================================
 bool ui::is_quit(tb_event ev)
 {
-    return ev.key == TB_KEY_CTRL_Q;
+    return ev.ch == 'q'; // ev.key == TB_KEY_CTRL_Q;
 }
 
 bool ui::is_dummy_session()
