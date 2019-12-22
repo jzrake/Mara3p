@@ -27,6 +27,7 @@
 
 
 #pragma once
+#include <optional>
 #include "core_numeric_array.hpp"
 #include "core_bsp_tree.hpp"
 
@@ -175,7 +176,7 @@ tree_index_t<R> advance_level(const tree_index_t<R>& i)
 template<std::size_t R>
 tree_index_t<R> relative_to_parent(const tree_index_t<R>& i)
 {
-    return {1, i.coordinates.map([] (auto c) { return c % 2; })};
+    return {1, map(i.coordinates, [] (auto c) { return c % 2; })};
 }
 
 
@@ -217,6 +218,81 @@ numeric::array_t<tree_index_t<R>, 1 << R> child_indexes(const tree_index_t<R>& i
     {
         return {i.level + 1, i.coordinates * 2 + binary_repr<R>(j)};
     });
+}
+
+
+
+
+/**
+ * @brief      Helper function to give the number of children per node at the
+ *             given Rank
+ *
+ * @param[in]  <unnamed>  { parameter_description }
+ *
+ * @tparam     R          { description }
+ *
+ * @return     An integer
+ */
+template<std::size_t R>
+std::size_t child_count(const tree_index_t<R>&)
+{
+    return 1 << R;
+}
+
+
+
+
+/**
+ * @brief      Return the linear index (between 0 and 2^Rank, non-inclusive) of
+ *             this index in its parent.
+ *
+ * @param[in]  i     { parameter_description }
+ *
+ * @tparam     R     { description }
+ *
+ * @return     The sibling index
+ */
+template<std::size_t R>
+std::size_t sibling_index(const tree_index_t<R>& i)
+{
+    return to_integral(orthant(relative_to_parent(i)));
+}
+
+
+
+
+/**
+ * @brief      Determines whether the specified i is last child.
+ *
+ * @param[in]  i     { parameter_description }
+ *
+ * @tparam     R     { description }
+ *
+ * @return     True if the specified i is last child, False otherwise.
+ */
+template<std::size_t R>
+bool is_last_child(const tree_index_t<R>& i)
+{
+    return i.level == 0 || sibling_index(i) == child_count(i) - 1;
+}
+
+
+
+
+/**
+ * @brief      Return the next sibling's index. Throws std::out_of_range if
+ *             next sibling does not exist
+ *
+ * @return     An index
+ */
+template<std::size_t R>
+tree_index_t<R> next_sibling(const tree_index_t<R>& i)
+{
+    if (is_last_child(i))
+    {
+        throw std::out_of_range("bqo_tree::next_sibling (is the last child)");
+    }
+    return tree_index_t<R>{i.level, parent_index(i).coordinates * 2 + binary_repr<R>(sibling_index(i) + 1)};
 }
 
 
@@ -388,6 +464,70 @@ bool contains(const bsp_tree::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, 
     return has_value(tree) ? check_root(index) : contains(child_at(tree, orthant(index)), advance_level(index));
 }
 
+
+
+
+/**
+ * @brief      Functions implementing the sequence protocol. These make it
+ *             possible to adapt a bqo tree to a sequence via seq::adapt.
+ *
+ * @param[in]  tree          The tree to adapt to a sequence
+ * @param[in]  current       The starting index (used internally)
+ *
+ * @tparam     ValueType     The value type of the tree
+ * @tparam     ChildrenType  The tree's children provider type
+ *
+ * @return     An optional to the tree start, as expected by sequence operators
+ */
+template<typename ValueType, typename ChildrenType>
+std::optional<tree_index_t<3>> start(bsp_tree::tree_t<ValueType, ChildrenType, 8> tree, tree_index_t<3> current={})
+{
+    return has_value(tree) ? current : start(child_at(tree, 0), child_indexes(current).at(0));
+}
+
+template<typename ValueType, typename ChildrenType, bsp_tree::uint Rank>
+std::optional<tree_index_t<Rank>> next(bsp_tree::tree_t<ValueType, ChildrenType, 1 << Rank> tree, tree_index_t<Rank> current)
+{
+    if (check_root(current))
+    {
+        return {};
+    }
+
+    if (is_last_child(current))
+    {
+        auto ancestor = parent_index(current);
+
+        while (is_last_child(ancestor))
+        {
+            if (check_root(ancestor))
+            {
+                return {};
+            }
+            ancestor = parent_index(ancestor);
+        }
+        current = next_sibling(ancestor);
+
+        while (! contains(tree, current))
+        {
+            current = child_indexes(current).at(0);
+        }
+        return current;
+    }
+    current = next_sibling(current);
+
+    while (! contains(tree, current))
+    {
+        current = child_indexes(current).at(0);
+    }
+    return current;
+}
+
+template<typename ValueType, typename ChildrenType, bsp_tree::uint Rank>
+auto obtain(bsp_tree::tree_t<ValueType, ChildrenType, 1 << Rank> tree, tree_index_t<Rank> index)
+{
+    return value(node_at(tree, index));
+}
+
 } // namespace bqo_tree
 
 
@@ -396,6 +536,7 @@ bool contains(const bsp_tree::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, 
 //=============================================================================
 #ifdef DO_UNIT_TESTS
 #include "core_unit_test.hpp"
+#include "core_sequence.hpp"
 
 
 
