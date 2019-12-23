@@ -706,13 +706,15 @@ public:
      *                                 rule under the given key is delegated to
      *                                 a remote process).
      */
-    void collect_garbage(std::function<bool(key_type)> is_responsible_for=true_predicate())
+    void collect_garbage(
+        std::function<bool(key_type)> allow_collection=true_predicate(),
+        std::function<bool(key_type)> is_responsible_for=true_predicate())
     {
         auto all_keys = sorted_keys;
 
         for (auto key : all_keys)
         {
-            if (is_collectible(key, is_responsible_for))
+            if (allow_collection(key) && is_collectible(key, is_responsible_for))
             {
                 erase(key);
             }

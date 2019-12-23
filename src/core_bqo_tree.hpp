@@ -528,6 +528,22 @@ auto obtain(bsp_tree::tree_t<ValueType, ChildrenType, 1 << Rank> tree, tree_inde
     return value(node_at(tree, index));
 }
 
+
+
+
+//=============================================================================
+inline auto uniform_octree(bsp_tree::uint depth)
+{
+    auto branch_function = [] (auto i) { return child_indexes(i); };
+    auto result = bsp_tree::just<8>(bqo_tree::tree_index<3>());
+
+    while (depth--)
+    {
+        result = branch_through(result, branch_function);
+    }
+    return result;
+}
+
 } // namespace bqo_tree
 
 

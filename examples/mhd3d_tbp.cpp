@@ -142,13 +142,16 @@ struct state_t
 //=============================================================================
 state_t initial_state()
 {
-    return state_t{};
+    return {
+        0,
+        0.0,
+        0.0,
+        bqo_tree::uniform_octree(1),
+    };
 }
 
-state_t advance(state_t state)
+state_t advance(state_t state, dimensional::unit_time dt)
 {
-    auto dt = dimensional::unit_time(0.001);
-
     return {
         state.iteration + 1,
         state.time + dt,
@@ -161,19 +164,11 @@ state_t advance(state_t state)
 
 
 //=============================================================================
-auto block_indexes(nd::uint depth)
-{
-    return seq::adapt(nd::index_space(mesh::block_extent(depth))) | seq::map([depth] (auto i)
-    {
-        return mhd_rules::multilevel_index_t{depth, mesh::to_numeric_array(i)};
-    });
-}
-
 auto rules(state_t state)
 {
     if (long(state.iteration) == 0)
     {
-        return seq::flat_map(block_indexes(depth), [] (auto index)
+        return flat_map(seq::adapt(state.mesh_topology), [] (auto index)
         {
             return seq::from(mhd_rules::initial_condition(
                 index,
@@ -184,7 +179,7 @@ auto rules(state_t state)
     }
     else
     {
-        return seq::flat_map(block_indexes(depth), [iteration=state.iteration, dt=state.time_step] (auto index)
+        return flat_map(seq::adapt(state.mesh_topology), [iteration=state.iteration, dt=state.time_step] (auto index)
         {
             return seq::from(
                 mhd_rules::recover_primitive   (index, iteration - 1),
@@ -239,9 +234,10 @@ public:
         {
             side_effects.insert(task);
         }
+    }
 
-        graph.collect_garbage();
-
+    void evaluate(std::function<bool(mhd_rules::product_identifier_t)> allow_collection)
+    {
         while (graph.count_unevaluated())
         {
             if (ui::fulfill(ui::action::evaluation_step))
@@ -259,6 +255,8 @@ public:
                         side_effects.erase(key);
                     }
                 }
+
+                graph.collect_garbage(allow_collection);
             }
 
             if (ui::check(ui::action::reset_simulation))
@@ -279,6 +277,11 @@ public:
             }
             ui::draw(ui_state);
         }
+    }
+
+    const DependencyGraph& get_graph() const
+    {
+        return graph;
     }
 
 private:
@@ -307,20 +310,62 @@ private:
 
 
 //=============================================================================
+dimensional::unit_time compute_dt(state_t state, const DependencyGraph& graph)
+{
+    if (long(state.iteration) > 0)
+    {
+        // for (auto index : seq::adapt(state.mesh_topology))
+        // {
+        //     auto key = mhd_rules::key(state.iteration - 1).block(index);
+        //     auto uc = std::get<mhd_scheme_v2::cell_conserved_density_t>    (graph.product_at(key.field(mhd_rules::data_field::cell_conserved_density)));
+        //     auto bf = std::get<mhd_scheme_v2::face_magnetic_flux_density_t>(graph.product_at(key.field(mhd_rules::data_field::face_magnetic_flux_density)));
+        //     mhd_scheme_v2::primitive_array(uc, bf);
+        // }
+        return dimensional::unit_time(0.001);
+    }
+    return dimensional::unit_time(0.0);
+};
+
+
+
+
+auto maintaining(rational::number_t iteration)
+{
+    return [iteration] (mhd_rules::product_identifier_t key)
+    {
+        return ! (
+            std::get<0>(key) == iteration && (
+            std::get<2>(key) == mhd_rules::data_field::cell_conserved_density ||
+            std::get<2>(key) == mhd_rules::data_field::face_magnetic_flux_density));
+    };
+}
+
+
+
+
+//=============================================================================
 int main()
 {
     auto runtime = Runtime();
+    auto batch_count = 3;
 
     do
     {
-        auto simulation = seq::generate(initial_state(), advance);
+        auto state = initial_state();
 
-        for (auto sub_sequence : chunk(simulation, 3))
+        runtime.submit(rules(state), tasks(state));
+        runtime.evaluate(maintaining(state.iteration));
+
+        while (true)
         {
-            auto rule_list = flat_map(sub_sequence, rules);
-            auto task_list = flat_map(sub_sequence, tasks);
+            auto dt = compute_dt(state, runtime.get_graph());
 
-            runtime.submit(rule_list, task_list);
+            for (int i = 0; i < batch_count; ++i)
+            {
+                state = advance(state, dt);
+                runtime.submit(rules(state), tasks(state));
+            }
+            runtime.evaluate(maintaining(state.iteration));
 
             if (ui::fulfill(ui::action::quit))
                 return 0;
