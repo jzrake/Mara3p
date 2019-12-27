@@ -27,6 +27,7 @@
 
 
 #include <ostream>
+#include "core_dimensional.hpp"
 #include "core_geometric.hpp"
 #include "core_ndarray.hpp"
 
@@ -35,6 +36,12 @@
 
 //=============================================================================
 namespace vtk {
+
+
+
+
+//=============================================================================
+using quadratic_cell_t = std::array<int, 4>;
 
 
 
@@ -70,7 +77,7 @@ void column_major_loop(nd::array_t<P, 3> A, FunctionType f)
 
 
 //=============================================================================
-void write_header(std::ostream& os, std::string title, nd::uivec_t<3> vertices_shape)
+void write_structured_grid_header(std::ostream& os, std::string title, nd::uivec_t<3> vertices_shape)
 {
     auto [ni, nj, nk] = vertices_shape.impl;
     os << "# vtk DataFile Version 3.0\n";
@@ -78,6 +85,14 @@ void write_header(std::ostream& os, std::string title, nd::uivec_t<3> vertices_s
     os << "BINARY\n";
     os << "DATASET STRUCTURED_GRID\n";
     os << "DIMENSIONS " << ni << ' ' << nj << ' ' << nk << '\n';
+}
+
+void write_unstructured_grid_header(std::ostream& os, std::string title, nd::uint cell_count)
+{
+    os << "# vtk DataFile Version 3.0\n";
+    os << title << '\n';
+    os << "BINARY\n";
+    os << "DATASET UNSTRUCTURED_GRID\n";
 }
 
 void write_point_data_prelude(std::ostream& os, nd::uivec_t<3> points_shape)
@@ -88,6 +103,11 @@ void write_point_data_prelude(std::ostream& os, nd::uivec_t<3> points_shape)
 void write_cell_data_prelude(std::ostream& os, nd::uivec_t<3> cells_shape)
 {
     os << "CELL_DATA " << product(cells_shape) << '\n';
+}
+
+void write_cell_data_prelude(std::ostream& os, nd::uint cell_count)
+{
+    os << "CELL_DATA " << cell_count << '\n';
 }
 
 
@@ -107,6 +127,44 @@ void write_point_coordinates(std::ostream& os, nd::shared_array<geometric::eucli
     });
 }
 
+template<typename T, typename = std::enable_if_t<sizeof(T) == sizeof(double)>>
+inline void write_point_coordinates(std::ostream& os, nd::shared_array<geometric::euclidean_vector_t<T>, 1> X)
+{
+    os << "POINTS " << size(X) << " double\n";
+
+    for (auto x : X)
+    {
+        write_swapped(os, x.component_1());
+        write_swapped(os, x.component_2());
+        write_swapped(os, x.component_3());
+    }
+}
+
+inline void write_cells(std::ostream& os, nd::shared_array<quadratic_cell_t, 1> X)
+{
+    int num_points_per_cell = 4;
+    int quadratic_cell_type = 9;
+
+    os << "CELLS " << size(X) << " " << size(X) * 5 << '\n';
+
+    for (auto q : X)
+    {
+        write_swapped(os, num_points_per_cell);
+        write_swapped(os, q[0]);
+        write_swapped(os, q[1]);
+        write_swapped(os, q[2]);
+        write_swapped(os, q[3]);
+    }
+
+    os << "CELL_TYPES " << size(X) << '\n';
+
+    for (auto q : X)
+    {
+        (void)q;
+        write_swapped(os, quadratic_cell_type);
+    }
+}
+
 
 
 
@@ -123,8 +181,18 @@ void write_cell_data(std::ostream& os, std::string name, nd::shared_array<T, 3> 
     });
 }
 
+//=============================================================================
+template<typename T, typename = std::enable_if_t<sizeof(T) == sizeof(double)>>
+void write_cell_data(std::ostream& os, std::string name, nd::shared_array<T, 1> A)
+{
+    os << "SCALARS " << name << " double\n";
+    os << "LOOKUP_TABLE default\n";
 
-
+    for (auto a : A)
+    {
+        write_swapped(os, a);
+    }
+}
 
 //=============================================================================
 template<typename T, typename = std::enable_if_t<sizeof(T) == sizeof(double)>>
@@ -152,9 +220,27 @@ void write(std::ostream& os,
 {
     auto [ni, nj, nk] = vertices.shape.impl;
 
-    write_header(os, dataset_name, shape(vertices));
+    write_structured_grid_header(os, dataset_name, shape(vertices));
     write_point_coordinates(os, vertices);
     write_cell_data_prelude(os, {ni - 1, nj - 1, nk - 1});
+    (..., write_cell_data(os, cell_fields.first, cell_fields.second));
+}
+
+
+
+
+//=============================================================================
+template<typename VertexPositionType, typename... CellDataArrayTypes>
+void write(std::ostream& os,
+    const char* dataset_name,
+    nd::shared_array<geometric::euclidean_vector_t<VertexPositionType>, 1> vertices,
+    nd::shared_array<quadratic_cell_t, 1> quads,
+    std::pair<const char*, CellDataArrayTypes>... cell_fields)
+{
+    write_unstructured_grid_header(os, dataset_name, size(quads));
+    write_point_coordinates(os, vertices);
+    write_cells(os, quads);
+    write_cell_data_prelude(os, size(quads));
     (..., write_cell_data(os, cell_fields.first, cell_fields.second));
 }
 
