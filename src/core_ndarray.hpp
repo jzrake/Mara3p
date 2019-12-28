@@ -309,6 +309,11 @@ struct array_t
     template<typename... Args>
     decltype(auto) operator()(Args... index_args) const { return provider(uivec(index_args...)); }
     decltype(auto) operator()(uivec_t<Rank> index) const { return provider(index); }
+
+    template<typename... Args>
+    decltype(auto) operator()(Args... index_args) { return provider(uivec(index_args...)); }
+    decltype(auto) operator()(uivec_t<Rank> index) { return provider(index); }
+
     decltype(auto) data() const { return provider.data(); }
     decltype(auto) data() { return provider.data(); }
 
@@ -350,7 +355,13 @@ auto make_unique_array(uivec_t<Rank> shape)
 {
     auto t = strides_row_major(shape);
     auto p = nd::unique_provider_t<ValueType, Rank>{std::make_unique<nd::buffer_t<ValueType>>(product(shape)), t};
-    return make_array(std::move(p), shape);    
+    return make_array(std::move(p), shape);
+}
+
+template<typename ValueType, uint Rank>
+auto make_shared_array(unique_array<ValueType, Rank>&& array)
+{
+    return nd::make_array(std::move(array.provider).shared(), array.shape);
 }
 
 template<typename ProviderType, uint Rank>
@@ -545,7 +556,7 @@ auto from(Args... args)
     std::common_type_t<Args...> a[] = {args...};
 
     return make_array(
-        [a] (auto i) { return a[get<0>(i)]; },
+        indexing([a] (auto i) { return a[i]; }),
         uivec(sizeof...(Args)));
 }
 
@@ -790,8 +801,24 @@ auto where(array_t<ProviderType, Rank> array)
     return make_array(std::move(p).shared(), uivec(n));
 }
 
-template<typename ProviderType, uint Rank, typename FunctionType>
-auto reduce(array_t<ProviderType, Rank> array, FunctionType function, typename array_t<ProviderType, Rank>::value_type x)
+template<typename ProviderType, uint Rank, typename FunctionType, typename ResultValueType>
+auto scan(array_t<ProviderType, Rank> array, FunctionType function, ResultValueType x)
+{
+    auto p = nd::make_unique_array<ResultValueType, Rank>(nd::uivec(size(array) + 1));
+    auto n = uint(0);
+
+    p(n) = x;
+
+    for (auto y : array)
+    {
+        p(n + 1) = function(p(n), y);
+        ++n;
+    }
+    return make_shared_array(std::move(p));
+}
+
+template<typename ProviderType, uint Rank, typename FunctionType, typename ResultValueType>
+auto reduce(array_t<ProviderType, Rank> array, FunctionType function, ResultValueType x)
 {
     for (auto y : array)
         x = function(x, y);
@@ -801,13 +828,13 @@ auto reduce(array_t<ProviderType, Rank> array, FunctionType function, typename a
 template<typename ProviderType, uint Rank>
 auto sum(array_t<ProviderType, Rank> array)
 {
-    return reduce(array, std::plus<>(), 0);
+    return reduce(array, std::plus<>(), typename array_t<ProviderType, Rank>::value_type(0));
 }
 
 template<typename ProviderType, uint Rank>
 auto product(array_t<ProviderType, Rank> array)
 {
-    return reduce(array, std::multiplies<>(), 1);
+    return reduce(array, std::multiplies<>(), typename array_t<ProviderType, Rank>::value_type(1));
 }
 
 template<typename ProviderType, uint Rank>
