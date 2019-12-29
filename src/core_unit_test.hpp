@@ -61,8 +61,8 @@ void increment_fail_count();
 //=============================================================================
 #define require(expr) \
 do { \
-    if ((expr)) {								\
-        std::cout << '\033' << Green     << "Test passed ... [" << __FILE__ << "] " << #expr << std::endl; \
+    if ((expr)) { \
+        /* std::cout << '\033' << Green     << "Test passed ... [" << __FILE__ << "] " << #expr << std::endl; */ \
         increment_pass_count(); \
     } \
     else { \
@@ -80,6 +80,6 @@ do { \
     } \
     catch (...) { \
         increment_pass_count(); \
-        std::cout << '\033' << Green     << "Test passed ... [" << __FILE__ << "] " << #expr << " [threw]" << std::endl; \
+        /* std::cout << '\033' << Green     << "Test passed ... [" << __FILE__ << "] " << #expr << " [threw]" << std::endl; */ \
     } \
 } while (false)

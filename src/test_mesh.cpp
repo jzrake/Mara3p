@@ -29,6 +29,7 @@
 
 #define DO_UNIT_TESTS
 #include "mesh_cartesian_3d.hpp"
+#include "mesh_sliding.hpp"
 
 
 
@@ -37,5 +38,6 @@
 int test_mesh()
 {
     test_mesh_cartesian_3d();
+    test_mesh_sliding();
     return 0;
 }

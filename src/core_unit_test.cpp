@@ -46,8 +46,8 @@ void start_unit_tests()
 
 void report_test_results()
 {
-    std::cout << std::endl << "===============================================================================" << std::endl;
-    std::cout << NumPassed << " passed" << std::endl;
+    std::cout << '\033' << Blue << "===============================================================================" << std::endl;
+    std::cout << '\033' << BrightGreen << NumPassed << " passed" << std::endl;
 
     if (NumFailed)
         std::cout << '\033' << BrightRed << NumFailed << " failed" << std::endl;        
