@@ -179,6 +179,45 @@ auto construct()
 
 
 /**
+ * @brief      Convert a 1d array of 1d arrays of T into a 1d array of T, by
+ *             joining the arrays end-to-end.
+ *
+ * @param[in]  a          The array of arrays
+ *
+ * @tparam     P          The provider type of a
+ * @tparam     T          The array type held by a
+ * @tparam     <unnamed>  enable-if T is an array
+ * @tparam     <unnamed>  enable-if T has rank 1
+ *
+ * @return     A 1d shared array of value type T
+ */
+template<
+    typename P,
+    typename T = typename nd::array_t<P, 1>::value_type,
+    typename = std::enable_if_t<nd::is_array<T>::value>,
+    typename = std::enable_if_t<nd::array_t<P, 1>::rank == 1>>
+auto flat(nd::array_t<P, 1> a)
+{
+    auto total_cells = map(a, [] (auto ai) { return size(ai); }) | nd::sum();
+    auto result = nd::make_unique_array<typename T::value_type>(nd::uivec(total_cells));
+    auto n = nd::uint(0);
+
+    for (std::size_t i = 0; i < size(a); ++i)
+        for (std::size_t j = 0; j < size(a(i)); ++j)
+            result(n++) = a(i)(j);
+
+    return nd::make_shared_array(std::move(result));
+}
+
+inline auto flat()
+{
+    return [] (auto a) { return flat(a); };
+}
+
+
+
+
+/**
  * @brief      Remove a partition from a pair of bin edges and corresponding
  *             masses. This operation removes the edge at index i, and combines
  *             the masses in bins i - 1 and i. The size of the edge array must

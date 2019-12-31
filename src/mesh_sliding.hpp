@@ -61,10 +61,10 @@ auto merge_sort(nd::array_t<P, 1> L, nd::array_t<P, 1> R)
 {
     using value_type = typename nd::array_t<P, 1>::value_type;
 
-    auto result     = nd::make_unique_array<value_type>(nd::uivec(size(L) + size(R)));
-    auto il         = nd::uint(0);
-    auto ir         = nd::uint(0);
-    auto n          = nd::uint(0);
+    auto result = nd::make_unique_array<value_type>(nd::uivec(size(L) + size(R)));
+    auto il     = nd::uint(0);
+    auto ir     = nd::uint(0);
+    auto n      = nd::uint(0);
 
     while (il < size(L) || ir < size(R))
     {
@@ -154,19 +154,12 @@ auto transverse_faces(nd::array_t<P, 1> L, nd::array_t<P, 1> R)
 
     for (auto [m0, m1] : merge_sort(Lm, Rm) | nd::adjacent_zip())
     {
-        auto [x0, s0] = m0;
-        auto [x1, s1] = m1;
-        auto face = face_type();
-
-        if (s0 == 'L') ++il;
-        if (s0 == 'R') ++ir;
-
-        face.il = check(il, size(L));
-        face.ir = check(ir, size(R));
-        face.trailing = x0;
-        face.leading  = x1;
-
-        result(n++) = face;
+        result(n++) = {
+            check(il += (std::get<1>(m0) == 'L'), size(L)),
+            check(ir += (std::get<1>(m0) == 'R'), size(R)),
+            std::get<0>(m0),
+            std::get<0>(m1),
+        };
     }
     return nd::make_shared_array(std::move(result));
 }
