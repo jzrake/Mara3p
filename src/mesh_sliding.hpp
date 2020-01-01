@@ -49,7 +49,8 @@ auto bin_values(nd::array_t<P, 1> masses, nd::array_t<Q, 1> bin_indexes, unsigne
     {
         if (bin >= num_bins)
         {
-            throw std::out_of_range("mesh::bin_values");
+            continue;
+            // throw std::out_of_range("mesh::bin_values");
         }
         result(bin) = result(bin) + mass;
     }
