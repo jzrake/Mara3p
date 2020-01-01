@@ -327,7 +327,7 @@ inline flux_vector_t flux(primitive_t p, geometric::unit_vector_t nhat, double g
 
 
 //=============================================================================
-inline auto spherical_geometry_source_terms(primitive_t p, unit_length spherical_radius, double polar_angle_theta, double gamma_law_index)
+inline auto spherical_geometry_source_terms(primitive_t p, unit_length spherical_radius, unit_scalar polar_angle_theta, double gamma_law_index)
 {
     auto cotq = std::tan(M_PI_2 - polar_angle_theta);
     auto ur = gamma_beta_1(p);

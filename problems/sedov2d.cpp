@@ -187,7 +187,7 @@ nd::shared_array<radial_track_t, 1> generate_radial_tracks(
 
     return nd::range(track_count) | nd::map([r0, r1, track_count, theta] (nd::uint j) -> radial_track_t
     {
-        auto N = unsigned(std::log10(r1 / r0)) * track_count;
+        auto N = unsigned(std::log10(r1 / r0)) * track_count + 1;
         auto s = j % 2 ? 1.0 : 1.0 + 1.0 / track_count;
 
         auto radii = nd::linspace(std::log10(s * r0.value), std::log10(s * r1.value), N)
@@ -369,23 +369,33 @@ nd::shared_array<polar_godunov_data_t, 1> polar_godunov_data(track_data_t L, tra
  * @return     A shared array of conserved quantity differences
  */
 nd::shared_array<srhd::conserved_t, 1> delta_conserved(radial_track_t track,
+    nd::shared_array<srhd::primitive_t, 1> pc,
     nd::shared_array<radial_godunov_data_t, 1> ff,
     nd::shared_array<polar_godunov_data_t, 1> gfl,
     nd::shared_array<polar_godunov_data_t, 1> gfr,
     dimensional::unit_time dt)
 {
-    auto da = nd::select(radial_face_areas(track), 0, 1, -1);
     auto [fhat, vhat] = nd::unzip(ff);
+    auto da = radial_face_areas(track);
 
     auto df = (fhat * da) | nd::adjacent_diff();
-
     auto [ghat_l, da_l, il_l, ir_l] = nd::unzip(gfl);
     auto [ghat_r, da_r, il_r, ir_r] = nd::unzip(gfr);
-
     auto fp_l = mesh::bin_values(ghat_l * da_l, ir_l, size(df));
     auto fp_r = mesh::bin_values(ghat_r * da_r, il_r, size(df));
 
-    return nd::to_shared((df + fp_l - fp_r) * dt);
+    auto source_terms = util::apply_to(std::bind(
+        srhd::spherical_geometry_source_terms,
+        std::placeholders::_1,
+        std::placeholders::_2,
+        cell_center_theta(track),
+        4. / 3));
+
+    auto sc = nd::zip(pc, cell_center_radii(track))
+    | nd::map(source_terms)
+    | nd::multiply(cell_volumes(track));
+
+    return nd::to_shared((df + fp_l - fp_r ) * dt);
 }
 
 
@@ -405,7 +415,33 @@ nd::shared_array<dimensional::unit_length, 1> delta_face_positions(
     dimensional::unit_time dt)
 {
     auto [fhat, vhat] = nd::unzip(ff);
-    return nd::to_shared(nd::select(vhat, 0, 1, -1) * dt);
+    return nd::to_shared(vhat * dt);
+}
+
+
+
+
+/**
+ * @brief      Extend a radial track and its primitive quantities by one zone in
+ *             the radial direction.
+ *
+ * @param      track  The track to extend
+ * @param      pc     The primitive data
+ *
+ * @return     A pair of extended track and primitive data
+ */
+std::pair<radial_track_t, nd::shared_array<srhd::primitive_t, 1>> extend(
+    radial_track_t track,
+    nd::shared_array<srhd::primitive_t, 1> pc)
+{
+    return {
+        {
+            track.face_radii | nd::extend_extrap() | nd::to_shared(),
+            track.theta0,
+            track.theta1,
+        },
+        pc | nd::extend_zero_gradient() | nd::to_shared(),
+    };
 }
 
 } // namespace sedov
@@ -418,22 +454,28 @@ int main()
 {
     auto num_tracks = 100;
 
-    auto tracks = sedov::generate_radial_tracks(num_tracks, 1.0, 10.0);
+    // initial condition:
+    auto t0 = sedov::generate_radial_tracks(num_tracks, 1.0, 10.0);
+    auto u0 = t0 | nd::map(sedov::generate_conserved);
 
-    auto rc = tracks | nd::map(sedov::cell_center_radii) | nd::flat();
-    auto uc = tracks | nd::map(sedov::generate_conserved);
-    auto pc = nd::zip(tracks, uc) | nd::map(util::apply_to(sedov::recover_primitive));
-    auto dc = nd::zip(tracks, pc) | nd::map(util::apply_to(sedov::radial_gradient));
-    auto ff = nd::zip(tracks, pc, dc) | nd::map(util::apply_to(sedov::radial_godunov_data));
-    auto gf = nd::zip(tracks, pc, dc) | nd::adjacent_zip() | nd::map(util::apply_to(sedov::polar_godunov_data));
+    // time step:
+    auto p0 = nd::zip(t0, u0) | nd::map(util::apply_to(sedov::recover_primitive));
+    auto [te, pc] = nd::unzip(nd::zip(t0, p0) | nd::map(util::apply_to(sedov::extend)));
+
+    auto dc = nd::zip(te, pc) | nd::map(util::apply_to(sedov::radial_gradient));
+    auto ff = nd::zip(te, pc, dc) | nd::map(util::apply_to(sedov::radial_godunov_data));
+    auto gf = nd::zip(te, pc, dc) | nd::adjacent_zip() | nd::map(util::apply_to(sedov::polar_godunov_data));
 
     auto dt = dimensional::unit_time(1.0);
-    auto du = delta_conserved(tracks(0), ff(0), gf(0), gf(1), dt);
+    auto du = sedov::delta_conserved(t0(0), p0(0), ff(0), gf(0), gf(1), dt);
+    auto dr = sedov::delta_face_positions(ff(0), dt);
 
 
-    // auto uc = nd::zip(tracks, pc) | nd::map(util::apply_to(sedov::conserved));
+    u0(0) + du;
+    t0(0).face_radii + dr;
 
-    // auto [vertices, indexes] = sedov::quad_mesh(tracks);
+
+    // auto [vertices, indexes] = sedov::quad_mesh(t0);
     // vtk::write(std::cout, "Grid", vertices, indexes, std::pair("cell radius", rc));
 
 

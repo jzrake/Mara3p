@@ -166,6 +166,18 @@ inline auto extend_zeros(uint axis=0, uint count=1)
     };
 }
 
+inline auto extend_extrap()
+{
+    return [] (auto x)
+    {
+        auto dx_l = x(1) - x(0);
+        auto dx_r = x(size(x) - 1) - x(size(x) - 2);
+        auto xl = x(0)           - dx_l;
+        auto xr = x(size(x) - 1) + dx_r;
+        return from(xl) | concat(x) | concat(from(xr));
+    };
+}
+
 template<typename T>
 auto construct()
 {
