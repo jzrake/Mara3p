@@ -31,7 +31,8 @@ ALL_TARGETS = mara \
 	examples/mhd3d \
 	examples/mhd3d_tbp \
 	examples/task_parallel \
-	problems/sedov
+	problems/sedov \
+	problems/sedov2d
 TARGETS = $(ALL_TARGETS)
 
 
@@ -73,6 +74,9 @@ examples/task_parallel: examples/task_parallel.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 problems/sedov: problems/sedov.o
+	$(CXX) -o $@ $^ $(LDFLAGS)
+
+problems/sedov2d: problems/sedov2d.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 clean:

@@ -43,11 +43,15 @@ namespace mesh {
 template<typename P, typename Q>
 auto bin_values(nd::array_t<P, 1> masses, nd::array_t<Q, 1> bin_indexes, unsigned num_bins)
 {
-    auto result = nd::make_unique_array<nd::array_t<P, 1>::value_type>(nd::uivec(num_bins));
+    auto result = nd::make_unique_array<typename nd::array_t<P, 1>::value_type>(nd::uivec(num_bins));
 
     for (auto [mass, bin] : zip(masses, bin_indexes))
     {
-        result(bin) += mass;
+        if (bin >= num_bins)
+        {
+            throw std::out_of_range("mesh::bin_values");
+        }
+        result(bin) = result(bin) + mass;
     }
     return nd::make_shared_array(std::move(result));
 }
@@ -87,8 +91,8 @@ auto merge_sort(nd::array_t<P, 1> L, nd::array_t<P, 1> R)
 template<typename PositionType>
 struct face_description_t
 {
-    std::optional<unsigned> il; // index of zone on the left
-    std::optional<unsigned> ir; // index of zone on the right
+    std::optional<nd::uint> il; // index of zone on the left
+    std::optional<nd::uint> ir; // index of zone on the right
     PositionType leading;  // coordinate of the vertex at the face's leading edge
     PositionType trailing; // coordinate of the vertex at the face's trailing edge
 };
@@ -143,13 +147,13 @@ auto transverse_faces(nd::array_t<P, 1> L, nd::array_t<P, 1> R)
     auto ir = -1;
     auto n = nd::uint(0);
 
-    auto check = [] (int i, nd::uint size) -> std::optional<unsigned>
+    auto check = [] (int i, nd::uint size) -> std::optional<nd::uint>
     {
         if (i < 0 || i + 1 >= size)
         {
             return std::nullopt;
         }
-        return unsigned(i);
+        return nd::uint(i);
     };
 
     for (auto [m0, m1] : merge_sort(Lm, Rm) | nd::adjacent_zip())
