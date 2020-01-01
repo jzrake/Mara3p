@@ -77,14 +77,14 @@ def plot_variables(ax1, ax2, ax3, filename, edges=False, **kwargs):
     density    = h5f['primitive'][...][:,0]
     gamma_beta = h5f['primitive'][...][:,1]
     pressure   = h5f['primitive'][...][:,4]
-    entropy    = pressure / density**(4./3)
+    # entropy    = pressure / density**(4./3)
 
     ax1.step(vertices[:-1], density, **kwargs)
-    ax2.step(vertices[:-1], entropy, **kwargs)
+    ax2.step(vertices[:-1], pressure, **kwargs)
     ax3.step(vertices[:-1], gamma_beta, **kwargs)
 
-    ax1.plot(vertices[...], 10*vertices[...]**-3)
-    ax1.plot(vertices[...], 10*vertices[...]**-2)
+    # ax1.plot(vertices[...], 10*vertices[...]**-3)
+    # ax1.plot(vertices[...], 10*vertices[...]**-2)
 
     if edges:
         for v in vertices[:-1]:

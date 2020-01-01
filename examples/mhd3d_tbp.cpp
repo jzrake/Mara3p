@@ -28,6 +28,13 @@
 
 #include <iomanip>
 #include <sstream>
+#include "app_hdf5.hpp"
+#include "app_hdf5_dimensional.hpp"
+#include "app_hdf5_geometric.hpp"
+#include "app_hdf5_ndarray.hpp"
+#include "app_hdf5_numeric_array.hpp"
+#include "app_hdf5_ndarray_dimensional.hpp"
+#include "app_hdf5_rational.hpp"
 #include "app_ui.hpp"
 #include "core_dimensional.hpp"
 #include "core_rational.hpp"
@@ -66,8 +73,28 @@
 
 
 using DependencyGraph = mara::DependencyGraph<mhd_rules::product_identifier_t, mhd_rules::product_t>;
-static auto depth = 1;
 static auto block_size = 32;
+
+
+
+
+//=============================================================================
+namespace h5 {
+
+void write(const Group& group, std::string name, const mhd_rules::product_t& product)
+{
+    std::visit([&group, name] (auto p) { write(group, name, p); }, product);
+}
+
+std::string legalize(std::string s)
+{
+    return seq::view(s)
+    | seq::map([] (auto c) { return c == '/' ? '@' : c; })
+    | seq::remove_if([] (auto c) { return c == ' '; })
+    | seq::to<std::basic_string>();
+}
+
+} // namespace h5
 
 
 
