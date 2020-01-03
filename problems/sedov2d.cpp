@@ -26,10 +26,38 @@
 
 
 
+#include <iostream>
 #include <fstream>
+#include "app_config.hpp"
 #include "app_vtk.hpp"
 #include "core_util.hpp"
 #include "scheme_sedov2d.hpp"
+
+
+
+
+//=============================================================================
+auto config_template()
+{
+    return mara::config_template()
+    .item("nr",                   256)   // number of radial zones, per decade
+    .item("tfinal",              10.0)   // time to stop the simulation
+    .item("print",                 10)   // the number of iterations between terminal outputs
+    .item("dfi",                  1.5)   // output interval (constant multiplier)
+    .item("rk_order",               2)   // Runge-Kutta order (1, 2, or 3)
+    .item("cfl",                  0.5)   // courant number
+    .item("mindr",               1e-3)   // minimum cell length to impose in remeshing
+    .item("plm_theta",            1.5)   // PLM parameter
+    .item("router",               1e1)   // outer boundary radius
+    .item("move",                   1)   // whether to move the cells
+    .item("envelop_mdot_index",   4.0)   // alpha in envelop mdot(t) = (t / t0)^alpha
+    .item("envelop_u_index",     0.22)   // psi in envelop u(m) = u1 (m / m1)^(-psi)
+    .item("envelop_u",          10.00)   // maximum gamma-beta in outer envelop
+    .item("engine_mdot",          1e4)   // engine mass rate
+    .item("engine_onset",        50.0)   // the engine onset time [inner boundary light-crossing time]
+    .item("engine_duration",    100.0)   // the engine duration   [inner boundary light-crossing time]
+    .item("engine_u",            10.0);  // the engine gamma-beta
+}
 
 
 
@@ -47,17 +75,22 @@ struct solution_state_t
 
 
 //=============================================================================
-solution_state_t initial_solution()
+solution_state_t initial_solution(const mara::config_t& cfg)
 {
-    auto num_tracks = 20;
-    auto t0 = sedov::generate_radial_tracks(num_tracks, 1.0, 10.0);
-    auto u0 = t0 | nd::map(sedov::generate_conserved) | nd::to_shared();
+    auto r0 = dimensional::unit_length(1.0);
+    auto r1 = r0 * cfg.get_double("router");
+
+    auto num_tracks = cfg.get_int("nr");
+    auto t0 = nd::linspace(0.0, M_PI, num_tracks + 1)
+    | nd::adjacent_zip()
+    | nd::map(util::apply_to(std::bind(sedov::generate_radial_track, r0, r1, std::placeholders::_1, std::placeholders::_2)));
+    auto u0 = t0 | nd::map(sedov::generate_conserved);
 
     return {
         0,
         0.0,
-        t0,
-        u0,
+        nd::to_shared(t0),
+        nd::to_shared(u0),
     };
 }
 
@@ -170,14 +203,23 @@ void output_vtk(solution_state_t solution, unsigned count)
 
 
 //=============================================================================
-int main()
+int main(int argc, const char* argv[])
 {
-    auto dt = dimensional::unit_time(0.001);
-    auto solution = initial_solution();
+    auto cfg = config_template()
+    .create()
+    .update(mara::argv_to_string_map(argc, argv));
+
+    mara::pretty_print(std::cout, "config", cfg);
+
+    auto solution = initial_solution(cfg);
+
+    auto tfinal = dimensional::unit_time(cfg.get_double("tfinal"));
+    auto cfl = cfg.get_double("cfl");
+    auto dt = cfl * nd::min(solution.tracks | nd::map(sedov::minimum_spacing)) / srhd::light_speed;
 
     output_vtk(solution, 0);
 
-    while (long(solution.iteration) < 10)
+    while (solution.time < tfinal)
     {
         std::printf("[%06lu] t=%.4f\n", long(solution.iteration), solution.time.value);
         solution = advance(solution, dt);

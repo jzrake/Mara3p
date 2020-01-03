@@ -60,28 +60,25 @@ dimensional::unit_volume sedov::cell_volume(
 
 
 //=============================================================================
-nd::shared_array<sedov::radial_track_t, 1> sedov::generate_radial_tracks(
-    unsigned track_count,
+sedov::radial_track_t sedov::generate_radial_track(
     dimensional::unit_length r0,
-    dimensional::unit_length r1)
+    dimensional::unit_length r1,
+    dimensional::unit_scalar theta0, 
+    dimensional::unit_scalar theta1)
 {
-    auto theta = nd::linspace(0.0, M_PI, track_count + 1);
+    auto N = unsigned(M_PI / (theta1 - theta0));
+    auto t = 0.5 * (theta0 + theta1);
+    auto s = 1.0 - 0.00 * std::cos(t * 80.0);
 
-    return nd::range(track_count) | nd::map([r0, r1, track_count, theta] (nd::uint j) -> radial_track_t
-    {
-        auto N = unsigned(std::log10(r1 / r0)) * track_count + 1;
-        auto s = j % 2 ? 1.0 : 1.0 + 1.0 / track_count;
+    auto radii = nd::linspace(std::log10(s * r0.value), std::log10(s * r1.value), N)
+    | nd::map([] (double log10r) { return std::pow(10.0, log10r); })
+    | nd::construct<dimensional::unit_length>();
 
-        auto radii = nd::linspace(std::log10(s * r0.value), std::log10(s * r1.value), N)
-        | nd::map([] (double log10r) { return std::pow(10.0, log10r); })
-        | nd::construct<dimensional::unit_length>();
-
-        return {
-            radii | nd::to_shared(),
-            theta(j + 0),
-            theta(j + 1),
-        };
-    }) | nd::to_shared();
+    return {
+        radii | nd::to_shared(),
+        theta0,
+        theta1,
+    };
 }
 
 
@@ -92,7 +89,7 @@ nd::shared_array<srhd::conserved_t, 1> sedov::generate_conserved(radial_track_t 
 {
     auto primitive = [] (dimensional::unit_length r, dimensional::unit_scalar t)
     {
-        return srhd::primitive(1.0 / r.value / r.value, 1.0 / r.value / r.value);
+        return srhd::primitive(1.0, 1.0);
     };
     auto rc = cell_center_radii(track);
     auto tc = cell_center_theta(track);
@@ -146,11 +143,12 @@ nd::shared_array<sedov::radial_godunov_data_t, 1> sedov::radial_godunov_data(
         nd::shared_array<primitive_per_length_t, 1> dc)
 {
     auto nhat = geometric::unit_vector_on(1);
-    auto mode = srhd::riemann_solver_mode_hllc_fluxes_across_contact_t();
+    // auto mode = srhd::riemann_solver_mode_hlle_fluxes_across_contact_t();
+    auto mode = srhd::riemann_solver_mode_hlle_fluxes_t();
 
     auto riemann = [nhat, mode] (srhd::primitive_t pl, srhd::primitive_t pr) -> radial_godunov_data_t
     {
-        return srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);
+        return std::pair(srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode), dimensional::unit_velocity(0.0));
     };
 
     return pc
@@ -184,7 +182,7 @@ nd::shared_array<sedov::polar_godunov_data_t, 1> sedov::polar_godunov_data(track
             auto da = face_area(face(i).trailing, face(i).leading, tl.theta1, tr.theta0);
             return {ff, da, il, ir};
         }
-        return {{}, {}, 0, 0};
+        return {srhd::flux_vector_t(), dimensional::unit_area(0.0), 0, 0};
     }), shape(face))
     | nd::to_shared();
 }
@@ -206,8 +204,9 @@ nd::shared_array<srhd::conserved_t, 1> sedov::delta_conserved(radial_track_t tra
     auto df = (fhat * da) | nd::adjacent_diff();
     auto [ghat_l, da_l, il_l, ir_l] = nd::unzip(gfl);
     auto [ghat_r, da_r, il_r, ir_r] = nd::unzip(gfr);
-    auto fp_l = mesh::bin_values(ghat_l * da_l, ir_l, size(df));
-    auto fp_r = mesh::bin_values(ghat_r * da_r, il_r, size(df));
+    auto gl = mesh::bin_values(ghat_l * da_l, ir_l, size(df));
+    auto gr = mesh::bin_values(ghat_r * da_r, il_r, size(df));
+    auto dg = gr - gl;
 
     auto source_terms = util::apply_to(std::bind(
         srhd::spherical_geometry_source_terms,
@@ -220,7 +219,7 @@ nd::shared_array<srhd::conserved_t, 1> sedov::delta_conserved(radial_track_t tra
     | nd::map(source_terms)
     | nd::multiply(cell_volumes(track));
 
-    return nd::to_shared((df + fp_l - fp_r + sc) * dt);
+    return nd::to_shared((-(df + dg) + sc) * dt);
 }
 
 
@@ -249,6 +248,6 @@ std::pair<sedov::radial_track_t, nd::shared_array<srhd::primitive_t, 1>> sedov::
             track.theta0,
             track.theta1,
         },
-        pc | nd::extend_zero_gradient() | nd::to_shared(),
+        pc | nd::extend_uniform(srhd::primitive(1.0, 1.0)) | nd::to_shared(),
     };
 }

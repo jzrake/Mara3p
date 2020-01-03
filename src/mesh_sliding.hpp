@@ -96,8 +96,8 @@ struct face_description_t
 {
     std::optional<nd::uint> il; // index of zone on the left
     std::optional<nd::uint> ir; // index of zone on the right
-    PositionType leading;  // coordinate of the vertex at the face's leading edge
     PositionType trailing; // coordinate of the vertex at the face's trailing edge
+    PositionType leading;  // coordinate of the vertex at the face's leading edge
 };
 
 

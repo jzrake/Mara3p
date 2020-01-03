@@ -70,19 +70,21 @@ dimensional::unit_volume cell_volume(
 
 
 /**
- * @brief      Convenience function to build an array of radial tracks, evenly
- *             spaced in polar angle from pole to pole.
+ * @brief      Convenience function to build a radial track with logarithmically
+ *             spaced, reasonably isotropic cells.
  *
- * @param      track_count  The number of tracks
- * @param      r0           The inner radius
- * @param      r1           The outer radius
+ * @param      r0      The inner radius
+ * @param      r1      The outer radius
+ * @param[in]  theta0  The lower polar angle
+ * @param[in]  theta1  The upper polar angle
  *
- * @return     A shared array of radial tracks
+ * @return     A radial track
  */
-nd::shared_array<radial_track_t, 1> generate_radial_tracks(
-    unsigned track_count,
+radial_track_t generate_radial_track(
     dimensional::unit_length r0,
-    dimensional::unit_length r1);
+    dimensional::unit_length r1,
+    dimensional::unit_scalar theta0, 
+    dimensional::unit_scalar theta1);
 
 
 
@@ -257,6 +259,11 @@ inline auto cell_center_theta(radial_track_t track)
 inline auto polar_faces(radial_track_t L, radial_track_t R)
 {
     return mesh::transverse_faces(L.face_radii, R.face_radii);
+}
+
+inline auto minimum_spacing(radial_track_t track)
+{
+    return nd::min(track.face_radii | nd::adjacent_diff());
 }
 
 } // namespace sedov
