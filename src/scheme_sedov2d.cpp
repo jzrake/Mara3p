@@ -86,12 +86,13 @@ nd::shared_array<sedov::radial_track_t, 1> sedov::generate_radial_tracks(
 
 
 
+
 //=============================================================================
 nd::shared_array<srhd::conserved_t, 1> sedov::generate_conserved(radial_track_t track)
 {
     auto primitive = [] (dimensional::unit_length r, dimensional::unit_scalar t)
     {
-        return srhd::primitive(1.0, 1.0);
+        return srhd::primitive(1.0 / r.value / r.value, 1.0 / r.value / r.value);
     };
     auto rc = cell_center_radii(track);
     auto tc = cell_center_theta(track);
@@ -219,7 +220,7 @@ nd::shared_array<srhd::conserved_t, 1> sedov::delta_conserved(radial_track_t tra
     | nd::map(source_terms)
     | nd::multiply(cell_volumes(track));
 
-    return nd::to_shared((df + fp_l - fp_r ) * dt);
+    return nd::to_shared((df + fp_l - fp_r + sc) * dt);
 }
 
 
