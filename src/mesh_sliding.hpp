@@ -67,17 +67,19 @@ auto merge_sort(nd::array_t<P, 1> L, nd::array_t<P, 1> R)
     using value_type = typename nd::array_t<P, 1>::value_type;
 
     auto result = nd::make_unique_array<value_type>(nd::uivec(size(L) + size(R)));
-    auto il     = nd::uint(0);
-    auto ir     = nd::uint(0);
-    auto n      = nd::uint(0);
+    auto nr = size(R);
+    auto nl = size(L);
+    auto il = nd::uint(0);
+    auto ir = nd::uint(0);
+    auto n  = nd::uint(0);
 
-    while (il < size(L) || ir < size(R))
+    while (il < nl || ir < nr)
     {
-        if (ir == size(R) || L(il) <= R(ir))
+        if (il < nl && (ir == nr || L(il) <= R(ir)))
         {
             result(n++) = L(il++);
         }
-        if (il == size(L) || R(ir) <= L(il))
+        if (ir < nr && (il == nl || R(ir) <= L(il)))
         {
             result(n++) = R(ir++);
         }
@@ -119,7 +121,7 @@ struct face_description_t
 template<typename P>
 auto transverse_faces(nd::array_t<P, 1> L, nd::array_t<P, 1> R)
 {
-    /*                 
+    /*
      *
      *             |   x---|
      *             |   |   |  ]- transverse face [null / 3]
