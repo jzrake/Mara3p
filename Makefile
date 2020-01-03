@@ -76,7 +76,7 @@ examples/task_parallel: examples/task_parallel.o
 problems/sedov: problems/sedov.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
-problems/sedov2d: problems/sedov2d.o
+problems/sedov2d: problems/sedov2d.o src/scheme_sedov2d.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 clean:
