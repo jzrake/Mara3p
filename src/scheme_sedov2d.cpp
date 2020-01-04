@@ -158,6 +158,7 @@ nd::shared_array<sedov::radial_godunov_data_t, 1> sedov::radial_godunov_data(
     return pc
     | nd::adjacent_zip()
     | nd::map(util::apply_to(riemann))
+    | nd::extend_zero_gradient()
     | nd::to_shared();
 }
 

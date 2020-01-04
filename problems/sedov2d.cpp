@@ -33,8 +33,6 @@
 #include "core_util.hpp"
 #include "scheme_sedov2d.hpp"
 
-using namespace std::placeholders;
-
 
 
 
@@ -79,6 +77,8 @@ struct solution_state_t
 //=============================================================================
 solution_state_t initial_solution(const mara::config_t& cfg)
 {
+    using namespace std::placeholders;
+
     auto r0 = dimensional::unit_length(1.0);
     auto r1 = r0 * cfg.get_double("router");
 
@@ -102,24 +102,25 @@ solution_state_t initial_solution(const mara::config_t& cfg)
 //=============================================================================
 solution_state_t advance(solution_state_t solution, dimensional::unit_time dt)
 {
-    auto t0 = solution.tracks;
-    auto u0 = solution.conserved;
+    using namespace std::placeholders;
 
-    auto p0 = nd::zip(t0, u0)                 | nd::map(util::apply_to(sedov::recover_primitive));
-    auto [te, pc] = nd::unzip(nd::zip(t0, p0) | nd::map(util::apply_to(sedov::extend)));
-    auto dc = nd::zip(te, pc)                 | nd::map(util::apply_to(sedov::radial_gradient));
-    auto ff = nd::zip(te, pc, dc)             | nd::map(util::apply_to(sedov::radial_godunov_data));
-    auto gf = nd::zip(t0, p0, dc)
+    auto t0 = solution.tracks;
+    auto uc = solution.conserved;
+
+    auto pc = nd::zip(t0, uc)     | nd::map(util::apply_to(sedov::recover_primitive));
+    auto dc = nd::zip(t0, pc)     | nd::map(util::apply_to(sedov::radial_gradient));
+    auto ff = nd::zip(t0, pc, dc) | nd::map(util::apply_to(sedov::radial_godunov_data));
+    auto dr = ff                  | nd::map(std::bind(sedov::delta_face_positions, _1, dt));
+
+    auto gf = nd::zip(t0, pc, dc)
     | nd::adjacent_zip()
     | nd::map(util::apply_to(sedov::polar_godunov_data))
-    | nd::extend_uniform(nd::shared_array<sedov::polar_godunov_data_t, 1>{})
-    | nd::to_shared();
+    | nd::extend_uniform(nd::shared_array<sedov::polar_godunov_data_t, 1>{});
 
-    auto dr = ff | nd::map(std::bind(sedov::delta_face_positions, _1, dt));
-    auto du = nd::range(size(u0))
-    | nd::map([t0, p0, ff, gf, dt] (nd::uint j)
+    auto du = nd::range(size(uc))
+    | nd::map([t0, pc, ff, gf, dt] (nd::uint j)
     {
-        return sedov::delta_conserved(t0(j), p0(j), ff(j), gf(j), gf(j + 1), dt);
+        return sedov::delta_conserved(t0(j), pc(j), ff(j), gf(j), gf(j + 1), dt);
     });
 
     auto t1 = nd::zip(t0, dr) | nd::map(util::apply_to([] (auto track, auto dr)
@@ -129,18 +130,18 @@ solution_state_t advance(solution_state_t solution, dimensional::unit_time dt)
             track.theta0,
             track.theta1,
         };
-    })) | nd::to_shared();
+    }));
 
-    auto u1 = nd::zip(u0, du) | nd::map(util::apply_to([] (auto u0, auto du)
+    auto u1 = nd::zip(uc, du) | nd::map(util::apply_to([] (auto uc, auto du)
     {
-        return nd::to_shared(u0 + du);
-    })) | nd::to_shared();
+        return nd::to_shared(uc + du);
+    }));
 
     return {
         solution.iteration + 1,
         solution.time + dt,
-        t1,
-        u1,
+        t1 | nd::to_shared(),
+        u1 | nd::to_shared(),
     };
 }
 
