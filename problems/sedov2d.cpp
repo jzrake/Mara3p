@@ -33,6 +33,8 @@
 #include "core_util.hpp"
 #include "scheme_sedov2d.hpp"
 
+using namespace std::placeholders;
+
 
 
 
@@ -83,7 +85,7 @@ solution_state_t initial_solution(const mara::config_t& cfg)
     auto num_tracks = cfg.get_int("nr");
     auto t0 = nd::linspace(0.0, M_PI, num_tracks + 1)
     | nd::adjacent_zip()
-    | nd::map(util::apply_to(std::bind(sedov::generate_radial_track, r0, r1, std::placeholders::_1, std::placeholders::_2)));
+    | nd::map(util::apply_to(std::bind(sedov::generate_radial_track, r0, r1, _1, _2)));
     auto u0 = t0 | nd::map(sedov::generate_conserved);
 
     return {
@@ -103,17 +105,17 @@ solution_state_t advance(solution_state_t solution, dimensional::unit_time dt)
     auto t0 = solution.tracks;
     auto u0 = solution.conserved;
 
-    auto p0 = nd::zip(t0, u0) | nd::map(util::apply_to(sedov::recover_primitive));
+    auto p0 = nd::zip(t0, u0)                 | nd::map(util::apply_to(sedov::recover_primitive));
     auto [te, pc] = nd::unzip(nd::zip(t0, p0) | nd::map(util::apply_to(sedov::extend)));
-    auto dc = nd::zip(te, pc) | nd::map(util::apply_to(sedov::radial_gradient));
-    auto ff = nd::zip(te, pc, dc) | nd::map(util::apply_to(sedov::radial_godunov_data));
-    auto gf = nd::zip(te, pc, dc)
+    auto dc = nd::zip(te, pc)                 | nd::map(util::apply_to(sedov::radial_gradient));
+    auto ff = nd::zip(te, pc, dc)             | nd::map(util::apply_to(sedov::radial_godunov_data));
+    auto gf = nd::zip(t0, p0, dc)
     | nd::adjacent_zip()
     | nd::map(util::apply_to(sedov::polar_godunov_data))
     | nd::extend_uniform(nd::shared_array<sedov::polar_godunov_data_t, 1>{})
     | nd::to_shared();
 
-    auto dr = ff | nd::map(std::bind(sedov::delta_face_positions, std::placeholders::_1, dt));
+    auto dr = ff | nd::map(std::bind(sedov::delta_face_positions, _1, dt));
     auto du = nd::range(size(u0))
     | nd::map([t0, p0, ff, gf, dt] (nd::uint j)
     {

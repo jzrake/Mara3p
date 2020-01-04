@@ -68,11 +68,14 @@ sedov::radial_track_t sedov::generate_radial_track(
 {
     auto N = unsigned(M_PI / (theta1 - theta0));
     auto t = 0.5 * (theta0 + theta1);
-    auto s = 1.0 - 0.00 * std::cos(t * 80.0);
+    auto s = 0.2 * std::pow(std::cos(t * 10.0), 2.0);
 
-    auto radii = nd::linspace(std::log10(s * r0.value), std::log10(s * r1.value), N)
-    | nd::map([] (double log10r) { return std::pow(10.0, log10r); })
-    | nd::construct<dimensional::unit_length>();
+    auto radii = nd::linspace(std::log10(r0.value), std::log10(r1.value), N)
+    | nd::map([s, r0, r1] (double log10r)
+    {
+        auto r = dimensional::unit_length(std::pow(10.0, log10r));
+        return r * (1.0 + (r / r0 - 1.0) * (r / r1 - 1.0) * s);
+    });
 
     return {
         radii | nd::to_shared(),
@@ -143,12 +146,13 @@ nd::shared_array<sedov::radial_godunov_data_t, 1> sedov::radial_godunov_data(
         nd::shared_array<primitive_per_length_t, 1> dc)
 {
     auto nhat = geometric::unit_vector_on(1);
-    // auto mode = srhd::riemann_solver_mode_hlle_fluxes_across_contact_t();
-    auto mode = srhd::riemann_solver_mode_hlle_fluxes_t();
+    auto mode = srhd::riemann_solver_mode_hllc_fluxes_across_contact_t();
+    // auto mode = srhd::riemann_solver_mode_hllc_fluxes_t();
 
     auto riemann = [nhat, mode] (srhd::primitive_t pl, srhd::primitive_t pr) -> radial_godunov_data_t
     {
-        return std::pair(srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode), dimensional::unit_velocity(0.0));
+        return srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);
+        // return std::pair(srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode), dimensional::unit_velocity(0.0));
     };
 
     return pc
