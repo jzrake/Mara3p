@@ -88,12 +88,8 @@ sedov::radial_track_t sedov::generate_radial_track(
 
 
 //=============================================================================
-nd::shared_array<srhd::conserved_t, 1> sedov::generate_conserved(radial_track_t track)
+nd::shared_array<srhd::conserved_t, 1> sedov::generate_conserved(radial_track_t track, primitive_function_t primitive)
 {
-    auto primitive = [] (dimensional::unit_length r, dimensional::unit_scalar t)
-    {
-        return srhd::primitive(1.0, 1.0);
-    };
     auto rc = cell_center_radii(track);
     auto tc = cell_center_theta(track);
     auto dv = cell_volumes(track);
@@ -143,22 +139,23 @@ nd::shared_array<sedov::primitive_per_length_t, 1> sedov::radial_gradient(
 nd::shared_array<sedov::radial_godunov_data_t, 1> sedov::radial_godunov_data(
         radial_track_t track,
         nd::shared_array<srhd::primitive_t, 1> pc,
-        nd::shared_array<primitive_per_length_t, 1> dc)
+        nd::shared_array<primitive_per_length_t, 1> dc,
+        radial_godunov_data_t inner_boundary_data,
+        radial_godunov_data_t outer_boundary_data)
 {
     auto nhat = geometric::unit_vector_on(1);
     auto mode = srhd::riemann_solver_mode_hllc_fluxes_across_contact_t();
-    // auto mode = srhd::riemann_solver_mode_hllc_fluxes_t();
 
     auto riemann = [nhat, mode] (srhd::primitive_t pl, srhd::primitive_t pr) -> radial_godunov_data_t
     {
         return srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);
-        // return std::pair(srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode), dimensional::unit_velocity(0.0));
     };
 
     return pc
     | nd::adjacent_zip()
     | nd::map(util::apply_to(riemann))
-    | nd::extend_zero_gradient()
+    | nd::extend_uniform_lower(inner_boundary_data)
+    | nd::extend_uniform_upper(outer_boundary_data)
     | nd::to_shared();
 }
 

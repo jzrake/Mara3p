@@ -74,6 +74,17 @@ struct solution_state_t
 
 
 
+srhd::primitive_t initial_primitive(dimensional::unit_length r, dimensional::unit_scalar q, dimensional::unit_time t)
+{
+    auto r0 = dimensional::unit_length(1.0);
+    auto d0 = dimensional::unit_mass_density(std::pow(r / r0, -2.0));
+    auto c2 = srhd::light_speed * srhd::light_speed;
+    return srhd::primitive(d0, 0.01 * d0 * c2);
+}
+
+
+
+
 //=============================================================================
 solution_state_t initial_solution(const mara::config_t& cfg)
 {
@@ -81,19 +92,42 @@ solution_state_t initial_solution(const mara::config_t& cfg)
 
     auto r0 = dimensional::unit_length(1.0);
     auto r1 = r0 * cfg.get_double("router");
+    auto p0 = [] (dimensional::unit_length r, dimensional::unit_scalar q) -> srhd::primitive_t
+    {
+        auto t0 = dimensional::unit_time(0.0);
+        return initial_primitive(r, q, t0);
+    };
 
     auto num_tracks = cfg.get_int("nr");
-    auto t0 = nd::linspace(0.0, M_PI, num_tracks + 1)
+    auto tr = nd::linspace(0.0, M_PI, num_tracks + 1)
     | nd::adjacent_zip()
     | nd::map(util::apply_to(std::bind(sedov::generate_radial_track, r0, r1, _1, _2)));
-    auto u0 = t0 | nd::map(sedov::generate_conserved);
+    auto u0 = tr | nd::map(std::bind(sedov::generate_conserved, _1, p0));
 
     return {
         0,
         0.0,
-        nd::to_shared(t0),
+        nd::to_shared(tr),
         nd::to_shared(u0),
     };
+}
+
+sedov::radial_godunov_data_t inner_bc(sedov::radial_track_t track, nd::shared_array<srhd::primitive_t, 1> pc, dimensional::unit_time t)
+{
+    auto mode = srhd::riemann_solver_mode_hllc_fluxes_across_contact_t();
+    auto nhat = geometric::unit_vector_on(1);
+    auto pl = initial_primitive(front(track.face_radii), cell_center_theta(track), t);
+    auto pr = front(pc);
+    return srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);
+}
+
+sedov::radial_godunov_data_t outer_bc(sedov::radial_track_t track, nd::shared_array<srhd::primitive_t, 1> pc, dimensional::unit_time t)
+{
+    auto mode = srhd::riemann_solver_mode_hllc_fluxes_across_contact_t();
+    auto nhat = geometric::unit_vector_on(1);
+    auto pl = back(pc);
+    auto pr = initial_primitive(back(track.face_radii), cell_center_theta(track), t);
+    return srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);
 }
 
 
@@ -106,11 +140,12 @@ solution_state_t advance(solution_state_t solution, dimensional::unit_time dt)
 
     auto t0 = solution.tracks;
     auto uc = solution.conserved;
-
-    auto pc = nd::zip(t0, uc)     | nd::map(util::apply_to(sedov::recover_primitive));
-    auto dc = nd::zip(t0, pc)     | nd::map(util::apply_to(sedov::radial_gradient));
-    auto ff = nd::zip(t0, pc, dc) | nd::map(util::apply_to(sedov::radial_godunov_data));
-    auto dr = ff                  | nd::map(std::bind(sedov::delta_face_positions, _1, dt));
+    auto pc = nd::zip(t0, uc)             | nd::map(util::apply_to(sedov::recover_primitive));
+    auto fi = nd::zip(t0, pc)             | nd::map(util::apply_to(std::bind(inner_bc, _1, _2, solution.time)));
+    auto fo = nd::zip(t0, pc)             | nd::map(util::apply_to(std::bind(outer_bc, _1, _2, solution.time)));
+    auto dc = nd::zip(t0, pc)             | nd::map(util::apply_to(sedov::radial_gradient));
+    auto ff = nd::zip(t0, pc, dc, fi, fo) | nd::map(util::apply_to(sedov::radial_godunov_data));
+    auto dr = ff                          | nd::map(std::bind(sedov::delta_face_positions, _1, dt));
 
     auto gf = nd::zip(t0, pc, dc)
     | nd::adjacent_zip()
@@ -152,8 +187,8 @@ solution_state_t advance(solution_state_t solution, dimensional::unit_time dt)
 auto quad_mesh(nd::shared_array<sedov::radial_track_t, 1> tracks)
 {
     using vec3d = geometric::euclidean_vector_t<dimensional::unit_length>;
-    auto total_cells = tracks | nd::map([] (auto track) { return size(track.face_radii) - 1; }) | nd::sum();
 
+    auto total_cells = tracks | nd::map([] (auto track) { return size(track.face_radii) - 1; }) | nd::sum();
     auto vertices = nd::make_unique_array<vec3d>(nd::uivec(total_cells * 4));
     auto n = nd::uint(0);
 
@@ -216,9 +251,9 @@ int main(int argc, const char* argv[])
 
     auto solution = initial_solution(cfg);
 
-    auto tfinal = dimensional::unit_time(cfg.get_double("tfinal"));
-    auto cfl = cfg.get_double("cfl");
-    auto dt = cfl * nd::min(solution.tracks | nd::map(sedov::minimum_spacing)) / srhd::light_speed;
+    auto tfinal = dimensional::unit_time  (cfg.get_double("tfinal"));
+    auto cfl    = dimensional::unit_scalar(cfg.get_double("cfl"));
+    auto dt     = cfl * nd::min(solution.tracks | nd::map(sedov::minimum_spacing)) / srhd::light_speed;
 
     output_vtk(solution, 0);
 

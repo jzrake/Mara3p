@@ -53,6 +53,7 @@ using primitive_per_scalar_t = decltype(srhd::primitive_t() / dimensional::unit_
 using radial_godunov_data_t  = std::tuple<srhd::flux_vector_t, dimensional::unit_velocity>;
 using polar_godunov_data_t   = std::tuple<srhd::flux_vector_t, dimensional::unit_area, nd::uint, nd::uint>;
 using track_data_t           = std::tuple<radial_track_t, nd::shared_array<srhd::primitive_t, 1>, nd::shared_array<primitive_per_length_t, 1>>;
+using primitive_function_t   = std::function<srhd::primitive_t(dimensional::unit_length, dimensional::unit_scalar)>;
 
 
 
@@ -92,11 +93,12 @@ radial_track_t generate_radial_track(
 /**
  * @brief      Return an array of conserved quantities in the given track
  *
- * @param      track  The radial track itself (geometric data)
+ * @param      track      The radial track itself (geometric data)
+ * @param[in]  primitive  A mapping (r, theta) -> primitive
  *
  * @return     A shared array of conserved data
  */
-nd::shared_array<srhd::conserved_t, 1> generate_conserved(radial_track_t track);
+nd::shared_array<srhd::conserved_t, 1> generate_conserved(radial_track_t track, primitive_function_t primitive);
 
 
 
@@ -150,7 +152,9 @@ nd::shared_array<primitive_per_length_t, 1> radial_gradient(
 nd::shared_array<radial_godunov_data_t, 1> radial_godunov_data(
         radial_track_t track,
         nd::shared_array<srhd::primitive_t, 1> pc,
-        nd::shared_array<primitive_per_length_t, 1> dc);
+        nd::shared_array<primitive_per_length_t, 1> dc,
+        radial_godunov_data_t inner_boundary_data,
+        radial_godunov_data_t outer_boundary_data);
 
 
 
