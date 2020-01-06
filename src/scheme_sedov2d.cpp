@@ -240,16 +240,20 @@ nd::shared_array<dimensional::unit_length, 1> sedov::delta_face_positions(
 
 
 //=============================================================================
-std::pair<sedov::radial_track_t, nd::shared_array<srhd::primitive_t, 1>> sedov::extend(
+std::pair<sedov::radial_track_t, nd::shared_array<srhd::conserved_t, 1>> sedov::refine(
     radial_track_t track,
-    nd::shared_array<srhd::primitive_t, 1> pc)
+    nd::shared_array<srhd::conserved_t, 1> uc,
+    dimensional::unit_scalar maximum_cell_aspect_ratio)
 {
-    return {
-        {
-            track.face_radii | nd::extend_extrap() | nd::to_shared(),
-            track.theta0,
-            track.theta1,
-        },
-        pc | nd::extend_uniform(srhd::primitive(1.0, 1.0)) | nd::to_shared(),
-    };
+    auto rc = track.face_radii | nd::adjacent_mean();
+    auto dr = track.face_radii | nd::adjacent_diff();
+    auto ds = rc * (track.theta1 - track.theta0);
+    auto aspect = dr / ds;
+    auto imax = nd::argmax(aspect)[0];
+
+    if (aspect(imax) > maximum_cell_aspect_ratio)
+    {
+        std::tie(track.face_radii, uc) = nd::add_partition(track.face_radii, uc, imax);
+    }
+    return std::pair(track, uc);
 }

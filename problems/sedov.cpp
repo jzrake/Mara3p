@@ -244,8 +244,8 @@ solution_t remove_smallest_cell(const mara::config_t& run_config, solution_t sol
         return {
             solution.iteration,
             solution.time,
-            x1 | nd::to_shared(),
-            u1 | nd::to_shared(),
+            x1,
+            u1,
         };
     }
     return solution;

@@ -256,11 +256,13 @@ auto remove_partition(array_t<ProviderType1, 1> edge_array, array_t<ProviderType
         throw std::out_of_range("nd::remove_partition (edge_index out of range)");
 
     auto new_edge_array = select(edge_array, 0, 0, edge_index)
-    | concat(select(edge_array, 0, edge_index + 1));
+    | concat(select(edge_array, 0, edge_index + 1))
+    | nd::to_shared();
 
     auto new_mass_array = select(mass_array, 0, 0, edge_index - 1)
     | concat(nd::from(mass_array(edge_index - 1) + mass_array(edge_index)))
-    | concat(select(mass_array, 0, edge_index + 1));
+    | concat(select(mass_array, 0, edge_index + 1))
+    | nd::to_shared();
 
     return std::pair(new_edge_array, new_mass_array);
 }
@@ -293,11 +295,14 @@ auto add_partition(array_t<ProviderType1, 1> edge_array, array_t<ProviderType2, 
 
     auto new_edge_array = select(edge_array, 0, 0, bin_index + 1)
     | concat(nd::from(0.5 * (edge_array(bin_index) + edge_array(bin_index + 1))))
-    | concat(select(edge_array, 0, bin_index + 1));
+    | concat(select(edge_array, 0, bin_index + 1))
+    | nd::to_shared();
+
 
     auto new_mass_array = select(mass_array, 0, 0, bin_index)
     | concat(nd::from(0.5 * mass_array(bin_index), 0.5 * mass_array(bin_index)))
-    | concat(select(mass_array, 0, bin_index + 1));
+    | concat(select(mass_array, 0, bin_index + 1))
+    | nd::to_shared();
 
     return std::pair(new_edge_array, new_mass_array);
 }

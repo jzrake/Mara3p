@@ -79,7 +79,7 @@ srhd::primitive_t initial_primitive(dimensional::unit_length r, dimensional::uni
     auto r0 = dimensional::unit_length(1.0);
     auto d0 = dimensional::unit_mass_density(std::pow(r / r0, -2.0));
     auto c2 = srhd::light_speed * srhd::light_speed;
-    return srhd::primitive(d0, 0.01 * d0 * c2);
+    return srhd::primitive(d0, 0.1, 0.0, 0.0, 1e-6 * d0 * c2);
 }
 
 
@@ -114,11 +114,12 @@ solution_state_t initial_solution(const mara::config_t& cfg)
 
 sedov::radial_godunov_data_t inner_bc(sedov::radial_track_t track, nd::shared_array<srhd::primitive_t, 1> pc, dimensional::unit_time t)
 {
-    auto mode = srhd::riemann_solver_mode_hllc_fluxes_across_contact_t();
+    auto vel = dimensional::unit_velocity(0.0);
+    auto mode = srhd::riemann_solver_mode_hllc_fluxes_moving_face_t{vel};
     auto nhat = geometric::unit_vector_on(1);
     auto pl = initial_primitive(front(track.face_radii), cell_center_theta(track), t);
     auto pr = front(pc);
-    return srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);
+    return std::pair(srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode), vel);
 }
 
 sedov::radial_godunov_data_t outer_bc(sedov::radial_track_t track, nd::shared_array<srhd::primitive_t, 1> pc, dimensional::unit_time t)
@@ -128,6 +129,18 @@ sedov::radial_godunov_data_t outer_bc(sedov::radial_track_t track, nd::shared_ar
     auto pl = back(pc);
     auto pr = initial_primitive(back(track.face_radii), cell_center_theta(track), t);
     return srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);
+}
+
+solution_state_t remesh(solution_state_t solution)
+{
+    using namespace std::placeholders;
+
+    auto t0 = solution.tracks;
+    auto uc = solution.conserved;
+
+    auto [t1, u1] = nd::unzip(nd::zip(t0, uc) | nd::map(util::apply_to(std::bind(sedov::refine, _1, _2, dimensional::unit_scalar(1.33)))));
+
+    return {solution.iteration, solution.time, t1|nd::to_shared(), u1|nd::to_shared()};
 }
 
 
@@ -172,12 +185,12 @@ solution_state_t advance(solution_state_t solution, dimensional::unit_time dt)
         return nd::to_shared(uc + du);
     }));
 
-    return {
+    return remesh({
         solution.iteration + 1,
         solution.time + dt,
         t1 | nd::to_shared(),
         u1 | nd::to_shared(),
-    };
+    });
 }
 
 
@@ -255,14 +268,20 @@ int main(int argc, const char* argv[])
     auto cfl    = dimensional::unit_scalar(cfg.get_double("cfl"));
     auto dt     = cfl * nd::min(solution.tracks | nd::map(sedov::minimum_spacing)) / srhd::light_speed;
 
-    output_vtk(solution, 0);
+    auto vtk_count = 0;
+    output_vtk(solution, vtk_count);
 
     while (solution.time < tfinal)
     {
         std::printf("[%06lu] t=%.4f\n", long(solution.iteration), solution.time.value);
         solution = advance(solution, dt);
+
+        if (long(solution.iteration) % 5 == 0)
+        {
+            output_vtk(solution, vtk_count++);            
+        }
     }
-    output_vtk(solution, 1);
+    output_vtk(solution, vtk_count);
 
     return 0;
 }

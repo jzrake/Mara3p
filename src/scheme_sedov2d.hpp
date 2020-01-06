@@ -218,14 +218,16 @@ nd::shared_array<dimensional::unit_length, 1> delta_face_positions(
  * @brief      Extend a radial track and its primitive quantities by one zone in
  *             the radial direction.
  *
- * @param      track  The track to extend
- * @param      pc     The primitive data
+ * @param[in]  track                      The track
+ * @param[in]  uc                         { parameter_description }
+ * @param[in]  maximum_cell_aspect_ratio  The maximum cell aspect ratio
  *
- * @return     A pair of extended track and primitive data
+ * @return     A pair of extended track and conserved data
  */
-std::pair<radial_track_t, nd::shared_array<srhd::primitive_t, 1>> extend(
+std::pair<radial_track_t, nd::shared_array<srhd::conserved_t, 1>> refine(
     radial_track_t track,
-    nd::shared_array<srhd::primitive_t, 1> pc);
+    nd::shared_array<srhd::conserved_t, 1> uc,
+    dimensional::unit_scalar maximum_cell_aspect_ratio);
 
 
 
