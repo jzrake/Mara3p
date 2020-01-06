@@ -46,7 +46,6 @@ auto config_template()
     .item("dfi",                  1.5)   // output interval (constant multiplier)
     .item("rk_order",               2)   // Runge-Kutta order (1, 2, or 3)
     .item("cfl",                  0.5)   // courant number
-    .item("mindr",               1e-3)   // minimum cell length to impose in remeshing
     .item("plm_theta",            1.5)   // PLM parameter
     .item("router",               1e1)   // outer boundary radius
     .item("move",                   1)   // whether to move the cells
@@ -79,7 +78,8 @@ srhd::primitive_t initial_primitive(dimensional::unit_length r, dimensional::uni
     auto r0 = dimensional::unit_length(1.0);
     auto d0 = dimensional::unit_mass_density(std::pow(r / r0, -2.0));
     auto c2 = srhd::light_speed * srhd::light_speed;
-    return srhd::primitive(d0, 0.1, 0.0, 0.0, 1e-6 * d0 * c2);
+    auto ur = 0.1 + 0.2 * (std::pow(std::cos(q), 2) + std::pow(std::cos(M_PI - q), 2));
+    return srhd::primitive(d0, ur, 0.0, 0.0, 1e-6 * d0 * c2);
 }
 
 
@@ -94,8 +94,7 @@ solution_state_t initial_solution(const mara::config_t& cfg)
     auto r1 = r0 * cfg.get_double("router");
     auto p0 = [] (dimensional::unit_length r, dimensional::unit_scalar q) -> srhd::primitive_t
     {
-        auto t0 = dimensional::unit_time(0.0);
-        return initial_primitive(r, q, t0);
+        return initial_primitive(r, q, 0.0);
     };
 
     auto num_tracks = cfg.get_int("nr");
@@ -276,12 +275,10 @@ int main(int argc, const char* argv[])
         std::printf("[%06lu] t=%.4f\n", long(solution.iteration), solution.time.value);
         solution = advance(solution, dt);
 
-        if (long(solution.iteration) % 5 == 0)
+        if (long(solution.iteration) % 1 == 0)
         {
             output_vtk(solution, vtk_count++);            
         }
     }
-    output_vtk(solution, vtk_count);
-
     return 0;
 }

@@ -91,11 +91,11 @@ sedov::radial_track_t sedov::generate_radial_track(
 nd::shared_array<srhd::conserved_t, 1> sedov::generate_conserved(radial_track_t track, primitive_function_t primitive)
 {
     auto rc = cell_center_radii(track);
-    auto tc = cell_center_theta(track);
+    auto qc = cell_center_theta(track);
     auto dv = cell_volumes(track);
 
     return rc
-    | nd::map(std::bind(primitive, std::placeholders::_1, tc))
+    | nd::map(std::bind(primitive, std::placeholders::_1, qc))
     | nd::map(std::bind(srhd::conserved_density, std::placeholders::_1, 4. / 3))
     | nd::multiply(dv)
     | nd::to_shared();
@@ -151,8 +151,11 @@ nd::shared_array<sedov::radial_godunov_data_t, 1> sedov::radial_godunov_data(
         return srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);
     };
 
-    return pc
-    | nd::adjacent_zip()
+    auto dr = track.face_radii | nd::adjacent_diff();
+    auto pl = select(pc + 0.5 * dc * dr, 0, 0, -1);
+    auto pr = select(pc - 0.5 * dc * dr, 0, 1);
+
+    return nd::zip(pl, pr)
     | nd::map(util::apply_to(riemann))
     | nd::extend_uniform_lower(inner_boundary_data)
     | nd::extend_uniform_upper(outer_boundary_data)
@@ -169,18 +172,27 @@ nd::shared_array<sedov::polar_godunov_data_t, 1> sedov::polar_godunov_data(track
     auto tr = std::get<0>(R);
     auto pl = std::get<1>(L);
     auto pr = std::get<1>(R);
+    auto dl = std::get<2>(L);
+    auto dr = std::get<2>(R);
 
     auto nhat = geometric::unit_vector_on(2);
     auto mode = srhd::riemann_solver_mode_hllc_fluxes_t();
     auto face = polar_faces(tl, tr);
 
-    return nd::make_array(nd::indexing([tl, tr, pl, pr, face, nhat, mode] (nd::uint i) -> polar_godunov_data_t
+    return nd::make_array(nd::indexing([tl, tr, pl, pr, dl, dr, face, nhat, mode] (nd::uint i) -> polar_godunov_data_t
     {
         if (face(i).il && face(i).ir)
         {
             auto il = face(i).il.value();
             auto ir = face(i).ir.value();
-            auto ff = srhd::riemann_solver(pl(il), pr(ir), nhat, 4. / 3, mode);
+
+            auto rtl = 0.5 * (tl.face_radii(il) + tl.face_radii(il + 1));
+            auto rtr = 0.5 * (tr.face_radii(ir) + tr.face_radii(ir + 1));
+            auto rf_ = 0.5 * (face(i).leading + face(i).trailing);
+            auto pl_ = pl(il) + dl(il) * (rf_ - rtl);
+            auto pr_ = pr(ir) + dr(ir) * (rf_ - rtr);
+
+            auto ff = srhd::riemann_solver(pl_, pr_, nhat, 4. / 3, mode);
             auto da = face_area(face(i).trailing, face(i).leading, tl.theta1, tr.theta0);
             return {ff, da, il, ir};
         }
