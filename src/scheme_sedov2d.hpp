@@ -165,12 +165,18 @@ nd::shared_array<radial_godunov_data_t, 1> radial_godunov_data(
  *             indexes (in their respective radial tracks) of the cells to
  *             either side of the face.
  *
- * @param      L     The track on the left
- * @param      R     The track on the right
+ * @param[in]  t0    The track two to the left
+ * @param[in]  t1    The track to the left of the interface
+ * @param[in]  t2    The track to the right of the interface
+ * @param[in]  t3    The track two to the right
  *
  * @return     A shared array of polar Godunov data
+ *
+ * @note       If the data in either of t0 or t3 is empty, then only t1 and t2
+ *             are used, and piecewise constant extrapolation is used in the
+ *             polar direction.
  */
-nd::shared_array<polar_godunov_data_t, 1> polar_godunov_data(track_data_t L, track_data_t R);
+nd::shared_array<polar_godunov_data_t, 1> polar_godunov_data(track_data_t t0, track_data_t t1, track_data_t t2, track_data_t t3);
 
 
 
@@ -210,6 +216,26 @@ nd::shared_array<srhd::conserved_t, 1> delta_conserved(radial_track_t track,
 nd::shared_array<dimensional::unit_length, 1> delta_face_positions(
     nd::shared_array<radial_godunov_data_t, 1> ff,
     dimensional::unit_time dt);
+
+
+
+
+/**
+ * @brief      Sample the primitive quantities at a given radius on a track,
+ *             using full track data including the radial gradient of primitive
+ *             quantities. The given index is used as a hint for where to begin
+ *             searching for the cell that contains the target radius.
+ *
+ * @param[in]  track_data  The full track data
+ * @param[in]  r           The radius at which to sample the track
+ * @param[in]  index       The hint index
+ *
+ * @return     An extrapolated primitive data
+ *
+ * @note       If the target radius lies either above or below the track bounds,
+ *             then extrapolation from the nearest cell is used.
+ */
+srhd::primitive_t sample(track_data_t track_data, dimensional::unit_length r, nd::uint index);
 
 
 

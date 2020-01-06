@@ -160,7 +160,8 @@ solution_state_t advance(solution_state_t solution, dimensional::unit_time dt)
     auto dr = ff                          | nd::map(std::bind(sedov::delta_face_positions, _1, dt));
 
     auto gf = nd::zip(t0, pc, dc)
-    | nd::adjacent_zip()
+    | nd::extend_uniform(sedov::track_data_t())
+    | nd::adjacent_zip4()
     | nd::map(util::apply_to(sedov::polar_godunov_data))
     | nd::extend_uniform(nd::shared_array<sedov::polar_godunov_data_t, 1>{});
 

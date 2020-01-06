@@ -166,34 +166,70 @@ nd::shared_array<sedov::radial_godunov_data_t, 1> sedov::radial_godunov_data(
 
 
 //=============================================================================
-nd::shared_array<sedov::polar_godunov_data_t, 1> sedov::polar_godunov_data(track_data_t L, track_data_t R)
+srhd::primitive_t sedov::sample(track_data_t track_data, dimensional::unit_length r, nd::uint index)
 {
-    auto tl = std::get<0>(L);
-    auto tr = std::get<0>(R);
-    auto pl = std::get<1>(L);
-    auto pr = std::get<1>(R);
-    auto dl = std::get<2>(L);
-    auto dr = std::get<2>(R);
+    auto [tr, pc, dc] = track_data;
 
+    if (r < tr.face_radii(index + 0) && index + 0 > 0)        return sample(track_data, r, index - 1);
+    if (r > tr.face_radii(index + 1) && index + 1 < size(pc)) return sample(track_data, r, index + 1);
+
+    auto r0 = tr.face_radii(index + 0);
+    auto r1 = tr.face_radii(index + 1);
+    auto rc = 0.5 * (r0 + r1);
+
+    return pc(index) + dc(index) * (r - rc);
+}
+
+
+
+
+//=============================================================================
+nd::shared_array<sedov::polar_godunov_data_t, 1> sedov::polar_godunov_data(track_data_t t0, track_data_t t1, track_data_t t2, track_data_t t3)
+{
     auto nhat = geometric::unit_vector_on(2);
     auto mode = srhd::riemann_solver_mode_hllc_fluxes_t();
-    auto face = polar_faces(tl, tr);
+    auto face = polar_faces(std::get<0>(t1), std::get<0>(t2));
+    auto plm  = mara::plm_gradient(1.5);
 
-    return nd::make_array(nd::indexing([tl, tr, pl, pr, dl, dr, face, nhat, mode] (nd::uint i) -> polar_godunov_data_t
+    return nd::make_array(nd::indexing([=] (nd::uint i) -> polar_godunov_data_t
     {
         if (face(i).il && face(i).ir)
         {
             auto il = face(i).il.value();
             auto ir = face(i).ir.value();
+            auto ri = face(i).trailing;
+            auto ro = face(i).leading;
+            auto ql = std::get<0>(t1).theta1;
+            auto qr = std::get<0>(t2).theta0; // NOTE: ql and qr must be equal
+            auto rf = 0.5 * (ri + ro);
 
-            auto rtl = 0.5 * (tl.face_radii(il) + tl.face_radii(il + 1));
-            auto rtr = 0.5 * (tr.face_radii(ir) + tr.face_radii(ir + 1));
-            auto rf_ = 0.5 * (face(i).leading + face(i).trailing);
-            auto pl_ = pl(il) + dl(il) * (rf_ - rtl);
-            auto pr_ = pr(ir) + dr(ir) * (rf_ - rtr);
+            if (size(std::get<0>(t0).face_radii) == 0 || size(std::get<0>(t3).face_radii) == 0)
+            {
+                // If either the left-most or right-most track data is missing, then
+                // forego extrapolation in the polar direction.
+                auto pl = sample(t1, rf, il);
+                auto pr = sample(t2, rf, ir);
+                auto ff = srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);
+                auto da = face_area(ri, ro, ql, qr);
 
-            auto ff = srhd::riemann_solver(pl_, pr_, nhat, 4. / 3, mode);
-            auto da = face_area(face(i).trailing, face(i).leading, tl.theta1, tr.theta0);
+                return {ff, da, il, ir};
+            }
+
+            auto q0 = cell_center_theta(std::get<0>(t0));
+            auto q1 = cell_center_theta(std::get<0>(t1));
+            auto q2 = cell_center_theta(std::get<0>(t2));
+            auto q3 = cell_center_theta(std::get<0>(t3));
+            auto p0 = sample(t0, rf, il);
+            auto p1 = sample(t1, rf, il);
+            auto p2 = sample(t2, rf, ir);
+            auto p3 = sample(t3, rf, ir);
+            auto cl = plm(std::tuple(std::tuple(q0, q1, q2), std::tuple(p0, p1, p2)));
+            auto cr = plm(std::tuple(std::tuple(q1, q2, q3), std::tuple(p1, p2, p3)));
+            auto pl = p1 + (ql - q1) * cl;
+            auto pr = p2 + (qr - q2) * cr;
+            auto ff = srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);
+            auto da = face_area(ri, ro, ql, qr);
+
             return {ff, da, il, ir};
         }
         return {srhd::flux_vector_t(), dimensional::unit_area(0.0), 0, 0};
