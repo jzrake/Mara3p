@@ -265,6 +265,43 @@ auto remove_partition(array_t<ProviderType1, 1> edge_array, array_t<ProviderType
     return std::pair(new_edge_array, new_mass_array);
 }
 
+
+
+
+/**
+ * @brief      Add a new partition, bisecting the bin at the given index and
+ *             distributing its mass equally.
+ *
+ * @param[in]  edge_array     The array of bin edges
+ * @param[in]  mass_array     The array of bin masses
+ * @param[in]  bin_index      The bin to subdivide
+ *
+ * @tparam     ProviderType1  The type of the edge_array provider
+ * @tparam     ProviderType2  The type of the mass_array provider
+ *
+ * @return     A pair (new_edge_array, new_mass_array), each lengthened by a
+ *             single element.
+ */
+template<typename ProviderType1, typename ProviderType2>
+auto add_partition(array_t<ProviderType1, 1> edge_array, array_t<ProviderType2, 1> mass_array, uint bin_index)
+{
+    if (size(edge_array) != size(mass_array) + 1)
+        throw std::invalid_argument("nd::add_partition (size(edge_array) != size(mass_array) + 1)");
+
+    if (bin_index > size(mass_array) - 1)
+        throw std::out_of_range("nd::add_partition (bin_index out of range)");
+
+    auto new_edge_array = select(edge_array, 0, 0, bin_index + 1)
+    | concat(nd::from(0.5 * (edge_array(bin_index) + edge_array(bin_index + 1))))
+    | concat(select(edge_array, 0, bin_index + 1));
+
+    auto new_mass_array = select(mass_array, 0, 0, bin_index)
+    | concat(nd::from(0.5 * mass_array(bin_index), 0.5 * mass_array(bin_index)))
+    | concat(select(mass_array, 0, bin_index + 1));
+
+    return std::pair(new_edge_array, new_mass_array);
+}
+
 } // namespace nd
 
 
@@ -290,6 +327,18 @@ inline void test_ndarray_ops()
         auto [e, m] = nd::remove_partition(nd::range(4), nd::from(1.0, 2.0, 3.0), 2);
         require(all(e == nd::from(0, 1, 3)));
         require(all(m == nd::from(1.0, 5.0)));
+    }
+
+    {
+        auto [e, m] = nd::add_partition(nd::linspace(0.0, 1.0, 5), nd::from(1.0, 1.0, 1.0, 1.0), 0);
+        require(all(e == nd::from(0.0, 0.125, 0.25, 0.50, 0.75, 1.0)));
+        require(all(m == nd::from(0.5, 0.5, 1.0, 1.0, 1.0)));
+    }
+
+    {
+        auto [e, m] = nd::add_partition(nd::linspace(0.0, 1.0, 5), nd::from(1.0, 1.0, 1.0, 1.0), 1);
+        require(all(e == nd::from(0.0, 0.25, 0.375, 0.50, 0.75, 1.0)));
+        require(all(m == nd::from(1.0, 0.5, 0.5, 1.0, 1.0)));
     }
 }
 
