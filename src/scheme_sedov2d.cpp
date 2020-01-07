@@ -60,6 +60,48 @@ dimensional::unit_volume sedov::cell_volume(
 
 
 //=============================================================================
+dimensional::unit_length sedov::minimum_spacing(radial_track_t track)
+{
+    return nd::min(track.face_radii | nd::adjacent_diff());
+}
+
+dimensional::unit_scalar sedov::cell_center_theta(radial_track_t track)
+{
+    return 0.5 * (track.theta0 + track.theta1);
+}
+
+nd::shared_array<dimensional::unit_length, 1> sedov::cell_center_radii(radial_track_t track)
+{
+    return track.face_radii
+    | nd::adjacent_mean()
+    | nd::to_shared();
+}
+
+nd::shared_array<dimensional::unit_area, 1> sedov::radial_face_areas(radial_track_t track)
+{
+    return track.face_radii
+    | nd::map([t0=track.theta0, t1=track.theta1] (auto r)
+    {
+        return face_area(r, r, t0, t1);
+    })
+    | nd::to_shared();
+}
+
+nd::shared_array<dimensional::unit_volume, 1> sedov::cell_volumes(radial_track_t track)
+{
+    return track.face_radii
+    | nd::adjacent_zip()
+    | nd::map(util::apply_to([t0=track.theta0, t1=track.theta1] (auto r0, auto r1)
+    {
+        return cell_volume(r0, r1, t0, t1);
+    }))
+    | nd::to_shared();
+}
+
+
+
+
+//=============================================================================
 sedov::radial_track_t sedov::generate_radial_track(
     dimensional::unit_length r0,
     dimensional::unit_length r1,
@@ -188,7 +230,7 @@ nd::shared_array<sedov::polar_godunov_data_t, 1> sedov::polar_godunov_data(track
 {
     auto nhat = geometric::unit_vector_on(2);
     auto mode = srhd::riemann_solver_mode_hllc_fluxes_t();
-    auto face = polar_faces(std::get<0>(t1), std::get<0>(t2));
+    auto face = mesh::transverse_faces(std::get<0>(t1).face_radii, std::get<0>(t2).face_radii);
     auto plm  = mara::plm_gradient(1.5);
 
     return nd::make_array(nd::indexing([=] (nd::uint i) -> polar_godunov_data_t
@@ -293,15 +335,23 @@ std::pair<sedov::radial_track_t, nd::shared_array<srhd::conserved_t, 1>> sedov::
     nd::shared_array<srhd::conserved_t, 1> uc,
     dimensional::unit_scalar maximum_cell_aspect_ratio)
 {
-    auto rc = track.face_radii | nd::adjacent_mean();
-    auto dr = track.face_radii | nd::adjacent_diff();
+    auto rf = track.face_radii;
+    auto rc = rf | nd::adjacent_mean();
+    auto dr = rf | nd::adjacent_diff();
     auto ds = rc * (track.theta1 - track.theta0);
     auto aspect = dr / ds;
     auto imax = nd::argmax(aspect)[0];
 
-    if (aspect(imax) > maximum_cell_aspect_ratio)
+    if (front(rf) < dimensional::unit_length(0.25))
     {
-        std::tie(track.face_radii, uc) = nd::add_partition(track.face_radii, uc, imax);
+        rf = rf | nd::select(0, 1) | nd::to_shared();
+        uc = uc | nd::select(0, 1) | nd::to_shared();
     }
+    else if (aspect(imax) > maximum_cell_aspect_ratio)
+    {
+        std::tie(rf, uc) = nd::add_partition(rf, uc, imax);
+    }
+    track.face_radii = rf;   
+
     return std::pair(track, uc);
 }

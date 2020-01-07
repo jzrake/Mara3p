@@ -70,6 +70,16 @@ dimensional::unit_volume cell_volume(
 
 
 
+//=============================================================================
+dimensional::unit_length                      minimum_spacing  (radial_track_t track);
+dimensional::unit_scalar                      cell_center_theta(radial_track_t track);
+nd::shared_array<dimensional::unit_length, 1> cell_center_radii(radial_track_t track);
+nd::shared_array<dimensional::unit_area,   1> radial_face_areas(radial_track_t track);
+nd::shared_array<dimensional::unit_volume, 1> cell_volumes     (radial_track_t track);
+
+
+
+
 /**
  * @brief      Convenience function to build a radial track with logarithmically
  *             spaced, reasonably isotropic cells.
@@ -254,48 +264,5 @@ std::pair<radial_track_t, nd::shared_array<srhd::conserved_t, 1>> refine(
     radial_track_t track,
     nd::shared_array<srhd::conserved_t, 1> uc,
     dimensional::unit_scalar maximum_cell_aspect_ratio);
-
-
-
-
-//=============================================================================
-inline auto radial_face_areas(radial_track_t track)
-{
-    return track.face_radii
-    | nd::map([t0=track.theta0, t1=track.theta1] (auto r)
-    {
-        return face_area(r, r, t0, t1);
-    });
-}
-
-inline auto cell_volumes(radial_track_t track)
-{
-    return track.face_radii
-    | nd::adjacent_zip()
-    | nd::map(util::apply_to([t0=track.theta0, t1=track.theta1] (auto r0, auto r1)
-    {
-        return cell_volume(r0, r1, t0, t1);
-    }));
-}
-
-inline auto cell_center_radii(radial_track_t track)
-{
-    return track.face_radii | nd::adjacent_mean();
-}
-
-inline auto cell_center_theta(radial_track_t track)
-{
-    return 0.5 * (track.theta0 + track.theta1);
-}
-
-inline auto polar_faces(radial_track_t L, radial_track_t R)
-{
-    return mesh::transverse_faces(L.face_radii, R.face_radii);
-}
-
-inline auto minimum_spacing(radial_track_t track)
-{
-    return nd::min(track.face_radii | nd::adjacent_diff());
-}
 
 } // namespace sedov

@@ -43,6 +43,7 @@ auto config_template()
     .item("nr",                   256)   // number of radial zones, per decade
     .item("tfinal",              10.0)   // time to stop the simulation
     .item("print",                 10)   // the number of iterations between terminal outputs
+    .item("vtk",                   50)   // number of iterations between VTK outputs
     .item("dfi",                  1.5)   // output interval (constant multiplier)
     .item("rk_order",               2)   // Runge-Kutta order (1, 2, or 3)
     .item("cfl",                  0.5)   // courant number
@@ -78,8 +79,8 @@ srhd::primitive_t initial_primitive(dimensional::unit_length r, dimensional::uni
     auto r0 = dimensional::unit_length(1.0);
     auto d0 = dimensional::unit_mass_density(std::pow(r / r0, -2.0));
     auto c2 = srhd::light_speed * srhd::light_speed;
-    auto ur = 0.1 + 0.2 * (std::pow(std::cos(q), 2) + std::pow(std::cos(M_PI - q), 2));
-    return srhd::primitive(d0, ur, 0.0, 0.0, 1e-6 * d0 * c2);
+    auto ur = 0.1 + 0.1 * (std::pow(std::cos(q), 2) + std::pow(std::cos(M_PI - q), 2));
+    return srhd::primitive(d0, -ur, 0.0, 0.0, 1e-6 * d0 * c2);
 }
 
 
@@ -113,7 +114,7 @@ solution_state_t initial_solution(const mara::config_t& cfg)
 
 sedov::radial_godunov_data_t inner_bc(sedov::radial_track_t track, nd::shared_array<srhd::primitive_t, 1> pc, dimensional::unit_time t)
 {
-    auto vel = dimensional::unit_velocity(0.0);
+    auto vel  = std::min(srhd::velocity_1(front(pc)), dimensional::unit_velocity(0.0));
     auto mode = srhd::riemann_solver_mode_hllc_fluxes_moving_face_t{vel};
     auto nhat = geometric::unit_vector_on(1);
     auto pl = initial_primitive(front(track.face_radii), cell_center_theta(track), t);
@@ -137,9 +138,14 @@ solution_state_t remesh(solution_state_t solution)
     auto t0 = solution.tracks;
     auto uc = solution.conserved;
 
-    auto [t1, u1] = nd::unzip(nd::zip(t0, uc) | nd::map(util::apply_to(std::bind(sedov::refine, _1, _2, dimensional::unit_scalar(1.33)))));
+    auto [t1, u1] = nd::unzip(nd::zip(t0, uc)
+    | nd::map(util::apply_to(std::bind(sedov::refine, _1, _2, dimensional::unit_scalar(1.33)))));
 
-    return {solution.iteration, solution.time, t1|nd::to_shared(), u1|nd::to_shared()};
+    return {
+        solution.iteration,
+        solution.time,
+        t1 | nd::to_shared(),
+        u1 | nd::to_shared()};
 }
 
 
@@ -266,6 +272,7 @@ int main(int argc, const char* argv[])
 
     auto tfinal = dimensional::unit_time  (cfg.get_double("tfinal"));
     auto cfl    = dimensional::unit_scalar(cfg.get_double("cfl"));
+    auto vtk_it = cfg.get_int("vtk");
     auto dt     = cfl * nd::min(solution.tracks | nd::map(sedov::minimum_spacing)) / srhd::light_speed;
 
     auto vtk_count = 0;
@@ -273,10 +280,22 @@ int main(int argc, const char* argv[])
 
     while (solution.time < tfinal)
     {
-        std::printf("[%06lu] t=%.4f\n", long(solution.iteration), solution.time.value);
+        auto num_cells = nd::sum(solution.tracks | nd::map([] (auto t) { return size(t.face_radii); }));
+        auto start = std::chrono::high_resolution_clock::now();
+
         solution = advance(solution, dt);
 
-        if (long(solution.iteration) % 1 == 0)
+        auto stop = std::chrono::high_resolution_clock::now();
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count();
+        auto kzps = double(num_cells) / ms;
+
+        std::printf("[%06lu] t=%.4f zones: %05lu kzps=%.02lf\n",
+            long(solution.iteration),
+            solution.time.value,
+            num_cells,
+            kzps);
+
+        if (long(solution.iteration) % vtk_it == 0)
         {
             output_vtk(solution, vtk_count++);            
         }
