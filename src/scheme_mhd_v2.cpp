@@ -123,9 +123,9 @@ cell_conserved_density_t mhd_scheme_v2::construct_conserved(
 
 
 //=============================================================================
-cell_primitive_variables_t mhd_scheme_v2::extend_cell_primitive_variables(std::vector<cell_primitive_variables_t> uc_vector, nd::uint block_size, nd::uint count)
+cell_primitive_variables_t mhd_scheme_v2::extend_cell_primitive_variables(std::vector<cell_primitive_variables_t> pc_vector, nd::uint block_size, nd::uint count)
 {
-    auto items = seq::view(uc_vector)
+    auto items = seq::view(pc_vector)
     | seq::keys(nd::index_space(3, 3, 3))
     | seq::to_dict<std::map>();
 

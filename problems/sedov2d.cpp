@@ -31,7 +31,11 @@
 #include "app_config.hpp"
 #include "app_vtk.hpp"
 #include "core_util.hpp"
+#include "model_wind.hpp"
 #include "scheme_sedov2d.hpp"
+
+using namespace dimensional;
+using namespace std::placeholders;
 
 
 
@@ -40,16 +44,17 @@
 auto config_template()
 {
     return mara::config_template()
-    .item("nr",                   256)   // number of radial zones, per decade
+    .item("nt",                   256)   // number of radial tracks
+    .item("aspect",               4.0)   // aspect ratio of the longest cells allowed
+    .item("focus",                0.5)   // amount by which to increase resolution near the poles [0, 1)
     .item("tfinal",              10.0)   // time to stop the simulation
-    .item("print",                 10)   // the number of iterations between terminal outputs
+    // .item("print",                 10)   // the number of iterations between terminal outputs
     .item("vtk",                   50)   // number of iterations between VTK outputs
     .item("dfi",                  1.5)   // output interval (constant multiplier)
-    .item("rk_order",               2)   // Runge-Kutta order (1, 2, or 3)
+    // .item("rk_order",               2)   // Runge-Kutta order (1, 2, or 3)
     .item("cfl",                  0.5)   // courant number
-    .item("plm_theta",            1.5)   // PLM parameter
+    // .item("plm_theta",            1.5)   // PLM parameter
     .item("router",               1e1)   // outer boundary radius
-    .item("move",                   1)   // whether to move the cells
     .item("envelop_mdot_index",   4.0)   // alpha in envelop mdot(t) = (t / t0)^alpha
     .item("envelop_u_index",     0.22)   // psi in envelop u(m) = u1 (m / m1)^(-psi)
     .item("envelop_u",          10.00)   // maximum gamma-beta in outer envelop
@@ -74,13 +79,55 @@ struct solution_state_t
 
 
 
-srhd::primitive_t initial_primitive(dimensional::unit_length r, dimensional::unit_scalar q, dimensional::unit_time t)
+//=============================================================================
+auto wind_mass_loss_rate(const mara::config_t& cfg, unit_scalar)
 {
-    auto r0 = dimensional::unit_length(1.0);
-    auto d0 = dimensional::unit_mass_density(std::pow(r / r0, -2.0));
-    auto c2 = srhd::light_speed * srhd::light_speed;
-    auto ur = 0.1 + 0.1 * (std::pow(std::cos(q), 2) + std::pow(std::cos(M_PI - q), 2));
-    return srhd::primitive(d0, -ur, 0.0, 0.0, 1e-6 * d0 * c2);
+    auto envelop_mdot = unit_mass_rate(1.0);
+    auto engine_mdot  = unit_mass_rate(cfg.get_double("engine_mdot"));
+    auto engine_onset = unit_time(cfg.get_double("engine_onset"));
+    auto alpha        = cfg.get_double("envelop_mdot_index");
+
+    return [envelop_mdot, engine_mdot, alpha, engine_onset] (auto t)
+    {
+        return t < engine_onset
+        ? envelop_mdot * std::pow(t / unit_time(1.0), alpha)
+        : engine_mdot;
+    };
+}
+
+auto wind_gamma_beta(const mara::config_t& cfg, unit_scalar q)
+{
+    auto m0              = unit_mass(1.0);
+    auto md              = unit_mass_rate(1.0);
+    auto engine_onset    = unit_time(cfg.get_double("engine_onset"));
+    auto engine_duration = unit_time(cfg.get_double("engine_duration"));
+    auto engine_u        = unit_scalar(cfg.get_double("engine_u"));
+    auto envelop_u       = unit_scalar(cfg.get_double("envelop_u"));
+    auto fred            = mara::fast_rise_exponential_decay(engine_onset, engine_duration);
+    auto psi             = cfg.get_double("envelop_u_index");
+    auto alpha           = cfg.get_double("envelop_mdot_index");
+
+    auto integrated_envelop_mdot = [m0, md, alpha] (unit_time t)
+    {
+        return m0 + md * t * std::pow(t / unit_time(1.0), alpha) / (1 + alpha);
+    };
+
+    return [integrated_envelop_mdot, envelop_u, engine_u, fred, psi, q] (auto t)
+    {
+        auto m0   = integrated_envelop_mdot(1.0);
+        auto m    = integrated_envelop_mdot(t);
+        auto p    = unit_scalar(M_PI) - q;
+        auto f    = std::exp(-q * q / 0.04) + std::exp(-p * p / 0.04);
+        return envelop_u * std::pow(m / m0, -psi) + engine_u * fred(t) * f;
+    };
+}
+
+auto wind_profile(const mara::config_t& cfg, unit_length r, unit_scalar q, unit_time t)
+{
+    return mara::cold_relativistic_wind_t()
+    .with_mass_loss_rate(wind_mass_loss_rate(cfg, q))
+    .with_gamma_beta    (wind_gamma_beta    (cfg, q))
+    .primitive(r, t);
 }
 
 
@@ -89,57 +136,62 @@ srhd::primitive_t initial_primitive(dimensional::unit_length r, dimensional::uni
 //=============================================================================
 solution_state_t initial_solution(const mara::config_t& cfg)
 {
-    using namespace std::placeholders;
-
-    auto r0 = dimensional::unit_length(1.0);
+    auto r0 = unit_length(1.0);
     auto r1 = r0 * cfg.get_double("router");
-    auto p0 = [] (dimensional::unit_length r, dimensional::unit_scalar q) -> srhd::primitive_t
+    auto p0 = [cfg] (unit_length r, unit_scalar q) { return wind_profile(cfg, r, q, 1.0); };
+    auto nt = cfg.get_int("nt");
+
+    auto tween = [f=cfg.get_double("focus")] (auto x)
     {
-        return initial_primitive(r, q, 0.0);
+        return M_PI * (x + f * (x - 1) * x) / (1 + 2 * f * (x - 1) * x);
     };
 
-    auto num_tracks = cfg.get_int("nr");
-    auto tr = nd::linspace(0.0, M_PI, num_tracks + 1)
+    auto tr = nd::linspace(0.0, 1.0, nt + 1)
+    | nd::map(tween)
     | nd::adjacent_zip()
     | nd::map(util::apply_to(std::bind(sedov::generate_radial_track, r0, r1, _1, _2)));
     auto u0 = tr | nd::map(std::bind(sedov::generate_conserved, _1, p0));
 
     return {
         0,
-        0.0,
+        1.0,
         nd::to_shared(tr),
         nd::to_shared(u0),
     };
 }
 
-sedov::radial_godunov_data_t inner_bc(sedov::radial_track_t track, nd::shared_array<srhd::primitive_t, 1> pc, dimensional::unit_time t)
+sedov::radial_godunov_data_t inner_bc(
+    sedov::radial_track_t track,
+    sedov::primitive_function_t primitive_func,
+    nd::shared_array<srhd::primitive_t, 1> pc)
 {
-    auto vel  = std::min(srhd::velocity_1(front(pc)), dimensional::unit_velocity(0.0));
+    auto vel  = std::min(srhd::velocity_1(front(pc)), unit_velocity(0.0));
     auto mode = srhd::riemann_solver_mode_hllc_fluxes_moving_face_t{vel};
     auto nhat = geometric::unit_vector_on(1);
-    auto pl = initial_primitive(front(track.face_radii), cell_center_theta(track), t);
+    auto pl = primitive_func(front(track.face_radii), cell_center_theta(track));
     auto pr = front(pc);
     return std::pair(srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode), vel);
 }
 
-sedov::radial_godunov_data_t outer_bc(sedov::radial_track_t track, nd::shared_array<srhd::primitive_t, 1> pc, dimensional::unit_time t)
+sedov::radial_godunov_data_t outer_bc(
+    sedov::radial_track_t track,
+    sedov::primitive_function_t primitive_func,
+    nd::shared_array<srhd::primitive_t, 1> pc)
 {
     auto mode = srhd::riemann_solver_mode_hllc_fluxes_across_contact_t();
     auto nhat = geometric::unit_vector_on(1);
     auto pl = back(pc);
-    auto pr = initial_primitive(back(track.face_radii), cell_center_theta(track), t);
+    auto pr = back(pc);
     return srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);
 }
 
-solution_state_t remesh(solution_state_t solution)
+solution_state_t remesh(solution_state_t solution, unit_scalar aspect)
 {
-    using namespace std::placeholders;
-
     auto t0 = solution.tracks;
     auto uc = solution.conserved;
 
     auto [t1, u1] = nd::unzip(nd::zip(t0, uc)
-    | nd::map(util::apply_to(std::bind(sedov::refine, _1, _2, dimensional::unit_scalar(1.33)))));
+    | nd::map(util::apply_to(std::bind(sedov::refine, _1, _2, aspect))));
 
     return {
         solution.iteration,
@@ -152,15 +204,18 @@ solution_state_t remesh(solution_state_t solution)
 
 
 //=============================================================================
-solution_state_t advance(solution_state_t solution, dimensional::unit_time dt)
+solution_state_t advance(const mara::config_t& cfg, solution_state_t solution, unit_time dt)
 {
-    using namespace std::placeholders;
+    auto aspect = cfg.get_double("aspect");
+    auto wind = std::bind(wind_profile, cfg, _1, _2, solution.time);
+    auto ibc = std::bind(inner_bc, _1, sedov::primitive_function_t{wind}, _2);
+    auto obc = std::bind(outer_bc, _1, sedov::primitive_function_t{wind}, _2);
 
     auto t0 = solution.tracks;
     auto uc = solution.conserved;
     auto pc = nd::zip(t0, uc)             | nd::map(util::apply_to(sedov::recover_primitive));
-    auto fi = nd::zip(t0, pc)             | nd::map(util::apply_to(std::bind(inner_bc, _1, _2, solution.time)));
-    auto fo = nd::zip(t0, pc)             | nd::map(util::apply_to(std::bind(outer_bc, _1, _2, solution.time)));
+    auto fi = nd::zip(t0, pc)             | nd::map(util::apply_to(ibc));
+    auto fo = nd::zip(t0, pc)             | nd::map(util::apply_to(obc));
     auto dc = nd::zip(t0, pc)             | nd::map(util::apply_to(sedov::radial_gradient));
     auto ff = nd::zip(t0, pc, dc, fi, fo) | nd::map(util::apply_to(sedov::radial_godunov_data));
     auto dr = ff                          | nd::map(std::bind(sedov::delta_face_positions, _1, dt));
@@ -196,7 +251,7 @@ solution_state_t advance(solution_state_t solution, dimensional::unit_time dt)
         solution.time + dt,
         t1 | nd::to_shared(),
         u1 | nd::to_shared(),
-    });
+    }, aspect);
 }
 
 
@@ -205,7 +260,7 @@ solution_state_t advance(solution_state_t solution, dimensional::unit_time dt)
 //=============================================================================
 auto quad_mesh(nd::shared_array<sedov::radial_track_t, 1> tracks)
 {
-    using vec3d = geometric::euclidean_vector_t<dimensional::unit_length>;
+    using vec3d = geometric::euclidean_vector_t<unit_length>;
 
     auto total_cells = tracks | nd::map([] (auto track) { return size(track.face_radii) - 1; }) | nd::sum();
     auto vertices = nd::make_unique_array<vec3d>(nd::uivec(total_cells * 4));
@@ -269,9 +324,8 @@ int main(int argc, const char* argv[])
     mara::pretty_print(std::cout, "config", cfg);
 
     auto solution = initial_solution(cfg);
-
-    auto tfinal = dimensional::unit_time  (cfg.get_double("tfinal"));
-    auto cfl    = dimensional::unit_scalar(cfg.get_double("cfl"));
+    auto tfinal = unit_time  (cfg.get_double("tfinal"));
+    auto cfl    = unit_scalar(cfg.get_double("cfl"));
     auto vtk_it = cfg.get_int("vtk");
     auto dt     = cfl * nd::min(solution.tracks | nd::map(sedov::minimum_spacing)) / srhd::light_speed;
 
@@ -283,7 +337,7 @@ int main(int argc, const char* argv[])
         auto num_cells = nd::sum(solution.tracks | nd::map([] (auto t) { return size(t.face_radii); }));
         auto start = std::chrono::high_resolution_clock::now();
 
-        solution = advance(solution, dt);
+        solution = advance(cfg, solution, dt);
 
         auto stop = std::chrono::high_resolution_clock::now();
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count();

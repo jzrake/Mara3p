@@ -110,13 +110,13 @@ cell_conserved_density_t construct_conserved(multilevel_index_t index, unsigned 
 /**
  * @brief      Construct an extended array of cell-like primitive quantities.
  *
- * @param[in]  uc_vector   A vector of cell-like primitive variables
+ * @param[in]  pc_vector   A vector of cell-like primitive variables
  * @param[in]  block_size  The block size of each of the arrays
  * @param[in]  count       The number of zones to add on  all axes
  *
  * @return     An extended primitive variable array
  */
-cell_primitive_variables_t extend_cell_primitive_variables(std::vector<cell_primitive_variables_t> uc_vector, nd::uint block_size, nd::uint count);
+cell_primitive_variables_t extend_cell_primitive_variables(std::vector<cell_primitive_variables_t> pc_vector, nd::uint block_size, nd::uint count);
 
 
 

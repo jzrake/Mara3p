@@ -239,13 +239,15 @@ nd::shared_array<dimensional::unit_length, 1> delta_face_positions(
  * @param[in]  track_data  The full track data
  * @param[in]  r           The radius at which to sample the track
  * @param[in]  index       The hint index
+ * @param[in]  fallback    The fallback primitive state if the sample cannot be
+ *                         made
  *
  * @return     An extrapolated primitive data
  *
  * @note       If the target radius lies either above or below the track bounds,
- *             then extrapolation from the nearest cell is used.
+ *             then the fallback value is used instead.
  */
-srhd::primitive_t sample(track_data_t track_data, dimensional::unit_length r, nd::uint index);
+srhd::primitive_t sample(track_data_t track_data, dimensional::unit_length r, nd::uint index, srhd::primitive_t fallback);
 
 
 
