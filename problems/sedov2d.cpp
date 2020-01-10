@@ -29,6 +29,7 @@
 #include <iostream>
 #include <fstream>
 #include "app_config.hpp"
+#include "app_control.hpp"
 #include "app_vtk.hpp"
 #include "core_util.hpp"
 #include "model_wind.hpp"
@@ -45,12 +46,13 @@ auto config_template()
 {
     return mara::config_template()
     .item("nt",                   256)   // number of radial tracks
+    .item("rk",                   2)     // Runge-Kutta order (1, 2, or 3)
     .item("aspect",               4.0)   // aspect ratio of the longest cells allowed
-    .item("focus",                0.5)   // amount by which to increase resolution near the poles [0, 1)
+    .item("focus",                0.0)   // amount by which to increase resolution near the poles [0, 1)
     .item("tfinal",              10.0)   // time to stop the simulation
     // .item("print",                 10)   // the number of iterations between terminal outputs
     .item("vtk",                   50)   // number of iterations between VTK outputs
-    .item("dfi",                  1.5)   // output interval (constant multiplier)
+    // .item("dfi",                  1.5)   // output interval (constant multiplier)
     // .item("rk_order",               2)   // Runge-Kutta order (1, 2, or 3)
     .item("cfl",                  0.5)   // courant number
     // .item("plm_theta",            1.5)   // PLM parameter
@@ -68,13 +70,37 @@ auto config_template()
 
 
 //=============================================================================
-struct solution_state_t
+struct solution_t
 {
     rational::number_t                                          iteration;
     dimensional::unit_time                                      time;
     nd::shared_array<sedov::radial_track_t, 1>                  tracks;
     nd::shared_array<nd::shared_array<srhd::conserved_t, 1>, 1> conserved;
 };
+
+solution_t weighted_sum(solution_t s, solution_t t, rational::number_t b)
+{
+    auto result = solution_t();
+
+    result.iteration = s.iteration  *        b  + t.iteration *       (1 - b);
+    result.time      = s.time       * double(b) + t.time      * double(1 - b);
+    result.tracks    = nd::zip(s.tracks, t.tracks)
+    | nd::map(util::apply_to([b] (auto s, auto t) -> sedov::radial_track_t
+    {
+        return {
+            nd::to_shared(s.face_radii * double(b) + t.face_radii * double(1 - b)),
+            s.theta0,
+            s.theta1
+        };
+    })) | nd::to_shared();
+    result.conserved = nd::zip(s.conserved, t.conserved)
+    | nd::map(util::apply_to([b] (auto s, auto t)
+    {
+        return nd::to_shared(s * double(b) + t * double(1 - b));
+    })) | nd::to_shared();
+
+    return result;
+}
 
 
 
@@ -134,7 +160,7 @@ auto wind_profile(const mara::config_t& cfg, unit_length r, unit_scalar q, unit_
 
 
 //=============================================================================
-solution_state_t initial_solution(const mara::config_t& cfg)
+solution_t initial_solution(const mara::config_t& cfg)
 {
     auto r0 = unit_length(1.0);
     auto r1 = r0 * cfg.get_double("router");
@@ -185,7 +211,7 @@ sedov::radial_godunov_data_t outer_bc(
     return srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);
 }
 
-solution_state_t remesh(solution_state_t solution, unit_scalar aspect)
+solution_t remesh(solution_t solution, unit_scalar aspect)
 {
     auto t0 = solution.tracks;
     auto uc = solution.conserved;
@@ -204,9 +230,8 @@ solution_state_t remesh(solution_state_t solution, unit_scalar aspect)
 
 
 //=============================================================================
-solution_state_t advance(const mara::config_t& cfg, solution_state_t solution, unit_time dt)
+solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt)
 {
-    auto aspect = cfg.get_double("aspect");
     auto wind = std::bind(wind_profile, cfg, _1, _2, solution.time);
     auto ibc = std::bind(inner_bc, _1, sedov::primitive_function_t{wind}, _2);
     auto obc = std::bind(outer_bc, _1, sedov::primitive_function_t{wind}, _2);
@@ -246,12 +271,12 @@ solution_state_t advance(const mara::config_t& cfg, solution_state_t solution, u
         return nd::to_shared(uc + du);
     }));
 
-    return remesh({
+    return {
         solution.iteration + 1,
         solution.time + dt,
         t1 | nd::to_shared(),
         u1 | nd::to_shared(),
-    }, aspect);
+    };
 }
 
 
@@ -294,7 +319,7 @@ auto quad_mesh(nd::shared_array<sedov::radial_track_t, 1> tracks)
 
 
 //=============================================================================
-void output_vtk(solution_state_t solution, unsigned count)
+void output_vtk(solution_t solution, unsigned count)
 {
     auto fname = util::format("primitive.%04u.vtk", count);
     auto outf = std::ofstream(fname, std::ios_base::out);
@@ -326,18 +351,21 @@ int main(int argc, const char* argv[])
     auto solution = initial_solution(cfg);
     auto tfinal = unit_time  (cfg.get_double("tfinal"));
     auto cfl    = unit_scalar(cfg.get_double("cfl"));
+    auto aspect = cfg.get_double("aspect");
     auto vtk_it = cfg.get_int("vtk");
-    auto dt     = cfl * nd::min(solution.tracks | nd::map(sedov::minimum_spacing)) / srhd::light_speed;
+    auto rk     = cfg.get_int("rk");
 
     auto vtk_count = 0;
     output_vtk(solution, vtk_count);
 
     while (solution.time < tfinal)
     {
-        auto num_cells = nd::sum(solution.tracks | nd::map([] (auto t) { return size(t.face_radii); }));
-        auto start = std::chrono::high_resolution_clock::now();
+        auto dt         = cfl * nd::min(solution.tracks | nd::map(sedov::minimum_spacing)) / srhd::light_speed;
+        auto num_cells  = nd::sum(solution.tracks | nd::map([] (auto t) { return size(t.face_radii); }));
+        auto start      = std::chrono::high_resolution_clock::now();
+        auto advance_rk = control::advance_runge_kutta(std::bind(advance, cfg, _1, dt), rk);
 
-        solution = advance(cfg, solution, dt);
+        solution = remesh(advance_rk(solution), aspect);
 
         auto stop = std::chrono::high_resolution_clock::now();
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count();
