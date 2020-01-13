@@ -269,7 +269,7 @@ nd::shared_array<sedov::polar_godunov_data_t, 1> sedov::polar_godunov_data(track
     auto nhat = geometric::unit_vector_on(2);
     auto mode = srhd::riemann_solver_mode_hllc_fluxes_t();
     auto face = mesh::transverse_faces(std::get<0>(t1).face_radii, std::get<0>(t2).face_radii);
-    // auto plm  = mara::plm_gradient(plm_theta);
+    auto plm  = mara::plm_gradient(plm_theta);
 
     return nd::make_array(nd::indexing([=] (nd::uint i) -> polar_godunov_data_t
     {
@@ -283,7 +283,7 @@ nd::shared_array<sedov::polar_godunov_data_t, 1> sedov::polar_godunov_data(track
             auto qr = std::get<0>(t2).theta0; // NOTE: ql and qr must be equal
             auto rf = 0.5 * (ri + ro);
 
-            // if (size(std::get<0>(t0).face_radii) == 0 || size(std::get<0>(t3).face_radii) == 0)
+            if (size(std::get<0>(t0).face_radii) == 0 || size(std::get<0>(t3).face_radii) == 0)
             {
                 // If either the left-most or right-most track data is missing, then
                 // forego extrapolation in the polar direction.
@@ -295,31 +295,31 @@ nd::shared_array<sedov::polar_godunov_data_t, 1> sedov::polar_godunov_data(track
                 return {ff, da, il, ir};
             }
 
-            // auto check = [] (const char* msg, auto p)
-            // {
-            //     if (any(map(p, [] (auto x) { return std::isnan(x.value); })))
-            //     {
-            //         throw std::runtime_error(msg);
-            //     }
-            //     return p;
-            // };
+            auto check = [] (const char* msg, auto p)
+            {
+                if (any(map(p, [] (auto x) { return std::isnan(x.value); })))
+                {
+                    throw std::runtime_error(msg);
+                }
+                return p;
+            };
 
-            // auto q0 = cell_center_theta(std::get<0>(t0));
-            // auto q1 = cell_center_theta(std::get<0>(t1));
-            // auto q2 = cell_center_theta(std::get<0>(t2));
-            // auto q3 = cell_center_theta(std::get<0>(t3));
-            // auto p1 = check("p1", sample(t1, rf, il, {}));
-            // auto p2 = check("p2", sample(t2, rf, ir, {}));
-            // auto p0 = check("p0", sample(t0, rf, il, p1));
-            // auto p3 = check("p3", sample(t3, rf, ir, p2));
-            // auto cl = check("cl", plm(std::tuple(std::tuple(q0, q1, q2), std::tuple(p0, p1, p2))));
-            // auto cr = check("cr", plm(std::tuple(std::tuple(q1, q2, q3), std::tuple(p1, p2, p3))));
-            // auto pl = p1 + (ql - q1) * cl;
-            // auto pr = p2 + (qr - q2) * cr;
-            // auto ff = srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);
-            // auto da = face_area(ri, ro, ql, qr);
+            auto q0 = cell_center_theta(std::get<0>(t0));
+            auto q1 = cell_center_theta(std::get<0>(t1));
+            auto q2 = cell_center_theta(std::get<0>(t2));
+            auto q3 = cell_center_theta(std::get<0>(t3));
+            auto p1 = check("p1", sample(t1, rf, il, {}));
+            auto p2 = check("p2", sample(t2, rf, ir, {}));
+            auto p0 = check("p0", sample(t0, rf, il, p1));
+            auto p3 = check("p3", sample(t3, rf, ir, p2));
+            auto cl = check("cl", plm(std::tuple(std::tuple(q0, q1, q2), std::tuple(p0, p1, p2))));
+            auto cr = check("cr", plm(std::tuple(std::tuple(q1, q2, q3), std::tuple(p1, p2, p3))));
+            auto pl = p1 + (ql - q1) * cl;
+            auto pr = p2 + (qr - q2) * cr;
+            auto ff = srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);
+            auto da = face_area(ri, ro, ql, qr);
 
-            // return {ff, da, il, ir};
+            return {ff, da, il, ir};
         }
         return {srhd::flux_vector_t(), dimensional::unit_area(0.0), 0, 0};
     }), shape(face))
@@ -377,16 +377,18 @@ nd::shared_array<dimensional::unit_length, 1> sedov::delta_face_positions(
 
 
 //=============================================================================
-std::pair<sedov::radial_track_t, nd::shared_array<srhd::conserved_t, 1>> sedov::refine(
+std::pair<sedov::radial_track_t, nd::shared_array<srhd::conserved_t, 1>> sedov::remesh(
     radial_track_t track,
     nd::shared_array<srhd::conserved_t, 1> uc,
-    dimensional::unit_scalar maximum_cell_aspect_ratio)
+    dimensional::unit_scalar maximum_cell_aspect_ratio,
+    dimensional::unit_scalar minimum_cell_aspect_ratio)
 {
     auto rf = track.face_radii;
     auto rc = rf | nd::adjacent_mean();
     auto dr = rf | nd::adjacent_diff();
     auto ds = rc * (track.theta1 - track.theta0);
     auto aspect = dr / ds;
+    auto imin = nd::argmin(aspect)[0];
     auto imax = nd::argmax(aspect)[0];
 
     if (front(rf) < dimensional::unit_length(0.25))
@@ -398,6 +400,11 @@ std::pair<sedov::radial_track_t, nd::shared_array<srhd::conserved_t, 1>> sedov::
     {
         std::tie(rf, uc) = nd::add_partition(rf, uc, imax);
     }
+    else if (imin > 0 && imin < size(uc) && aspect(imin) < minimum_cell_aspect_ratio)
+    {
+        std::tie(rf, uc) = nd::remove_partition(rf, uc, imin);
+    }
+
     track.face_radii = rf;   
 
     return std::pair(track, uc);

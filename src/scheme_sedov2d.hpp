@@ -262,9 +262,10 @@ srhd::primitive_t sample(track_data_t track_data, dimensional::unit_length r, nd
  *
  * @return     A pair of extended track and conserved data
  */
-std::pair<radial_track_t, nd::shared_array<srhd::conserved_t, 1>> refine(
+std::pair<radial_track_t, nd::shared_array<srhd::conserved_t, 1>> remesh(
     radial_track_t track,
     nd::shared_array<srhd::conserved_t, 1> uc,
-    dimensional::unit_scalar maximum_cell_aspect_ratio);
+    dimensional::unit_scalar maximum_cell_aspect_ratio,
+    dimensional::unit_scalar minimum_cell_aspect_ratio);
 
 } // namespace sedov

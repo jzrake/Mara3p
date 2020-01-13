@@ -47,13 +47,12 @@ auto config_template()
     return mara::config_template()
     .item("nt",                   256)   // number of radial tracks
     .item("rk",                   2)     // Runge-Kutta order (1, 2, or 3)
-    .item("aspect",               4.0)   // aspect ratio of the longest cells allowed
+    .item("max_aspect",           4.0)   // aspect ratio of the longest cell allowed
+    .item("min_aspect",           0.0)   // aspect ratio of the widest cell allowed
     .item("focus",                0.0)   // amount by which to increase resolution near the poles [0, 1)
     .item("tfinal",              10.0)   // time to stop the simulation
-    // .item("print",                 10)   // the number of iterations between terminal outputs
     .item("vtk",                   50)   // number of iterations between VTK outputs
     // .item("dfi",                  1.5)   // output interval (constant multiplier)
-    // .item("rk_order",               2)   // Runge-Kutta order (1, 2, or 3)
     .item("cfl",                  0.5)   // courant number
     // .item("plm_theta",            1.5)   // PLM parameter
     .item("router",               1e1)   // outer boundary radius
@@ -211,13 +210,13 @@ sedov::radial_godunov_data_t outer_bc(
     return srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);
 }
 
-solution_t remesh(solution_t solution, unit_scalar aspect)
+solution_t remesh(solution_t solution, unit_scalar max_aspect, unit_scalar min_aspect)
 {
     auto t0 = solution.tracks;
     auto uc = solution.conserved;
 
     auto [t1, u1] = nd::unzip(nd::zip(t0, uc)
-    | nd::map(util::apply_to(std::bind(sedov::refine, _1, _2, aspect))));
+    | nd::map(util::apply_to(std::bind(sedov::remesh, _1, _2, max_aspect, min_aspect))));
 
     return {
         solution.iteration,
@@ -351,12 +350,13 @@ int main(int argc, const char* argv[])
     auto solution = initial_solution(cfg);
     auto tfinal = unit_time  (cfg.get_double("tfinal"));
     auto cfl    = unit_scalar(cfg.get_double("cfl"));
-    auto aspect = cfg.get_double("aspect");
+    auto max_aspect = cfg.get_double("max_aspect");
+    auto min_aspect = cfg.get_double("min_aspect");
     auto vtk_it = cfg.get_int("vtk");
     auto rk     = cfg.get_int("rk");
 
     auto vtk_count = 0;
-    output_vtk(solution, vtk_count);
+    output_vtk(solution, vtk_count++);
 
     while (solution.time < tfinal)
     {
@@ -365,15 +365,16 @@ int main(int argc, const char* argv[])
         auto start      = std::chrono::high_resolution_clock::now();
         auto advance_rk = control::advance_runge_kutta(std::bind(advance, cfg, _1, dt), rk);
 
-        solution = remesh(advance_rk(solution), aspect);
+        solution = remesh(advance_rk(solution), max_aspect, min_aspect);
 
         auto stop = std::chrono::high_resolution_clock::now();
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count();
         auto kzps = double(num_cells) / ms;
 
-        std::printf("[%06lu] t=%.4f zones: %05lu kzps=%.02lf\n",
+        std::printf("[%06lu] t=%.4f dt=%.04e zones: %05lu kzps=%.02lf\n",
             long(solution.iteration),
             solution.time.value,
+            dt.value,
             num_cells,
             kzps);
 
