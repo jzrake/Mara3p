@@ -98,6 +98,12 @@ public:
         }
     }
 
+    std::size_t size()
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        return threads.size();
+    }
+
     std::size_t job_count()
     {
         std::lock_guard<std::mutex> lock(mutex);

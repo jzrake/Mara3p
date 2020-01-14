@@ -269,4 +269,36 @@ std::pair<radial_track_t, nd::shared_array<srhd::conserved_t, 1>> remesh(
     dimensional::unit_scalar maximum_cell_aspect_ratio,
     dimensional::unit_scalar minimum_cell_aspect_ratio);
 
+
+
+
+/**
+ * @brief      Return a deep copy of a track data item.
+ *
+ * @param[in]  tr    The track data to copy
+ *
+ * @return     A new track data
+ */
+sedov::track_data_t copy_track_data(sedov::track_data_t tr);
+
+
+
+
+/**
+ * @brief      Return a deep copy of a 4-tuple of track data items. The use case
+ *             for this function is when shared-memory parallel execution is
+ *             slowed by thread contention for the heap. Empirically, contention
+ *             can be quite bad when the polar_godunov_data function os called
+ *             track data objects whose shared data is being read from by
+ *             different threads. Creating a separate copy of all four adjacent
+ *             tracks that are given to that function alleviates the contention
+ *             (but obviously uses more memory).
+ *
+ * @param[in]  trs   The tuple of track data to copy
+ *
+ * @return     A new tuple of track data
+ */
+std::tuple<sedov::track_data_t, sedov::track_data_t, sedov::track_data_t, sedov::track_data_t>
+copy_track_data4(std::tuple<sedov::track_data_t, sedov::track_data_t, sedov::track_data_t, sedov::track_data_t> trs);
+
 } // namespace sedov

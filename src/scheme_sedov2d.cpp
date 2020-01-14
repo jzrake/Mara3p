@@ -394,3 +394,35 @@ std::pair<sedov::radial_track_t, nd::shared_array<srhd::conserved_t, 1>> sedov::
 
     return std::pair(track, uc);
 }
+
+
+
+
+//=============================================================================
+sedov::track_data_t sedov::copy_track_data(sedov::track_data_t tr)
+{
+    return sedov::track_data_t{
+        {
+            std::get<0>(tr).face_radii | nd::to_shared(),
+            std::get<0>(tr).theta0,
+            std::get<0>(tr).theta1
+        },
+        std::get<1>(tr) | nd::to_shared(),
+        std::get<2>(tr) | nd::to_shared(),
+    };
+}
+
+
+
+
+//=============================================================================
+std::tuple<sedov::track_data_t, sedov::track_data_t, sedov::track_data_t, sedov::track_data_t>
+sedov::copy_track_data4(std::tuple<sedov::track_data_t, sedov::track_data_t, sedov::track_data_t, sedov::track_data_t> trs)
+{
+    return std::tuple(
+        copy_track_data(std::get<0>(trs)),
+        copy_track_data(std::get<1>(trs)),
+        copy_track_data(std::get<2>(trs)),
+        copy_track_data(std::get<3>(trs))
+    );
+}

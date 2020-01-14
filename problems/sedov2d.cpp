@@ -33,10 +33,12 @@
 #include "app_vtk.hpp"
 #include "core_util.hpp"
 #include "model_wind.hpp"
+#include "parallel_thread_pool.hpp"
 #include "scheme_sedov2d.hpp"
 
 using namespace dimensional;
 using namespace std::placeholders;
+static mara::ThreadPool thread_pool;
 
 
 
@@ -60,7 +62,37 @@ auto config_template()
     .item("engine_mdot",          1e4)   // engine mass rate
     .item("engine_onset",        50.0)   // the engine onset time [inner boundary light-crossing time]
     .item("engine_duration",    100.0)   // the engine duration   [inner boundary light-crossing time]
-    .item("engine_u",            10.0);  // the engine gamma-beta
+    .item("engine_u",            10.0)   // the engine gamma-beta
+    .item("threads",                1);  // the number of concurrent threads to execute on
+}
+
+
+
+
+template<typename P>
+auto evaluate_on(mara::ThreadPool& pool, nd::array_t<P, 1> array)
+{
+    using value_type = std::remove_cv_t<typename nd::array_t<P, 1>::value_type>;
+    auto futures = nd::make_unique_array<std::future<value_type>>(shape(array));
+    auto results = nd::make_unique_array<value_type>(shape(array));
+
+    for (std::size_t i = 0; i < size(array); ++i)
+    {
+        futures(i) = pool.enqueue(array, i);
+    }
+    for (std::size_t i = 0; i < size(array); ++i)
+    {
+        results(i) = futures(i).get();
+    }
+    return nd::make_shared_array(std::move(results));
+}
+
+auto evaluate_on(mara::ThreadPool& pool)
+{
+    return [&pool] (auto array)
+    {
+        return evaluate_on(pool, array);
+    };
 }
 
 
@@ -77,6 +109,7 @@ struct solution_t
 
 solution_t weighted_sum(solution_t s, solution_t t, rational::number_t b)
 {
+    auto eval   = evaluate_on(thread_pool);
     auto result = solution_t();
 
     result.iteration = s.iteration  *        b  + t.iteration *       (1 - b);
@@ -89,12 +122,12 @@ solution_t weighted_sum(solution_t s, solution_t t, rational::number_t b)
             s.theta0,
             s.theta1
         };
-    })) | nd::to_shared();
+    })) | eval;
     result.conserved = nd::zip(s.conserved, t.conserved)
     | nd::map(util::apply_to([b] (auto s, auto t)
     {
         return nd::to_shared(s * double(b) + t * double(1 - b));
-    })) | nd::to_shared();
+    })) | eval;
 
     return result;
 }
@@ -159,6 +192,7 @@ auto wind_profile(const mara::config_t& cfg, unit_length r, unit_scalar q, unit_
 //=============================================================================
 solution_t initial_solution(const mara::config_t& cfg)
 {
+    auto eval = evaluate_on(thread_pool);
     auto r0 = unit_length(1.0);
     auto r1 = r0 * cfg.get_double("router");
     auto p0 = [cfg] (unit_length r, unit_scalar q) { return wind_profile(cfg, r, q, 1.0); };
@@ -179,8 +213,8 @@ solution_t initial_solution(const mara::config_t& cfg)
     return {
         0,
         1.0,
-        nd::to_shared(tr),
-        nd::to_shared(u0),
+        eval(tr),
+        eval(u0),
     };
 }
 
@@ -211,6 +245,7 @@ sedov::radial_godunov_data_t outer_bc(
 
 solution_t remesh(solution_t solution, unit_scalar max_aspect, unit_scalar min_aspect)
 {
+    auto eval = evaluate_on(thread_pool);
     auto t0 = solution.tracks;
     auto uc = solution.conserved;
 
@@ -220,8 +255,9 @@ solution_t remesh(solution_t solution, unit_scalar max_aspect, unit_scalar min_a
     return {
         solution.iteration,
         solution.time,
-        t1 | nd::to_shared(),
-        u1 | nd::to_shared()};
+        t1 | eval,
+        u1 | eval,
+    };
 }
 
 
@@ -230,32 +266,34 @@ solution_t remesh(solution_t solution, unit_scalar max_aspect, unit_scalar min_a
 //=============================================================================
 solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt)
 {
+    auto eval = evaluate_on(thread_pool);
     auto wind = std::bind(wind_profile, cfg, _1, _2, solution.time);
     auto ibc = std::bind(inner_bc, _1, sedov::primitive_function_t{wind}, _2);
     auto obc = std::bind(outer_bc, _1, sedov::primitive_function_t{wind}, _2);
 
     auto t0 = solution.tracks;
     auto uc = solution.conserved;
-    auto pc = nd::zip(t0, uc)             | nd::map(util::apply_to(sedov::recover_primitive)) | nd::to_shared();
-    auto fi = nd::zip(t0, pc)             | nd::map(util::apply_to(ibc)) | nd::to_shared();
-    auto fo = nd::zip(t0, pc)             | nd::map(util::apply_to(obc)) | nd::to_shared();
-    auto dc = nd::zip(t0, pc)             | nd::map(util::apply_to(sedov::radial_gradient)) | nd::to_shared();
-    auto ff = nd::zip(t0, pc, dc, fi, fo) | nd::map(util::apply_to(sedov::radial_godunov_data)) | nd::to_shared();
-    auto dr = ff                          | nd::map(std::bind(sedov::delta_face_positions, _1, dt)) | nd::to_shared();
+    auto pc = nd::zip(t0, uc)             | nd::map(util::apply_to(sedov::recover_primitive))       | eval;
+    auto fi = nd::zip(t0, pc)             | nd::map(util::apply_to(ibc))                            | nd::to_shared();
+    auto fo = nd::zip(t0, pc)             | nd::map(util::apply_to(obc))                            | nd::to_shared();
+    auto dc = nd::zip(t0, pc)             | nd::map(util::apply_to(sedov::radial_gradient))         | eval;
+    auto ff = nd::zip(t0, pc, dc, fi, fo) | nd::map(util::apply_to(sedov::radial_godunov_data))     | eval;
+    auto dr = ff                          | nd::map(std::bind(sedov::delta_face_positions, _1, dt)) | eval;
 
     auto gf = nd::zip(t0, pc, dc)
     | nd::extend_uniform(sedov::track_data_t())
     | nd::adjacent_zip4()
+    | nd::map(sedov::copy_track_data4)
     | nd::map(util::apply_to(sedov::polar_godunov_data))
     | nd::extend_uniform(nd::shared_array<sedov::polar_godunov_data_t, 1>{})
-    | nd::to_shared();
+    | eval;
 
     auto du = nd::range(size(uc))
     | nd::map([t0, pc, ff, gf, dt] (nd::uint j)
     {
         return sedov::delta_conserved(t0(j), pc(j), ff(j), gf(j), gf(j + 1), dt);
     })
-    | nd::to_shared();
+    | eval;
 
     auto t1 = nd::zip(t0, dr) | nd::map(util::apply_to([] (auto track, auto dr)
     {
@@ -265,19 +303,19 @@ solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt)
             track.theta1,
         };
     }))
-    | nd::to_shared();
+    | eval;
 
     auto u1 = nd::zip(uc, du) | nd::map(util::apply_to([] (auto uc, auto du)
     {
         return nd::to_shared(uc + du);
     }))
-    | nd::to_shared();
+    | eval;
 
     return {
         solution.iteration + 1,
         solution.time + dt,
-        t1 | nd::to_shared(),
-        u1 | nd::to_shared(),
+        t1,
+        u1,
     };
 }
 
@@ -350,15 +388,68 @@ int main(int argc, const char* argv[])
 
     mara::pretty_print(std::cout, "config", cfg);
 
-    auto solution = initial_solution(cfg);
-    auto tfinal = unit_time  (cfg.get_double("tfinal"));
-    auto cfl    = unit_scalar(cfg.get_double("cfl"));
+    // auto run = [threads=cfg.get_int("threads")] (auto f)
+    // {
+    //     thread_pool.reset(1);
+
+    //     auto t0a = std::chrono::high_resolution_clock::now();
+    //     f();
+    //     auto t1a = std::chrono::high_resolution_clock::now();
+
+    //     thread_pool.reset(threads);
+
+    //     auto t0b = std::chrono::high_resolution_clock::now();
+    //     f();
+    //     auto t1b = std::chrono::high_resolution_clock::now();
+
+    //     auto msa = std::chrono::duration_cast<std::chrono::milliseconds>(t1a - t0a).count();
+    //     auto msb = std::chrono::duration_cast<std::chrono::milliseconds>(t1b - t0b).count();
+
+    //     std::printf("on 1 thread: %lld ms; on %d threads: %lld ms; scaling = %lf%%\n",
+    //         msa, threads, msb, 100.0 * msa / msb / threads);
+    // };
+
+
+
+    // run([&cfg] () { initial_solution(cfg); });
+
+    // run([&cfg] ()
+    // {
+    //     auto dt = unit_time(0.0);
+    //     auto eval = evaluate_on(thread_pool);
+    //     auto solution = initial_solution(cfg);
+    //     auto wind = std::bind(wind_profile, cfg, _1, _2, solution.time);
+    //     auto ibc = std::bind(inner_bc, _1, sedov::primitive_function_t{wind}, _2);
+    //     auto obc = std::bind(outer_bc, _1, sedov::primitive_function_t{wind}, _2);
+
+    //     auto t0 = solution.tracks;
+    //     auto uc = solution.conserved;
+    //     auto pc = nd::zip(t0, uc) | nd::map(util::apply_to(sedov::recover_primitive)) | eval;
+    //     auto fi = nd::zip(t0, pc) | nd::map(util::apply_to(ibc))                      | nd::to_shared();
+    //     auto fo = nd::zip(t0, pc) | nd::map(util::apply_to(obc))                      | nd::to_shared();
+
+    //     auto dc = nd::zip(t0, pc)             | nd::map(util::apply_to(sedov::radial_gradient))         | eval;
+    //     auto ff = nd::zip(t0, pc, dc, fi, fo) | nd::map(util::apply_to(sedov::radial_godunov_data))     | eval;
+    //     auto dr = ff                          | nd::map(std::bind(sedov::delta_face_positions, _1, dt)) | eval;
+
+    //     auto gf = nd::zip(t0, pc, dc)
+    //     | nd::adjacent_zip4()
+    //     | nd::map(copy_track_data4)
+    //     | nd::map(util::apply_to(sedov::polar_godunov_data))
+    //     | eval;
+    // });
+
+    thread_pool.reset(cfg.get_int("threads"));
+
+    auto tfinal     = unit_time  (cfg.get_double("tfinal"));
+    auto cfl        = unit_scalar(cfg.get_double("cfl"));
     auto max_aspect = cfg.get_double("max_aspect");
     auto min_aspect = cfg.get_double("min_aspect");
-    auto vtk_it = cfg.get_int("vtk");
-    auto rk     = cfg.get_int("rk");
+    auto vtk_it     = cfg.get_int("vtk");
+    auto rk         = cfg.get_int("rk");
+    auto vtk_count  = 0;
+    auto solution   = initial_solution(cfg);
 
-    auto vtk_count = 0;
     output_vtk(solution, vtk_count++);
 
     while (solution.time < tfinal)
