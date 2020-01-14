@@ -52,9 +52,7 @@ auto config_template()
     .item("focus",                0.0)   // amount by which to increase resolution near the poles [0, 1)
     .item("tfinal",              10.0)   // time to stop the simulation
     .item("vtk",                   50)   // number of iterations between VTK outputs
-    // .item("dfi",                  1.5)   // output interval (constant multiplier)
     .item("cfl",                  0.5)   // courant number
-    // .item("plm_theta",            1.5)   // PLM parameter
     .item("router",               1e1)   // outer boundary radius
     .item("envelop_mdot_index",   4.0)   // alpha in envelop mdot(t) = (t / t0)^alpha
     .item("envelop_u_index",     0.22)   // psi in envelop u(m) = u1 (m / m1)^(-psi)
@@ -165,6 +163,7 @@ solution_t initial_solution(const mara::config_t& cfg)
     auto r1 = r0 * cfg.get_double("router");
     auto p0 = [cfg] (unit_length r, unit_scalar q) { return wind_profile(cfg, r, q, 1.0); };
     auto nt = cfg.get_int("nt");
+    auto aspect = cfg.get_double("max_aspect");
 
     auto tween = [f=cfg.get_double("focus")] (auto x)
     {
@@ -174,7 +173,7 @@ solution_t initial_solution(const mara::config_t& cfg)
     auto tr = nd::linspace(0.0, 1.0, nt + 1)
     | nd::map(tween)
     | nd::adjacent_zip()
-    | nd::map(util::apply_to(std::bind(sedov::generate_radial_track, r0, r1, _1, _2)));
+    | nd::map(util::apply_to(std::bind(sedov::generate_radial_track, r0, r1, _1, _2, aspect)));
     auto u0 = tr | nd::map(std::bind(sedov::generate_conserved, _1, p0));
 
     return {
@@ -237,24 +236,26 @@ solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt)
 
     auto t0 = solution.tracks;
     auto uc = solution.conserved;
-    auto pc = nd::zip(t0, uc)             | nd::map(util::apply_to(sedov::recover_primitive));
-    auto fi = nd::zip(t0, pc)             | nd::map(util::apply_to(ibc));
-    auto fo = nd::zip(t0, pc)             | nd::map(util::apply_to(obc));
-    auto dc = nd::zip(t0, pc)             | nd::map(util::apply_to(sedov::radial_gradient));
-    auto ff = nd::zip(t0, pc, dc, fi, fo) | nd::map(util::apply_to(sedov::radial_godunov_data));
-    auto dr = ff                          | nd::map(std::bind(sedov::delta_face_positions, _1, dt));
+    auto pc = nd::zip(t0, uc)             | nd::map(util::apply_to(sedov::recover_primitive)) | nd::to_shared();
+    auto fi = nd::zip(t0, pc)             | nd::map(util::apply_to(ibc)) | nd::to_shared();
+    auto fo = nd::zip(t0, pc)             | nd::map(util::apply_to(obc)) | nd::to_shared();
+    auto dc = nd::zip(t0, pc)             | nd::map(util::apply_to(sedov::radial_gradient)) | nd::to_shared();
+    auto ff = nd::zip(t0, pc, dc, fi, fo) | nd::map(util::apply_to(sedov::radial_godunov_data)) | nd::to_shared();
+    auto dr = ff                          | nd::map(std::bind(sedov::delta_face_positions, _1, dt)) | nd::to_shared();
 
     auto gf = nd::zip(t0, pc, dc)
     | nd::extend_uniform(sedov::track_data_t())
     | nd::adjacent_zip4()
     | nd::map(util::apply_to(sedov::polar_godunov_data))
-    | nd::extend_uniform(nd::shared_array<sedov::polar_godunov_data_t, 1>{});
+    | nd::extend_uniform(nd::shared_array<sedov::polar_godunov_data_t, 1>{})
+    | nd::to_shared();
 
     auto du = nd::range(size(uc))
     | nd::map([t0, pc, ff, gf, dt] (nd::uint j)
     {
         return sedov::delta_conserved(t0(j), pc(j), ff(j), gf(j), gf(j + 1), dt);
-    });
+    })
+    | nd::to_shared();
 
     auto t1 = nd::zip(t0, dr) | nd::map(util::apply_to([] (auto track, auto dr)
     {
@@ -263,12 +264,14 @@ solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt)
             track.theta0,
             track.theta1,
         };
-    }));
+    }))
+    | nd::to_shared();
 
     auto u1 = nd::zip(uc, du) | nd::map(util::apply_to([] (auto uc, auto du)
     {
         return nd::to_shared(uc + du);
-    }));
+    }))
+    | nd::to_shared();
 
     return {
         solution.iteration + 1,

@@ -95,7 +95,8 @@ radial_track_t generate_radial_track(
     dimensional::unit_length r0,
     dimensional::unit_length r1,
     dimensional::unit_scalar theta0, 
-    dimensional::unit_scalar theta1);
+    dimensional::unit_scalar theta1,
+    dimensional::unit_scalar aspect);
 
 
 

@@ -30,8 +30,8 @@
 #include "scheme_plm_gradient.hpp"
 #include "scheme_sedov2d.hpp"
 
-static const double plm_theta = 1.5;
-static const double temperature_floor = 1e-6;
+static const double plm_theta = 1.0;
+static const double temperature_floor = 0.0;
 
 
 
@@ -109,17 +109,15 @@ sedov::radial_track_t sedov::generate_radial_track(
     dimensional::unit_length r0,
     dimensional::unit_length r1,
     dimensional::unit_scalar theta0, 
-    dimensional::unit_scalar theta1)
+    dimensional::unit_scalar theta1,
+    dimensional::unit_scalar aspect)
 {
-    auto N = unsigned(0.5 / (theta1 - theta0));
-    // auto t = 0.5 * (theta0 + theta1);
-    // auto s = 0.2 * std::pow(std::cos(t * 10.0), 2.0);
+    auto N = unsigned(M_PI / (theta1 - theta0) / aspect);
 
     auto radii = nd::linspace(std::log10(r0.value), std::log10(r1.value), N)
     | nd::map([] (double log10r)
     {
-        auto r = dimensional::unit_length(std::pow(10.0, log10r));
-        return r; //* (1.0 + (r / r0 - 1.0) * (r / r1 - 1.0) * s);
+        return dimensional::unit_length(std::pow(10.0, log10r));
     });
 
     return {
@@ -252,11 +250,7 @@ srhd::primitive_t sedov::sample(track_data_t track_data, dimensional::unit_lengt
     auto r0 = tr.face_radii(index + 0);
     auto r1 = tr.face_radii(index + 1);
     auto rc = 0.5 * (r0 + r1);
-
-    if (index >= size(pc))
-    {
-        throw std::runtime_error(util::format("sedov::sample (index out of range) %lu / %lu", index, size(pc)));
-    }
+    
     return pc(index) + dc(index) * (r - rc);
 }
 
@@ -295,25 +289,16 @@ nd::shared_array<sedov::polar_godunov_data_t, 1> sedov::polar_godunov_data(track
                 return {ff, da, il, ir};
             }
 
-            auto check = [] (const char* msg, auto p)
-            {
-                if (any(map(p, [] (auto x) { return std::isnan(x.value); })))
-                {
-                    throw std::runtime_error(msg);
-                }
-                return p;
-            };
-
             auto q0 = cell_center_theta(std::get<0>(t0));
             auto q1 = cell_center_theta(std::get<0>(t1));
             auto q2 = cell_center_theta(std::get<0>(t2));
             auto q3 = cell_center_theta(std::get<0>(t3));
-            auto p1 = check("p1", sample(t1, rf, il, {}));
-            auto p2 = check("p2", sample(t2, rf, ir, {}));
-            auto p0 = check("p0", sample(t0, rf, il, p1));
-            auto p3 = check("p3", sample(t3, rf, ir, p2));
-            auto cl = check("cl", plm(std::tuple(std::tuple(q0, q1, q2), std::tuple(p0, p1, p2))));
-            auto cr = check("cr", plm(std::tuple(std::tuple(q1, q2, q3), std::tuple(p1, p2, p3))));
+            auto p1 = sample(t1, rf, il, {});
+            auto p2 = sample(t2, rf, ir, {});
+            auto p0 = sample(t0, rf, il, p1);
+            auto p3 = sample(t3, rf, ir, p2);
+            auto cl = plm(std::tuple(std::tuple(q0, q1, q2), std::tuple(p0, p1, p2)));
+            auto cr = plm(std::tuple(std::tuple(q1, q2, q3), std::tuple(p1, p2, p3)));
             auto pl = p1 + (ql - q1) * cl;
             auto pr = p2 + (qr - q2) * cr;
             auto ff = srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);

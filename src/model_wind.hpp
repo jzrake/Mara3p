@@ -1,3 +1,4 @@
+
 /**
  ==============================================================================
  Copyright 2019, Jonathan Zrake
@@ -125,8 +126,8 @@ inline auto fast_rise_exponential_decay(dimensional::unit_time onset_time, dimen
     return [=] (dimensional::unit_time t)
     {
         auto x = (t - onset_time) / decay_time;
-        // return x < 0.0 ? 0.0 : 0.25 * std::pow(x, 2.0) * std::exp(2.0 - x);
-        return x < 0.0 ? 0.0 : std::sqrt(2.0 * x) * std::exp(0.5 - x);
+        return x < 0.0 ? 0.0 : 0.25 * std::pow(x, 2.0) * std::exp(2.0 - x);
+        // return x < 0.0 ? 0.0 : std::sqrt(2.0 * x) * std::exp(0.5 - x);
     };
 }
 
