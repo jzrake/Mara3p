@@ -150,7 +150,7 @@ auto transverse_faces(nd::array_t<P, 1> L, nd::array_t<P, 1> R)
     auto ir = -1;
     auto n = nd::uint(0);
 
-    auto check = [] (int i, nd::uint size) -> std::optional<nd::uint>
+    auto check = [] (int i, long size) -> std::optional<nd::uint>
     {
         if (i < 0 || i + 1 >= size)
         {

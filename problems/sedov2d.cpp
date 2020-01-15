@@ -388,57 +388,6 @@ int main(int argc, const char* argv[])
 
     mara::pretty_print(std::cout, "config", cfg);
 
-    // auto run = [threads=cfg.get_int("threads")] (auto f)
-    // {
-    //     thread_pool.reset(1);
-
-    //     auto t0a = std::chrono::high_resolution_clock::now();
-    //     f();
-    //     auto t1a = std::chrono::high_resolution_clock::now();
-
-    //     thread_pool.reset(threads);
-
-    //     auto t0b = std::chrono::high_resolution_clock::now();
-    //     f();
-    //     auto t1b = std::chrono::high_resolution_clock::now();
-
-    //     auto msa = std::chrono::duration_cast<std::chrono::milliseconds>(t1a - t0a).count();
-    //     auto msb = std::chrono::duration_cast<std::chrono::milliseconds>(t1b - t0b).count();
-
-    //     std::printf("on 1 thread: %lld ms; on %d threads: %lld ms; scaling = %lf%%\n",
-    //         msa, threads, msb, 100.0 * msa / msb / threads);
-    // };
-
-
-
-    // run([&cfg] () { initial_solution(cfg); });
-
-    // run([&cfg] ()
-    // {
-    //     auto dt = unit_time(0.0);
-    //     auto eval = evaluate_on(thread_pool);
-    //     auto solution = initial_solution(cfg);
-    //     auto wind = std::bind(wind_profile, cfg, _1, _2, solution.time);
-    //     auto ibc = std::bind(inner_bc, _1, sedov::primitive_function_t{wind}, _2);
-    //     auto obc = std::bind(outer_bc, _1, sedov::primitive_function_t{wind}, _2);
-
-    //     auto t0 = solution.tracks;
-    //     auto uc = solution.conserved;
-    //     auto pc = nd::zip(t0, uc) | nd::map(util::apply_to(sedov::recover_primitive)) | eval;
-    //     auto fi = nd::zip(t0, pc) | nd::map(util::apply_to(ibc))                      | nd::to_shared();
-    //     auto fo = nd::zip(t0, pc) | nd::map(util::apply_to(obc))                      | nd::to_shared();
-
-    //     auto dc = nd::zip(t0, pc)             | nd::map(util::apply_to(sedov::radial_gradient))         | eval;
-    //     auto ff = nd::zip(t0, pc, dc, fi, fo) | nd::map(util::apply_to(sedov::radial_godunov_data))     | eval;
-    //     auto dr = ff                          | nd::map(std::bind(sedov::delta_face_positions, _1, dt)) | eval;
-
-    //     auto gf = nd::zip(t0, pc, dc)
-    //     | nd::adjacent_zip4()
-    //     | nd::map(copy_track_data4)
-    //     | nd::map(util::apply_to(sedov::polar_godunov_data))
-    //     | eval;
-    // });
-
     thread_pool.reset(cfg.get_int("threads"));
 
     auto tfinal     = unit_time  (cfg.get_double("tfinal"));
@@ -471,6 +420,7 @@ int main(int argc, const char* argv[])
             dt.value,
             num_cells,
             kzps);
+	std::fflush(stdout);
 
         if (long(solution.iteration) % vtk_it == 0)
         {
