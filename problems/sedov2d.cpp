@@ -39,6 +39,7 @@
 using namespace dimensional;
 using namespace std::placeholders;
 static mara::ThreadPool thread_pool;
+static auto opening_angle = unit_scalar(0.2);
 
 
 
@@ -136,18 +137,20 @@ solution_t weighted_sum(solution_t s, solution_t t, rational::number_t b)
 
 
 //=============================================================================
-auto wind_mass_loss_rate(const mara::config_t& cfg, unit_scalar)
+auto wind_mass_loss_rate(const mara::config_t& cfg, unit_scalar q)
 {
     auto envelop_mdot = unit_mass_rate(1.0);
     auto engine_mdot  = unit_mass_rate(cfg.get_double("engine_mdot"));
     auto engine_onset = unit_time(cfg.get_double("engine_onset"));
     auto alpha        = cfg.get_double("envelop_mdot_index");
 
-    return [envelop_mdot, engine_mdot, alpha, engine_onset] (auto t)
+    return [envelop_mdot, engine_mdot, alpha, engine_onset, q] (auto t)
     {
+        auto p    = unit_scalar(M_PI) - q;
+        auto f    = (q.value < opening_angle ? 1.0 : 0.0) + (p.value < opening_angle ? 1.0 : 0.0);
         return t < engine_onset
         ? envelop_mdot * std::pow(t / unit_time(1.0), alpha)
-        : engine_mdot;
+        : envelop_mdot * std::pow(engine_onset / unit_time(1.0), alpha) * (1 - f) + engine_mdot * f;
     };
 }
 
@@ -173,7 +176,8 @@ auto wind_gamma_beta(const mara::config_t& cfg, unit_scalar q)
         auto m0   = integrated_envelop_mdot(1.0);
         auto m    = integrated_envelop_mdot(t);
         auto p    = unit_scalar(M_PI) - q;
-        auto f    = std::exp(-q * q / 0.04) + std::exp(-p * p / 0.04);
+        auto f    = (q.value < opening_angle ? 1.0 : 0.0) + (p.value < opening_angle ? 1.0 : 0.0);
+        // auto f    = std::exp(-q * q / 0.04) + std::exp(-p * p / 0.04);
         return envelop_u * std::pow(m / m0, -psi) + engine_u * fred(t) * f;
     };
 }
@@ -424,7 +428,7 @@ int main(int argc, const char* argv[])
             dt.value,
             num_cells,
             kzps);
-	std::fflush(stdout);
+        std::fflush(stdout);
 
         if (long(solution.iteration) % vtk_it == 0)
         {
