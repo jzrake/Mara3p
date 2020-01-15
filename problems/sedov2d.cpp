@@ -365,9 +365,13 @@ void output_vtk(solution_t solution, unsigned count)
     auto outf = std::ofstream(fname, std::ios_base::out);
     auto [vertices, indexes] = quad_mesh(solution.tracks);
 
-    auto p0 = nd::zip(solution.tracks, solution.conserved) | nd::map(util::apply_to(sedov::recover_primitive));
-    auto density = p0 | nd::flat() | nd::map(srhd::mass_density) | nd::to_shared();
-    auto ur      = p0 | nd::flat() | nd::map(srhd::gamma_beta_1) | nd::to_shared();
+    auto p0 = nd::zip(solution.tracks, solution.conserved)
+    | nd::map(util::apply_to(sedov::recover_primitive))
+    | nd::to_shared()
+    | nd::flat();
+
+    auto density = p0 | nd::map(srhd::mass_density) | nd::to_shared();
+    auto ur      = p0 | nd::map(srhd::gamma_beta_1) | nd::to_shared();
 
     std::printf("output %s\n", fname.data());
 
