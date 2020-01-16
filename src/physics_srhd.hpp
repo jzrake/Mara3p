@@ -243,7 +243,7 @@ inline primitive_t recover_primitive(conserved_density_t u, double gamma_law_ind
     auto W0        = 1.0;
     auto p         = dimensional::unit_energy_density(0.0);
 
-    while (iteration < newton_iter_max)
+    while (iteration <= newton_iter_max)
     {
         auto Et = tau + p + D * c2;
         auto b2 = std::min(SS * c2 / Et / Et, unit_scalar(1.0 - 1e-10));
@@ -258,7 +258,8 @@ inline primitive_t recover_primitive(conserved_density_t u, double gamma_law_ind
 
         p -= f / g;
 
-        if (std::fabs(f.value) < error_tolerance)
+        if (std::fabs(f.value) < error_tolerance || (
+            std::fabs(f.value) < error_tolerance * 1e4 && iteration == newton_iter_max))
         {
             W0 = W;
             found = true;

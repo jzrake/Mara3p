@@ -30,7 +30,6 @@
 #include "scheme_plm_gradient.hpp"
 #include "scheme_sedov2d.hpp"
 
-static const double plm_theta = 1.0;
 static const double temperature_floor = 0.0;
 
 
@@ -188,9 +187,10 @@ nd::shared_array<srhd::primitive_t, 1> sedov::recover_primitive(
 //=============================================================================
 nd::shared_array<sedov::primitive_per_length_t, 1> sedov::radial_gradient(
     radial_track_t track,
-    nd::shared_array<srhd::primitive_t, 1> pc)
+    nd::shared_array<srhd::primitive_t, 1> pc,
+    bool use_plm)
 {
-    auto plm = mara::plm_gradient(plm_theta);
+    auto plm = mara::plm_gradient(use_plm ? 1.0 : 0.0);
     auto xc3 = cell_center_radii(track) | nd::adjacent_zip3();
     auto pc3 = pc | nd::adjacent_zip3();
 
@@ -258,12 +258,12 @@ srhd::primitive_t sedov::sample(track_data_t track_data, dimensional::unit_lengt
 
 
 //=============================================================================
-nd::shared_array<sedov::polar_godunov_data_t, 1> sedov::polar_godunov_data(track_data_t t0, track_data_t t1, track_data_t t2, track_data_t t3)
+nd::shared_array<sedov::polar_godunov_data_t, 1> sedov::polar_godunov_data(track_data_t t0, track_data_t t1, track_data_t t2, track_data_t t3, bool use_plm)
 {
     auto nhat = geometric::unit_vector_on(2);
     auto mode = srhd::riemann_solver_mode_hllc_fluxes_t();
     auto face = mesh::transverse_faces(std::get<0>(t1).face_radii, std::get<0>(t2).face_radii);
-    auto plm  = mara::plm_gradient(plm_theta);
+    auto plm  = mara::plm_gradient(1.0);
 
     return nd::make_array(nd::indexing([=] (nd::uint i) -> polar_godunov_data_t
     {
@@ -277,7 +277,7 @@ nd::shared_array<sedov::polar_godunov_data_t, 1> sedov::polar_godunov_data(track
             auto qr = std::get<0>(t2).theta0; // NOTE: ql and qr must be equal
             auto rf = 0.5 * (ri + ro);
 
-            if (size(std::get<0>(t0).face_radii) == 0 || size(std::get<0>(t3).face_radii) == 0)
+            if (! use_plm || size(std::get<0>(t0).face_radii) == 0 || size(std::get<0>(t3).face_radii) == 0)
             {
                 // If either the left-most or right-most track data is missing, then
                 // forego extrapolation in the polar direction.

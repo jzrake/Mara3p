@@ -144,7 +144,8 @@ nd::shared_array<srhd::primitive_t, 1> recover_primitive(
  */
 nd::shared_array<primitive_per_length_t, 1> radial_gradient(
     radial_track_t track,
-    nd::shared_array<srhd::primitive_t, 1> pc);
+    nd::shared_array<srhd::primitive_t, 1> pc,
+    bool use_plm);
 
 
 
@@ -187,7 +188,7 @@ nd::shared_array<radial_godunov_data_t, 1> radial_godunov_data(
  *             are used, and piecewise constant extrapolation is used in the
  *             polar direction.
  */
-nd::shared_array<polar_godunov_data_t, 1> polar_godunov_data(track_data_t t0, track_data_t t1, track_data_t t2, track_data_t t3);
+nd::shared_array<polar_godunov_data_t, 1> polar_godunov_data(track_data_t t0, track_data_t t1, track_data_t t2, track_data_t t3, bool use_plm);
 
 
 

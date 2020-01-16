@@ -268,19 +268,21 @@ solution_t remesh(solution_t solution, unit_scalar max_aspect, unit_scalar min_a
 
 
 //=============================================================================
-solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt)
+solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt, bool use_plm)
 {
     auto eval = evaluate_on(thread_pool);
     auto wind = std::bind(wind_profile, cfg, _1, _2, solution.time);
     auto ibc = std::bind(inner_bc, _1, sedov::primitive_function_t{wind}, _2);
     auto obc = std::bind(outer_bc, _1, sedov::primitive_function_t{wind}, _2);
+    auto radial_gradient = std::bind(sedov::radial_gradient, _1, _2, use_plm);
+    auto polar_godunov   = std::bind(sedov::polar_godunov_data, _1, _2, _3, _4, use_plm);
 
     auto t0 = solution.tracks;
     auto uc = solution.conserved;
     auto pc = nd::zip(t0, uc)             | nd::map(util::apply_to(sedov::recover_primitive))       | eval;
     auto fi = nd::zip(t0, pc)             | nd::map(util::apply_to(ibc))                            | nd::to_shared();
     auto fo = nd::zip(t0, pc)             | nd::map(util::apply_to(obc))                            | nd::to_shared();
-    auto dc = nd::zip(t0, pc)             | nd::map(util::apply_to(sedov::radial_gradient))         | eval;
+    auto dc = nd::zip(t0, pc)             | nd::map(util::apply_to(radial_gradient))                | eval;
     auto ff = nd::zip(t0, pc, dc, fi, fo) | nd::map(util::apply_to(sedov::radial_godunov_data))     | eval;
     auto dr = ff                          | nd::map(std::bind(sedov::delta_face_positions, _1, dt)) | eval;
 
@@ -288,7 +290,7 @@ solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt)
     | nd::extend_uniform(sedov::track_data_t())
     | nd::adjacent_zip4()
     | nd::map(sedov::copy_track_data4)
-    | nd::map(util::apply_to(sedov::polar_godunov_data))
+    | nd::map(util::apply_to(polar_godunov))
     | nd::extend_uniform(nd::shared_array<sedov::polar_godunov_data_t, 1>{})
     | eval;
 
@@ -299,7 +301,8 @@ solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt)
     })
     | eval;
 
-    auto t1 = nd::zip(t0, dr) | nd::map(util::apply_to([] (auto track, auto dr)
+    auto t1 = nd::zip(t0, dr)
+    | nd::map(util::apply_to([] (auto track, auto dr)
     {
         return sedov::radial_track_t{
             nd::to_shared(track.face_radii + dr),
@@ -309,10 +312,8 @@ solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt)
     }))
     | eval;
 
-    auto u1 = nd::zip(uc, du) | nd::map(util::apply_to([] (auto uc, auto du)
-    {
-        return nd::to_shared(uc + du);
-    }))
+    auto u1 = nd::zip(uc, du)
+    | nd::map(util::apply_to([] (auto uc, auto du) { return nd::to_shared(uc + du); }))
     | eval;
 
     return {
@@ -408,17 +409,18 @@ int main(int argc, const char* argv[])
     auto solution   = initial_solution(cfg);
     auto backup     = solution_t{};
     auto safety     = false;
+    auto failed_iter = rational::number_t();
 
     output_vtk(solution, vtk_count++);
 
     while (solution.time < tfinal)
     {
-        auto dt         = cfl * (safety ? 1e-2 : 1.0) * nd::min(solution.tracks | nd::map(sedov::minimum_spacing)) / srhd::light_speed;
+        auto dt         = cfl * (safety ? 1e-3 : 1.0) * nd::min(solution.tracks | nd::map(sedov::minimum_spacing)) / srhd::light_speed;
         auto num_cells  = nd::sum(solution.tracks | nd::map([] (auto t) { return size(t.face_radii); }));
         auto start      = std::chrono::high_resolution_clock::now();
+        auto advance_rk = control::advance_runge_kutta(std::bind(advance, cfg, _1, dt, ! safety), rk);
 
         try {
-            auto advance_rk = control::advance_runge_kutta(std::bind(advance, cfg, _1, dt), rk);
             auto pre_step = solution;
 
             solution = remesh(advance_rk(solution), max_aspect, min_aspect);
@@ -436,14 +438,14 @@ int main(int argc, const char* argv[])
                 num_cells,
                 kzps);
             std::fflush(stdout);
-
-            if (long(solution.iteration) % vtk_it == 0)
-            {
-                output_vtk(solution, vtk_count++);            
-            }
         }
         catch (const std::exception& e)
         {
+            if (solution.iteration == failed_iter) {
+                throw;
+            }
+
+            failed_iter = solution.iteration;
             solution = backup;
             safety   = true;
 
@@ -451,6 +453,11 @@ int main(int argc, const char* argv[])
                 e.what(),
                 long(solution.iteration),
                 long(solution.iteration + 1));
+        }
+
+        if (long(solution.iteration) % vtk_it == 0)
+        {
+            output_vtk(solution, vtk_count++);            
         }
     }
     return 0;
