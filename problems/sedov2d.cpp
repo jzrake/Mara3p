@@ -406,33 +406,51 @@ int main(int argc, const char* argv[])
     auto rk         = cfg.get_int("rk");
     auto vtk_count  = 0;
     auto solution   = initial_solution(cfg);
+    auto backup     = solution_t{};
+    auto safety     = false;
 
     output_vtk(solution, vtk_count++);
 
     while (solution.time < tfinal)
     {
-        auto dt         = cfl * nd::min(solution.tracks | nd::map(sedov::minimum_spacing)) / srhd::light_speed;
+        auto dt         = cfl * (safety ? 1e-2 : 1.0) * nd::min(solution.tracks | nd::map(sedov::minimum_spacing)) / srhd::light_speed;
         auto num_cells  = nd::sum(solution.tracks | nd::map([] (auto t) { return size(t.face_radii); }));
         auto start      = std::chrono::high_resolution_clock::now();
-        auto advance_rk = control::advance_runge_kutta(std::bind(advance, cfg, _1, dt), rk);
 
-        solution = remesh(advance_rk(solution), max_aspect, min_aspect);
+        try {
+            auto advance_rk = control::advance_runge_kutta(std::bind(advance, cfg, _1, dt), rk);
+            auto pre_step = solution;
 
-        auto stop = std::chrono::high_resolution_clock::now();
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count();
-        auto kzps = double(num_cells) / ms;
+            solution = remesh(advance_rk(solution), max_aspect, min_aspect);
+            backup   = pre_step;
+            safety   = false;
 
-        std::printf("[%06lu] t=%.4f dt=%.04e zones: %05lu kzps=%.02lf\n",
-            long(solution.iteration),
-            solution.time.value,
-            dt.value,
-            num_cells,
-            kzps);
-        std::fflush(stdout);
+            auto stop = std::chrono::high_resolution_clock::now();
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count();
+            auto kzps = double(num_cells) / ms;
 
-        if (long(solution.iteration) % vtk_it == 0)
+            std::printf("[%06lu] t=%.4f dt=%.04e zones: %05lu kzps=%.02lf\n",
+                long(solution.iteration),
+                solution.time.value,
+                dt.value,
+                num_cells,
+                kzps);
+            std::fflush(stdout);
+
+            if (long(solution.iteration) % vtk_it == 0)
+            {
+                output_vtk(solution, vtk_count++);            
+            }
+        }
+        catch (const std::exception& e)
         {
-            output_vtk(solution, vtk_count++);            
+            solution = backup;
+            safety   = true;
+
+            std::printf("%s\n[re-trying time step %lu -> %lu in safety mode]\n",
+                e.what(),
+                long(solution.iteration),
+                long(solution.iteration + 1));
         }
     }
     return 0;
