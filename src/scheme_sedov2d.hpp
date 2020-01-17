@@ -133,8 +133,10 @@ nd::shared_array<srhd::primitive_t, 1> recover_primitive(
  * @brief      Compute PLM-estimated gradient of primitive quantities in the
  *             radial direction.
  *
- * @param      track  The radial track itself (geometric data)
- * @param      pc     The array of primitive data in the cells on that track
+ * @param      track    The radial track itself (geometric data)
+ * @param      pc       The array of primitive data in the cells on that track
+ * @param[in]  use_plm  Whether or not to enable gradient estimation (returns
+ *                      zeros if false).
  *
  * @return     A shared array of primitive gradients
  *
@@ -177,10 +179,12 @@ nd::shared_array<radial_godunov_data_t, 1> radial_godunov_data(
  *             indexes (in their respective radial tracks) of the cells to
  *             either side of the face.
  *
- * @param[in]  t0    The track two to the left
- * @param[in]  t1    The track to the left of the interface
- * @param[in]  t2    The track to the right of the interface
- * @param[in]  t3    The track two to the right
+ * @param[in]  t0       The track two to the left
+ * @param[in]  t1       The track to the left of the interface
+ * @param[in]  t2       The track to the right of the interface
+ * @param[in]  t3       The track two to the right
+ * @param[in]  use_plm  Whether or not to enable gradient estimation in the
+ *                      polar direction
  *
  * @return     A shared array of polar Godunov data
  *
@@ -289,11 +293,11 @@ sedov::track_data_t copy_track_data(sedov::track_data_t tr);
  * @brief      Return a deep copy of a 4-tuple of track data items. The use case
  *             for this function is when shared-memory parallel execution is
  *             slowed by thread contention for the heap. Empirically, contention
- *             can be quite bad when the polar_godunov_data function os called
- *             track data objects whose shared data is being read from by
- *             different threads. Creating a separate copy of all four adjacent
- *             tracks that are given to that function alleviates the contention
- *             (but obviously uses more memory).
+ *             can be quite bad when the polar_godunov_data function is called
+ *             with track data objects whose shared arrays are currently read by
+ *             different threads. Creating a deep copy of the four adjacent
+ *             track data objects alleviates the contention (but obviously uses
+ *             more memory).
  *
  * @param[in]  trs   The tuple of track data to copy
  *

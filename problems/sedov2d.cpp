@@ -30,6 +30,7 @@
 #include <fstream>
 #include "app_config.hpp"
 #include "app_control.hpp"
+#include "app_filesystem.hpp"
 #include "app_vtk.hpp"
 #include "core_util.hpp"
 #include "model_wind.hpp"
@@ -64,7 +65,8 @@ auto config_template()
     .item("engine_onset",        50.0)   // the engine onset time [inner boundary light-crossing time]
     .item("engine_duration",    100.0)   // the engine duration   [inner boundary light-crossing time]
     .item("engine_u",            10.0)   // the engine gamma-beta
-    .item("threads",                1);  // the number of concurrent threads to execute on
+    .item("threads",                1)   // the number of concurrent threads to execute on
+    .item("outdir",  std::string("."));  // the directory where output files are written
 }
 
 
@@ -364,9 +366,9 @@ auto quad_mesh(nd::shared_array<sedov::radial_track_t, 1> tracks)
 
 
 //=============================================================================
-void output_vtk(solution_t solution, unsigned count)
+void output_vtk(std::string outdir, solution_t solution, unsigned count)
 {
-    auto fname = util::format("primitive.%04u.vtk", count);
+    auto fname = util::format("%s/primitive.%04u.vtk", outdir.data(), count);
     auto outf = std::ofstream(fname, std::ios_base::out);
     auto [vertices, indexes] = quad_mesh(solution.tracks);
 
@@ -395,8 +397,6 @@ int main(int argc, const char* argv[])
     .create()
     .update(mara::argv_to_string_map(argc, argv));
 
-    mara::pretty_print(std::cout, "config", cfg);
-
     thread_pool.reset(cfg.get_int("threads"));
 
     auto tfinal     = unit_time  (cfg.get_double("tfinal"));
@@ -405,13 +405,16 @@ int main(int argc, const char* argv[])
     auto min_aspect = cfg.get_double("min_aspect");
     auto vtk_it     = cfg.get_int("vtk");
     auto rk         = cfg.get_int("rk");
+    auto outdir     = cfg.get_string("outdir");
     auto vtk_count  = 0;
     auto solution   = initial_solution(cfg);
     auto backup     = solution_t{};
     auto safety     = false;
     auto failed_iter = rational::number_t();
 
-    output_vtk(solution, vtk_count++);
+    mara::pretty_print(std::cout, "config", cfg);
+    mara::filesystem::require_dir(outdir);
+    output_vtk(outdir, solution, vtk_count++);
 
     while (solution.time < tfinal)
     {
@@ -457,7 +460,7 @@ int main(int argc, const char* argv[])
 
         if (long(solution.iteration) % vtk_it == 0)
         {
-            output_vtk(solution, vtk_count++);            
+            output_vtk(outdir, solution, vtk_count++);            
         }
     }
     return 0;
