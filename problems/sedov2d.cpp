@@ -74,6 +74,7 @@ auto config_template()
     .item("engine_u",            10.0)   // the engine gamma-beta
     .item("engine_theta",         0.2)   // the engine opening angle
     .item("threads",                1)   // the number of concurrent threads to execute on
+    .item("restart", std::string(""))    // a checkpoint file to restart from
     .item("outdir",  std::string("."));  // the directory where output files are written
 }
 
@@ -174,20 +175,40 @@ void write_checkpoint(const mara::config_t& cfg, solution_t solution)
     }
 }
 
-void read_checkpoint(std::string fname)
+solution_t read_checkpoint(std::string fname)
 {
     auto file         = h5::File(fname, "r");
     auto tracks_group = h5::Group(file).open_group("tracks");
     auto cfg          = mara::config_parameter_map_t();
-    auto solution     = solution_t();
     auto tracks       = nd::make_unique_array<sedov::radial_track_t>(nd::uivec(tracks_group.size()));
     auto conserved    = nd::make_unique_array<nd::shared_array<srhd::conserved_t, 1>>(nd::uivec(tracks_group.size()));
+    auto solution     = solution_t();
 
-    h5::read(file, "run_config", cfg);
+    for (auto name : tracks_group)
+    {
+        auto n = std::stoi(name);
+        h5::read(tracks_group.open_group(name), "face_radii", tracks(n).face_radii);
+        h5::read(tracks_group.open_group(name), "theta0", tracks(n).theta0);
+        h5::read(tracks_group.open_group(name), "theta1", tracks(n).theta1);
+        h5::read(tracks_group.open_group(name), "conserved", conserved(n));
+    }
+
     h5::read(file, "iteration", solution.iteration);
     h5::read(file, "time", solution.time);
+    solution.tracks    = nd::make_shared_array(std::move(tracks));
+    solution.conserved = nd::make_shared_array(std::move(conserved));
 
-    // Work in progress
+    return solution;
+}
+
+mara::config_parameter_map_t restart_run_config(const mara::config_string_map_t& args)
+{
+    if (args.count("restart"))
+    {
+        auto file = h5::File(args.at("restart"), "r");
+        return h5::read<mara::config_parameter_map_t>(file, "run_config");
+    }
+    return {};
 }
 
 
@@ -232,9 +253,9 @@ auto quad_mesh(nd::shared_array<sedov::radial_track_t, 1> tracks)
 //=============================================================================
 void write_vtk(const mara::config_t& cfg, solution_t solution)
 {
-    auto count     = long(solution.iteration) / cfg.get_int("cpi");
+    auto count     = long(solution.iteration) / cfg.get_int("vtk");
     auto outdir    = cfg.get_string("outdir");
-    auto fname     = util::format("%s/primitive.%04d.h5", outdir.data(), count);
+    auto fname     = util::format("%s/primitive.%04d.vtk", outdir.data(), count);
     auto outf = std::ofstream(fname, std::ios_base::out);
     auto [vertices, indexes] = quad_mesh(solution.tracks);
 
@@ -317,6 +338,11 @@ auto wind_profile(const mara::config_t& cfg, unit_length r, unit_scalar q, unit_
 //=============================================================================
 solution_t initial_solution(const mara::config_t& cfg)
 {
+    if (! cfg.get_string("restart").empty())
+    {
+        return read_checkpoint(cfg.get_string("restart"));
+    }
+
     auto eval = evaluate_on(thread_pool);
     auto r0 = unit_length(1.0);
     auto r1 = r0 * cfg.get_double("router");
@@ -447,9 +473,12 @@ solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt,
 //=============================================================================
 int main(int argc, const char* argv[])
 {
+    auto args = mara::argv_to_string_map(argc, argv);
+
     auto cfg = config_template()
     .create()
-    .update(mara::argv_to_string_map(argc, argv));
+    .update(restart_run_config(args))
+    .update(args);
 
     thread_pool.reset(cfg.get_int("threads"));
 
@@ -469,7 +498,7 @@ int main(int argc, const char* argv[])
     mara::pretty_print(std::cout, "config", cfg);
     mara::filesystem::require_dir(outdir);
     write_vtk(cfg, solution);
-    write_checkpoint(cfg, solution);
+    write_checkpoint(cfg, solution);        
 
     while (solution.time < tfinal)
     {
