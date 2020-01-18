@@ -150,10 +150,14 @@ solution_t weighted_sum(solution_t s, solution_t t, rational::number_t b)
 //=============================================================================
 void write_checkpoint(const mara::config_t& cfg, solution_t solution)
 {
-    auto count     = long(solution.iteration) % cfg.get_int("cpi");
-    auto file      = h5::File(util::format("chkpt.%04d.h5", count), "w");
+    auto count     = long(solution.iteration) / cfg.get_int("cpi");
+    auto outdir    = cfg.get_string("outdir");
+    auto fname     = util::format("%s/chkpt.%04d.h5", outdir.data(), count);
+    auto file      = h5::File(fname, "w");
     auto tracks    = h5::Group(file).require_group("tracks");
     auto conserved = h5::Group(file).require_group("conserved");
+
+    std::printf("output %s\n", fname.data());
 
     h5::write(file, "run_config", cfg);
     h5::write(file, "iteration", solution.iteration);
@@ -226,9 +230,11 @@ auto quad_mesh(nd::shared_array<sedov::radial_track_t, 1> tracks)
 
 
 //=============================================================================
-void output_vtk(std::string outdir, solution_t solution, unsigned count)
+void write_vtk(const mara::config_t& cfg, solution_t solution)
 {
-    auto fname = util::format("%s/primitive.%04u.vtk", outdir.data(), count);
+    auto count     = long(solution.iteration) / cfg.get_int("cpi");
+    auto outdir    = cfg.get_string("outdir");
+    auto fname     = util::format("%s/primitive.%04d.h5", outdir.data(), count);
     auto outf = std::ofstream(fname, std::ios_base::out);
     auto [vertices, indexes] = quad_mesh(solution.tracks);
 
@@ -409,10 +415,10 @@ solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt,
     | nd::extend_uniform(nd::shared_array<sedov::polar_godunov_data_t, 1>{})
     | eval;
 
-    auto du = nd::range(size(uc))
-    | nd::map([t0, pc, ff, gf, dt] (nd::uint j)
+    auto u1 = nd::range(size(uc))
+    | nd::map([t0, uc, pc, ff, gf, dt] (nd::uint j)
     {
-        return sedov::delta_conserved(t0(j), pc(j), ff(j), gf(j), gf(j + 1), dt);
+        return nd::to_shared(uc(j) + sedov::delta_conserved(t0(j), pc(j), ff(j), gf(j), gf(j + 1), dt));
     })
     | eval;
 
@@ -425,10 +431,6 @@ solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt,
             track.theta1,
         };
     }))
-    | eval;
-
-    auto u1 = nd::zip(uc, du)
-    | nd::map(util::apply_to([] (auto uc, auto du) { return nd::to_shared(uc + du); }))
     | eval;
 
     return {
@@ -451,22 +453,23 @@ int main(int argc, const char* argv[])
 
     thread_pool.reset(cfg.get_int("threads"));
 
-    auto tfinal     = unit_time  (cfg.get_double("tfinal"));
-    auto cfl        = unit_scalar(cfg.get_double("cfl"));
-    auto max_aspect = cfg.get_double("max_aspect");
-    auto min_aspect = cfg.get_double("min_aspect");
-    auto vtk_it     = cfg.get_int("vtk");
-    auto rk         = cfg.get_int("rk");
-    auto outdir     = cfg.get_string("outdir");
-    auto vtk_count  = 0;
-    auto solution   = initial_solution(cfg);
-    auto backup     = solution_t{};
-    auto safety     = false;
+    auto tfinal      = unit_time  (cfg.get_double("tfinal"));
+    auto cfl         = unit_scalar(cfg.get_double("cfl"));
+    auto max_aspect  = cfg.get_double("max_aspect");
+    auto min_aspect  = cfg.get_double("min_aspect");
+    auto vtk         = cfg.get_int("vtk");
+    auto cpi         = cfg.get_int("cpi");
+    auto rk          = cfg.get_int("rk");
+    auto outdir      = cfg.get_string("outdir");
+    auto solution    = initial_solution(cfg);
+    auto backup      = solution_t{};
+    auto safety      = false;
     auto failed_iter = rational::number_t();
 
     mara::pretty_print(std::cout, "config", cfg);
     mara::filesystem::require_dir(outdir);
-    output_vtk(outdir, solution, vtk_count++);
+    write_vtk(cfg, solution);
+    write_checkpoint(cfg, solution);
 
     while (solution.time < tfinal)
     {
@@ -483,7 +486,7 @@ int main(int argc, const char* argv[])
             safety   = false;
 
             auto stop = std::chrono::high_resolution_clock::now();
-            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count();
+            auto ms   = std::chrono::duration_cast<std::chrono::milliseconds>(stop - start).count();
             auto kzps = double(num_cells) / ms;
 
             std::printf("[%06lu] t=%.4f dt=%.04e zones: %05lu kzps=%.02lf\n",
@@ -496,13 +499,14 @@ int main(int argc, const char* argv[])
         }
         catch (const std::exception& e)
         {
-            if (solution.iteration == failed_iter) {
+            if (solution.iteration == failed_iter)
+            {
                 throw;
             }
 
             failed_iter = solution.iteration;
-            solution = backup;
-            safety   = true;
+            solution    = backup;
+            safety      = true;
 
             std::printf("%s\n[re-trying time step %lu -> %lu in safety mode]\n",
                 e.what(),
@@ -510,9 +514,13 @@ int main(int argc, const char* argv[])
                 long(solution.iteration + 1));
         }
 
-        if (long(solution.iteration) % vtk_it == 0)
+        if (long(solution.iteration) % vtk == 0)
         {
-            output_vtk(outdir, solution, vtk_count++);            
+            write_vtk(cfg, solution);
+        }
+        if (long(solution.iteration) % cpi == 0)
+        {
+            write_checkpoint(cfg, solution);
         }
     }
     return 0;
