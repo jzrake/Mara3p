@@ -26,7 +26,6 @@
 
 
 
-// #define SRHD_NO_EXCEPTIONS
 #include "app_config.hpp"
 #include "app_control.hpp"
 #include "app_hdf5.hpp"
@@ -342,11 +341,6 @@ void print_run_loop(const mara::config_t& run_config, timed_state_pair_t p)
         time_step(run_config, soln).value,
         nz,
         nz / us);
-
-    // auto dr = soln.vertices | nd::adjacent_diff();
-    // std::printf("| min(dr)=%.2e @ %lu max(dr)=%.2e @ %lu\n",
-    //     nd::min(dr).value, nd::argmin(dr)[0],
-    //     nd::max(dr).value, nd::argmax(dr)[0]);
 }
 
 auto side_effects(const mara::config_t& run_config, timed_state_pair_t p)

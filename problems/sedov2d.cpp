@@ -30,6 +30,13 @@
 #include <fstream>
 #include "app_config.hpp"
 #include "app_control.hpp"
+#include "app_hdf5.hpp"
+#include "app_hdf5_config.hpp"
+#include "app_hdf5_dimensional.hpp"
+#include "app_hdf5_ndarray.hpp"
+#include "app_hdf5_ndarray_dimensional.hpp"
+#include "app_hdf5_numeric_array.hpp"
+#include "app_hdf5_rational.hpp"
 #include "app_filesystem.hpp"
 #include "app_vtk.hpp"
 #include "core_util.hpp"
@@ -40,7 +47,6 @@
 using namespace dimensional;
 using namespace std::placeholders;
 static mara::ThreadPool thread_pool;
-static auto opening_angle = unit_scalar(0.2);
 
 
 
@@ -55,6 +61,7 @@ auto config_template()
     .item("min_aspect",           0.0)   // aspect ratio of the widest cell allowed
     .item("focus",                0.0)   // amount by which to increase resolution near the poles [0, 1)
     .item("tfinal",              10.0)   // time to stop the simulation
+    .item("cpi",                   50)   // number of iterations between checkpoints
     .item("vtk",                   50)   // number of iterations between VTK outputs
     .item("cfl",                  0.5)   // courant number
     .item("router",               1e1)   // outer boundary radius
@@ -65,6 +72,7 @@ auto config_template()
     .item("engine_onset",        50.0)   // the engine onset time [inner boundary light-crossing time]
     .item("engine_duration",    100.0)   // the engine duration   [inner boundary light-crossing time]
     .item("engine_u",            10.0)   // the engine gamma-beta
+    .item("engine_theta",         0.2)   // the engine opening angle
     .item("threads",                1)   // the number of concurrent threads to execute on
     .item("outdir",  std::string("."));  // the directory where output files are written
 }
@@ -72,6 +80,7 @@ auto config_template()
 
 
 
+//=============================================================================
 template<typename P>
 auto evaluate_on(mara::ThreadPool& pool, nd::array_t<P, 1> array)
 {
@@ -139,17 +148,121 @@ solution_t weighted_sum(solution_t s, solution_t t, rational::number_t b)
 
 
 //=============================================================================
+void write_checkpoint(const mara::config_t& cfg, solution_t solution)
+{
+    auto count     = long(solution.iteration) % cfg.get_int("cpi");
+    auto file      = h5::File(util::format("chkpt.%04d.h5", count), "w");
+    auto tracks    = h5::Group(file).require_group("tracks");
+    auto conserved = h5::Group(file).require_group("conserved");
+
+    h5::write(file, "run_config", cfg);
+    h5::write(file, "iteration", solution.iteration);
+    h5::write(file, "time", solution.time);
+
+    for (auto n : nd::range(size(solution.tracks)))
+    {
+        auto track = tracks.require_group(std::to_string(n));
+        h5::write(track, "face_radii", solution.tracks(n).face_radii);
+        h5::write(track, "theta0", solution.tracks(n).theta0);
+        h5::write(track, "theta1", solution.tracks(n).theta1);
+        h5::write(track, "conserved", solution.conserved(n));
+        h5::write(track, "primitive", sedov::recover_primitive(solution.tracks(n), solution.conserved(n)));
+    }
+}
+
+void read_checkpoint(std::string fname)
+{
+    auto file         = h5::File(fname, "r");
+    auto tracks_group = h5::Group(file).open_group("tracks");
+    auto cfg          = mara::config_parameter_map_t();
+    auto solution     = solution_t();
+    auto tracks       = nd::make_unique_array<sedov::radial_track_t>(nd::uivec(tracks_group.size()));
+    auto conserved    = nd::make_unique_array<nd::shared_array<srhd::conserved_t, 1>>(nd::uivec(tracks_group.size()));
+
+    h5::read(file, "run_config", cfg);
+    h5::read(file, "iteration", solution.iteration);
+    h5::read(file, "time", solution.time);
+
+    // Work in progress
+}
+
+
+
+
+//=============================================================================
+auto quad_mesh(nd::shared_array<sedov::radial_track_t, 1> tracks)
+{
+    using vec3d = geometric::euclidean_vector_t<unit_length>;
+
+    auto total_cells = tracks | nd::map([] (auto track) { return size(track.face_radii) - 1; }) | nd::sum();
+    auto vertices = nd::make_unique_array<vec3d>(nd::uivec(total_cells * 4));
+    auto n = nd::uint(0);
+
+    for (std::size_t j = 0; j < size(tracks); ++j)
+    {
+        for (std::size_t i = 0; i < size(tracks(j).face_radii) - 1; ++i)
+        {
+            auto t0 = tracks(j).theta0;
+            auto t1 = tracks(j).theta1;
+            auto r0 = tracks(j).face_radii(i + 0);
+            auto r1 = tracks(j).face_radii(i + 1);
+
+            vertices(n++) = vec3d{r0 * std::sin(t0), 0.0, r0 * std::cos(t0)};
+            vertices(n++) = vec3d{r0 * std::sin(t1), 0.0, r0 * std::cos(t1)};
+            vertices(n++) = vec3d{r1 * std::sin(t1), 0.0, r1 * std::cos(t1)};
+            vertices(n++) = vec3d{r1 * std::sin(t0), 0.0, r1 * std::cos(t0)};
+        }
+    }
+
+    auto indexes = nd::range(total_cells)
+    | nd::map([] (int n)
+    {
+        return std::array{4 * n + 0, 4 * n + 1, 4 * n + 2, 4 * n + 3};
+    });
+    return std::pair(nd::make_shared_array(std::move(vertices)), nd::to_shared(indexes));
+}
+
+
+
+
+//=============================================================================
+void output_vtk(std::string outdir, solution_t solution, unsigned count)
+{
+    auto fname = util::format("%s/primitive.%04u.vtk", outdir.data(), count);
+    auto outf = std::ofstream(fname, std::ios_base::out);
+    auto [vertices, indexes] = quad_mesh(solution.tracks);
+
+    auto p0 = nd::zip(solution.tracks, solution.conserved)
+    | nd::map(util::apply_to(sedov::recover_primitive))
+    | nd::to_shared()
+    | nd::flat();
+
+    auto density = p0 | nd::map(srhd::mass_density) | nd::to_shared();
+    auto ur      = p0 | nd::map(srhd::gamma_beta_1) | nd::to_shared();
+
+    std::printf("output %s\n", fname.data());
+
+    vtk::write(outf, "Grid", vertices, indexes,
+        std::pair("density", density),
+        std::pair("radial-gamma-beta", ur));
+}
+
+
+
+
+//=============================================================================
 auto wind_mass_loss_rate(const mara::config_t& cfg, unit_scalar q)
 {
     auto envelop_mdot = unit_mass_rate(1.0);
     auto engine_mdot  = unit_mass_rate(cfg.get_double("engine_mdot"));
-    auto engine_onset = unit_time(cfg.get_double("engine_onset"));
-    auto alpha        = cfg.get_double("envelop_mdot_index");
+    auto engine_onset = unit_time     (cfg.get_double("engine_onset"));
+    auto engine_theta = unit_scalar   (cfg.get_double("engine_theta"));
+    auto alpha        = unit_scalar   (cfg.get_double("envelop_mdot_index")).value;
 
-    return [envelop_mdot, engine_mdot, alpha, engine_onset, q] (auto t)
+    return [envelop_mdot, engine_mdot, alpha, engine_onset, engine_theta, q] (auto t)
     {
         auto p    = unit_scalar(M_PI) - q;
-        auto f    = (q.value < opening_angle ? 1.0 : 0.0) + (p.value < opening_angle ? 1.0 : 0.0);
+        auto f    = (q < engine_theta ? 1.0 : 0.0) + (p < engine_theta ? 1.0 : 0.0);
         return t < engine_onset
         ? envelop_mdot * std::pow(t / unit_time(1.0), alpha)
         : envelop_mdot * std::pow(engine_onset / unit_time(1.0), alpha) * (1 - f) + engine_mdot * f;
@@ -158,28 +271,28 @@ auto wind_mass_loss_rate(const mara::config_t& cfg, unit_scalar q)
 
 auto wind_gamma_beta(const mara::config_t& cfg, unit_scalar q)
 {
-    auto m0              = unit_mass(1.0);
+    auto m0              = unit_mass     (1.0);
     auto md              = unit_mass_rate(1.0);
-    auto engine_onset    = unit_time(cfg.get_double("engine_onset"));
-    auto engine_duration = unit_time(cfg.get_double("engine_duration"));
-    auto engine_u        = unit_scalar(cfg.get_double("engine_u"));
-    auto envelop_u       = unit_scalar(cfg.get_double("envelop_u"));
+    auto engine_onset    = unit_time     (cfg.get_double("engine_onset"));
+    auto engine_duration = unit_time     (cfg.get_double("engine_duration"));
+    auto engine_u        = unit_scalar   (cfg.get_double("engine_u"));
+    auto engine_theta    = unit_scalar   (cfg.get_double("engine_theta"));
+    auto envelop_u       = unit_scalar   (cfg.get_double("envelop_u"));
+    auto psi             = unit_scalar   (cfg.get_double("envelop_u_index"));
+    auto alpha           = unit_scalar   (cfg.get_double("envelop_mdot_index")).value;
     auto fred            = mara::fast_rise_exponential_decay(engine_onset, engine_duration);
-    auto psi             = cfg.get_double("envelop_u_index");
-    auto alpha           = cfg.get_double("envelop_mdot_index");
 
     auto integrated_envelop_mdot = [m0, md, alpha] (unit_time t)
     {
-        return m0 + md * t * std::pow(t / unit_time(1.0), alpha) / (1 + alpha);
+        return m0 + md * t * std::pow(t / unit_time(1.0), alpha) / (1. + alpha);
     };
 
-    return [integrated_envelop_mdot, envelop_u, engine_u, fred, psi, q] (auto t)
+    return [integrated_envelop_mdot, envelop_u, engine_u, engine_theta, fred, psi, q] (auto t)
     {
         auto m0   = integrated_envelop_mdot(1.0);
         auto m    = integrated_envelop_mdot(t);
         auto p    = unit_scalar(M_PI) - q;
-        auto f    = (q.value < opening_angle ? 1.0 : 0.0) + (p.value < opening_angle ? 1.0 : 0.0);
-        // auto f    = std::exp(-q * q / 0.04) + std::exp(-p * p / 0.04);
+        auto f    = (q < engine_theta ? 1.0 : 0.0) + (p < engine_theta ? 1.0 : 0.0);
         return envelop_u * std::pow(m / m0, -psi) + engine_u * fred(t) * f;
     };
 }
@@ -324,67 +437,6 @@ solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt,
         t1,
         u1,
     };
-}
-
-
-
-
-//=============================================================================
-auto quad_mesh(nd::shared_array<sedov::radial_track_t, 1> tracks)
-{
-    using vec3d = geometric::euclidean_vector_t<unit_length>;
-
-    auto total_cells = tracks | nd::map([] (auto track) { return size(track.face_radii) - 1; }) | nd::sum();
-    auto vertices = nd::make_unique_array<vec3d>(nd::uivec(total_cells * 4));
-    auto n = nd::uint(0);
-
-    for (std::size_t j = 0; j < size(tracks); ++j)
-    {
-        for (std::size_t i = 0; i < size(tracks(j).face_radii) - 1; ++i)
-        {
-            auto t0 = tracks(j).theta0;
-            auto t1 = tracks(j).theta1;
-            auto r0 = tracks(j).face_radii(i + 0);
-            auto r1 = tracks(j).face_radii(i + 1);
-
-            vertices(n++) = vec3d{r0 * std::sin(t0), 0.0, r0 * std::cos(t0)};
-            vertices(n++) = vec3d{r0 * std::sin(t1), 0.0, r0 * std::cos(t1)};
-            vertices(n++) = vec3d{r1 * std::sin(t1), 0.0, r1 * std::cos(t1)};
-            vertices(n++) = vec3d{r1 * std::sin(t0), 0.0, r1 * std::cos(t0)};
-        }
-    }
-
-    auto indexes = nd::range(total_cells)
-    | nd::map([] (int n)
-    {
-        return std::array{4 * n + 0, 4 * n + 1, 4 * n + 2, 4 * n + 3};
-    });
-    return std::pair(nd::make_shared_array(std::move(vertices)), nd::to_shared(indexes));
-}
-
-
-
-
-//=============================================================================
-void output_vtk(std::string outdir, solution_t solution, unsigned count)
-{
-    auto fname = util::format("%s/primitive.%04u.vtk", outdir.data(), count);
-    auto outf = std::ofstream(fname, std::ios_base::out);
-    auto [vertices, indexes] = quad_mesh(solution.tracks);
-
-    auto p0 = nd::zip(solution.tracks, solution.conserved)
-    | nd::map(util::apply_to(sedov::recover_primitive))
-    | nd::to_shared()
-    | nd::flat();
-
-    auto density = p0 | nd::map(srhd::mass_density) | nd::to_shared();
-    auto ur      = p0 | nd::map(srhd::gamma_beta_1) | nd::to_shared();
-
-    std::printf("output %s\n", fname.data());
-
-    vtk::write(outf, "Grid", vertices, indexes,
-        std::pair("density", density),
-        std::pair("radial-gamma-beta", ur));
 }
 
 

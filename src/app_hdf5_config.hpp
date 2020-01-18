@@ -38,3 +38,8 @@ template<>
 struct h5::hdf5_is_key_value_container<mara::config_t> : std::true_type
 {
 };
+
+template<>
+struct h5::hdf5_is_key_value_container<mara::config_parameter_map_t> : std::true_type
+{
+};
