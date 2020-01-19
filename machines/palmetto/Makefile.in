@@ -1,0 +1,3 @@
+CXX      = g++
+CXXFLAGS = -std=c++17 -Wall -O3 -MMD -MP -Isrc -I/software/hdf5/1.8.15/include
+LDFLAGS  = -lhdf5 -pthread

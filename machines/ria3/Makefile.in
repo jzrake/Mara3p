@@ -1,0 +1,3 @@
+CXX      = mpicxx
+CXXFLAGS = -std=c++17 -Wall -O3 -MMD -MP -I/home/aim/hdf5/include
+LDFLAGS  = -L/home/aim/hdf5/lib -lhdf5

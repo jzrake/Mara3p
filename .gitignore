@@ -7,7 +7,9 @@
 *.h5
 *.vtk
 *.mp4
-*.in
+.DS_Store
 
-undead
-work
+/Makefile.in
+/undead
+/work
+/media
