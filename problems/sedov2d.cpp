@@ -264,13 +264,15 @@ void write_vtk(const mara::config_t& cfg, solution_t solution)
     | nd::to_shared()
     | nd::flat();
 
-    auto density = p0 | nd::map(srhd::mass_density) | nd::to_shared();
-    auto ur      = p0 | nd::map(srhd::gamma_beta_1) | nd::to_shared();
+    auto density  = p0 | nd::map(srhd::mass_density) | nd::to_shared();
+    auto pressure = p0 | nd::map(srhd::gas_pressure) | nd::to_shared();
+    auto ur       = p0 | nd::map(srhd::gamma_beta_1) | nd::to_shared();
 
     std::printf("output %s\n", fname.data());
 
     vtk::write(outf, "Grid", vertices, indexes,
         std::pair("density", density),
+        std::pair("pressure", pressure),
         std::pair("radial-gamma-beta", ur));
 }
 
@@ -329,7 +331,7 @@ auto wind_profile(const mara::config_t& cfg, unit_length r, unit_scalar q, unit_
     return mara::cold_relativistic_wind_t()
     .with_mass_loss_rate(wind_mass_loss_rate(cfg, q))
     .with_gamma_beta    (wind_gamma_beta    (cfg, q))
-    .primitive(r, t);
+    .primitive(r, t, 1e-6);
 }
 
 
