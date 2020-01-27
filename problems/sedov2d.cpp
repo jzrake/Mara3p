@@ -65,6 +65,7 @@ auto config_template()
     .item("vtk",                   50)   // number of iterations between VTK outputs
     .item("cfl",                  0.5)   // courant number
     .item("router",               1e1)   // outer boundary radius
+    .item("envelop_end_time",    10.0)   // time at which the relativistic envelope switches to a wind
     .item("envelop_mdot_index",   4.0)   // alpha in envelop mdot(t) = (t / t0)^alpha
     .item("envelop_u_index",     0.22)   // psi in envelop u(m) = u1 (m / m1)^(-psi)
     .item("envelop_u",          10.00)   // maximum gamma-beta in outer envelop
@@ -280,46 +281,48 @@ void write_vtk(const mara::config_t& cfg, solution_t solution)
 
 
 //=============================================================================
+auto integrated_envelop_mdot(const mara::config_t& cfg, unit_time t)
+{
+    auto envelop_end_time = unit_time(cfg.get_double("envelop_end_time"));
+    auto m0    = unit_mass(1.0);
+    auto md    = unit_mass_rate(1.0);
+    auto alpha = unit_scalar(cfg.get_double("envelop_mdot_index")).value;
+    auto tt    = std::min(t, envelop_end_time);
+    return m0 + md * tt * std::pow(tt / unit_time(1.0), alpha) / (1. + alpha);
+}
+
 auto wind_mass_loss_rate(const mara::config_t& cfg, unit_scalar q)
 {
-    auto envelop_mdot = unit_mass_rate(1.0);
-    auto engine_mdot  = unit_mass_rate(cfg.get_double("engine_mdot"));
-    auto engine_onset = unit_time     (cfg.get_double("engine_onset"));
-    auto engine_theta = unit_scalar   (cfg.get_double("engine_theta"));
-    auto alpha        = unit_scalar   (cfg.get_double("envelop_mdot_index")).value;
+    auto envelop_mdot     = unit_mass_rate(1.0);
+    auto engine_mdot      = unit_mass_rate(cfg.get_double("engine_mdot"));
+    auto engine_onset     = unit_time     (cfg.get_double("engine_onset"));
+    auto envelop_end_time = unit_time     (cfg.get_double("envelop_end_time"));
+    auto engine_theta     = unit_scalar   (cfg.get_double("engine_theta"));
+    auto alpha            = unit_scalar   (cfg.get_double("envelop_mdot_index")).value;
 
-    return [envelop_mdot, engine_mdot, alpha, engine_onset, engine_theta, q] (auto t)
+    return [envelop_mdot, engine_mdot, alpha, envelop_end_time, engine_onset, engine_theta, q] (auto t)
     {
         auto p    = unit_scalar(M_PI) - q;
         auto f    = (q < engine_theta ? 1.0 : 0.0) + (p < engine_theta ? 1.0 : 0.0);
-        return t < engine_onset
-        ? envelop_mdot * std::pow(t / unit_time(1.0), alpha)
-        : envelop_mdot * std::pow(engine_onset / unit_time(1.0), alpha) * (1 - f) + engine_mdot * f;
+        auto mdot_env = envelop_mdot * std::pow(std::min(t, envelop_end_time) / unit_time(1.0), alpha);
+        return t < engine_onset ? mdot_env : mdot_env * (1 - f) + engine_mdot * f;
     };
 }
 
 auto wind_gamma_beta(const mara::config_t& cfg, unit_scalar q)
 {
-    auto m0              = unit_mass     (1.0);
-    auto md              = unit_mass_rate(1.0);
     auto engine_onset    = unit_time     (cfg.get_double("engine_onset"));
     auto engine_duration = unit_time     (cfg.get_double("engine_duration"));
     auto engine_u        = unit_scalar   (cfg.get_double("engine_u"));
     auto engine_theta    = unit_scalar   (cfg.get_double("engine_theta"));
     auto envelop_u       = unit_scalar   (cfg.get_double("envelop_u"));
     auto psi             = unit_scalar   (cfg.get_double("envelop_u_index"));
-    auto alpha           = unit_scalar   (cfg.get_double("envelop_mdot_index")).value;
     auto fred            = mara::fast_rise_exponential_decay(engine_onset, engine_duration);
 
-    auto integrated_envelop_mdot = [m0, md, alpha] (unit_time t)
+    return [&cfg, envelop_u, engine_u, engine_theta, fred, psi, q] (auto t)
     {
-        return m0 + md * t * std::pow(t / unit_time(1.0), alpha) / (1. + alpha);
-    };
-
-    return [integrated_envelop_mdot, envelop_u, engine_u, engine_theta, fred, psi, q] (auto t)
-    {
-        auto m0   = integrated_envelop_mdot(1.0);
-        auto m    = integrated_envelop_mdot(t);
+        auto m0   = integrated_envelop_mdot(cfg, 1.0);
+        auto m    = integrated_envelop_mdot(cfg, t);
         auto p    = unit_scalar(M_PI) - q;
         auto f    = (q < engine_theta ? 1.0 : 0.0) + (p < engine_theta ? 1.0 : 0.0);
         return envelop_u * std::pow(m / m0, -psi) + engine_u * fred(t) * f;

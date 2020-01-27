@@ -107,7 +107,7 @@ nd::shared_array<dimensional::unit_volume, 1> sedov::cell_volumes(radial_track_t
 sedov::radial_track_t sedov::generate_radial_track(
     dimensional::unit_length r0,
     dimensional::unit_length r1,
-    dimensional::unit_scalar theta0, 
+    dimensional::unit_scalar theta0,
     dimensional::unit_scalar theta1,
     dimensional::unit_scalar aspect)
 {
@@ -250,7 +250,7 @@ srhd::primitive_t sedov::sample(track_data_t track_data, dimensional::unit_lengt
     auto r0 = tr.face_radii(index + 0);
     auto r1 = tr.face_radii(index + 1);
     auto rc = 0.5 * (r0 + r1);
-    
+
     return pc(index) + dc(index) * (r - rc);
 }
 
@@ -373,7 +373,6 @@ std::pair<sedov::radial_track_t, nd::shared_array<srhd::conserved_t, 1>> sedov::
     auto dr = rf | nd::adjacent_diff();
     auto ds = rc * (track.theta1 - track.theta0);
     auto aspect = dr / ds;
-    auto imin = nd::argmin(aspect)[0];
     auto imax = nd::argmax(aspect)[0];
 
     if (front(rf) < dimensional::unit_length(0.25))
@@ -385,12 +384,23 @@ std::pair<sedov::radial_track_t, nd::shared_array<srhd::conserved_t, 1>> sedov::
     {
         std::tie(rf, uc) = nd::add_partition(rf, uc, imax);
     }
-    else if (imin > 0 && imin < size(uc) && aspect(imin) < minimum_cell_aspect_ratio)
+    else
     {
-        std::tie(rf, uc) = nd::remove_partition(rf, uc, imin);
+        for (std::size_t i = 1; i < size(aspect) - 2; ++i)
+        {
+            if ((aspect(i + 0) < minimum_cell_aspect_ratio &&
+                 aspect(i + 1) < minimum_cell_aspect_ratio) ||
+                (aspect(i + 0) < minimum_cell_aspect_ratio &&
+                 aspect(i - 1) > minimum_cell_aspect_ratio &&
+                 aspect(i + 1) > minimum_cell_aspect_ratio))
+            {
+                std::tie(rf, uc) = nd::remove_partition(rf, uc, i + 1);
+                break;
+            }
+        }
     }
 
-    track.face_radii = rf;   
+    track.face_radii = rf;
 
     return std::pair(track, uc);
 }
