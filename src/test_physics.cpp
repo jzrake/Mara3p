@@ -28,6 +28,7 @@
 
 
 #define DO_UNIT_TESTS
+#include "physics_iso2d.hpp"
 #include "physics_euler.hpp"
 #include "physics_mhd.hpp"
 #include "physics_srhd.hpp"
@@ -39,6 +40,7 @@
 //=============================================================================
 int test_physics()
 {
+    test_iso2d();
     test_euler();
     test_mhd();
     test_srhd();

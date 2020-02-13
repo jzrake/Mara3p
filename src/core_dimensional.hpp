@@ -267,6 +267,7 @@ using unit_force            = decltype(unit_momentum() / unit_time());
 using unit_energy           = decltype(unit_force()    * unit_length());
 using unit_area             = decltype(unit_length()   * unit_length());
 using unit_volume           = decltype(unit_length()   * unit_length() * unit_length());
+using unit_mass_per_area    = decltype(unit_mass()     / unit_area());
 using unit_mass_density     = decltype(unit_mass()     / unit_volume());
 using unit_momentum_density = decltype(unit_momentum() / unit_volume());
 using unit_energy_density   = decltype(unit_energy()   / unit_volume());
