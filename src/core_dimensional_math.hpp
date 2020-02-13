@@ -53,6 +53,12 @@ auto pow(quantity_t<N1, N2, N3, D1, D2, D3> a, static_rational_t<N, D> p={})
 }
 
 template<long N1, long N2, long N3, unsigned long D1, unsigned long D2, unsigned long D3>
+auto atan2(quantity_t<N1, N2, N3, D1, D2, D3> y, quantity_t<N1, N2, N3, D1, D2, D3> x)
+{
+    return scalar(std::atan2(y.value, x.value));
+}
+
+template<long N1, long N2, long N3, unsigned long D1, unsigned long D2, unsigned long D3>
 auto abs(quantity_t<N1, N2, N3, D1, D2, D3> a)
 {
     return quantity(std::abs(a.value), a.dimensions);
