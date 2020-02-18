@@ -33,7 +33,6 @@
 #include <tuple>
 #include "core_dimensional.hpp"
 #include "core_rational.hpp"
-#include "core_sequence.hpp"
 
 
 
@@ -128,18 +127,13 @@ template<typename T> auto milliseconds_separating(timed_pair_t<T> p)
     return 1e3 * microseconds_separating(p);
 };
 
-
-
-
-/**
- * @brief      Return a sequence of high resolution time points
- *
- * @return     A sequence of std::high_resolution_clock::time_point
- */
-inline auto time_point_sequence()
+template<typename Function, typename... Args>
+auto invoke_timed(Function f, Args... args)
 {
-    using namespace std::chrono;
-    return seq::generate(high_resolution_clock::now(), [] (auto) { return high_resolution_clock::now(); });
+    auto t0 = std::chrono::high_resolution_clock::now();
+    auto result = std::invoke(f, args...);
+    auto t1 = std::chrono::high_resolution_clock::now();
+    return std::pair(result, t1 - t0);
 }
 
 

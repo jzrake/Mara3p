@@ -31,6 +31,7 @@
 #include "core_dimensional.hpp"
 #include "core_dimensional_math.hpp"
 #include "core_geometric.hpp"
+#include "core_numeric_array.hpp"
 #include "core_numeric_tuple.hpp"
 
 
@@ -104,6 +105,18 @@ inline auto outer_wavespeeds(primitive_t p, geometric::unit_vector_t nhat, unit_
 
 
 //=============================================================================
+inline auto fastest_wavespeed(primitive_t p, unit_specific_energy cs2)
+{
+    auto ax = outer_wavespeeds(p, geometric::unit_vector_on(1), cs2);
+    auto ay = outer_wavespeeds(p, geometric::unit_vector_on(2), cs2);
+
+    return std::max(
+        std::max(abs(ax.first), abs(ax.second)),
+        std::max(abs(ay.first), abs(ay.second)));
+}
+
+
+//=============================================================================
 inline primitive_t recover_primitive(conserved_density_t u)
 {
     return numeric::tuple(
@@ -157,6 +170,15 @@ inline flux_vector_t riemann_hlle(
     auto am = std::min(unit_velocity(0), std::min(alm, arm));
 
     return (ap * fl - am * fr - (ul - ur) * ap * am) / (ap - am);
+}
+
+
+//=============================================================================
+inline auto acceleration_to_source_terms(primitive_t p, numeric::array_t<unit_acceleration, 2> a)
+{
+    auto [ax, ay] = as_tuple(a);
+    auto sigma = mass_density(p);
+    return numeric::tuple(unit_mass_per_area(0.0) / unit_time(1.0), sigma * ax, sigma * ay);
 }
 
 } // namespace iso2d

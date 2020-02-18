@@ -360,6 +360,20 @@ auto side_effects(const mara::config_t& run_config, timed_state_pair_t p)
 
 
 
+/**
+ * @brief      Return a sequence of high resolution time points
+ *
+ * @return     A sequence of std::high_resolution_clock::time_point
+ */
+inline auto time_point_sequence()
+{
+    using namespace std::chrono;
+    return seq::generate(high_resolution_clock::now(), [] (auto) { return high_resolution_clock::now(); });
+}
+
+
+
+
 //=============================================================================
 int main(int argc, const char* argv[])
 {

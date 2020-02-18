@@ -32,6 +32,7 @@
 #include "core_dimensional.hpp"
 #include "core_dimensional_math.hpp"
 #include "core_geometric.hpp"
+#include "core_numeric_array.hpp"
 #include "core_numeric_tuple.hpp"
 
 
@@ -158,6 +159,16 @@ inline auto periapse_time    (orbital_orientation_t o) { return numeric::get<5>(
 
 
 //=============================================================================
+inline auto position(point_mass_t p)
+{
+    return numeric::array(p.position_x, p.position_y);
+}
+
+inline auto velocity(point_mass_t p)
+{
+    return numeric::array(p.velocity_x, p.velocity_y);
+}
+
 inline auto kinetic_energy(point_mass_t p)
 {
     auto vx = p.velocity_x;
@@ -167,11 +178,22 @@ inline auto kinetic_energy(point_mass_t p)
 
 inline auto potential(point_mass_t p, unit_length x, unit_length y, unit_length softening_length)
 {
-    auto dx = p.position_x - x;
-    auto dy = p.position_y - y;
+    auto dx = x - p.position_x;
+    auto dy = y - p.position_y;
     auto r2 = dx * dx + dy * dy;
-    auto s2 = softening_length * softening_length;
+    auto s2 = pow<2>(softening_length);
     return -G * p.mass / sqrt(r2 + s2);
+}
+
+inline auto gravitational_acceleration(point_mass_t p, unit_length x, unit_length y, unit_length softening_length)
+{
+    auto dx = x - p.position_x;
+    auto dy = y - p.position_y;
+    auto r2 = dx * dx + dy * dy;
+    auto s2 = pow<2>(softening_length);
+    auto ax = -G * p.mass / pow<3, 2>(r2 + s2) * dx;
+    auto ay = -G * p.mass / pow<3, 2>(r2 + s2) * dy;
+    return numeric::array(ax, ay);
 }
 
 inline auto perturb(point_mass_t p, unit_mass dM)
@@ -354,6 +376,37 @@ inline auto transform(orbital_state_t state, orbital_orientation_t o)
     auto vy1p = -vx1 * s + vy1 * c + cm_velocity_y(o);
     auto vx2p = +vx2 * c + vy2 * s + cm_velocity_x(o);
     auto vy2p = -vx2 * s + vy2 * c + cm_velocity_y(o);
+
+    auto c1 = point_mass_t{M1, x1p, y1p, vx1p, vy1p};
+    auto c2 = point_mass_t{M2, x2p, y2p, vx2p, vy2p};
+
+    return orbital_state_t{c1, c2};
+}
+
+inline auto rotate(orbital_state_t state, unit_scalar angle)
+{
+    auto M1  = state.first.mass;
+    auto x1  = state.first.position_x;
+    auto y1  = state.first.position_y;
+    auto vx1 = state.first.velocity_x;
+    auto vy1 = state.first.velocity_y;
+    auto M2  = state.second.mass;
+    auto x2  = state.second.position_x;
+    auto y2  = state.second.position_y;
+    auto vx2 = state.second.velocity_x;
+    auto vy2 = state.second.velocity_y;
+
+    auto c = std::cos(angle);
+    auto s = std::sin(angle);
+
+    auto x1p  = +x1  * c + y1  * s;
+    auto y1p  = -x1  * s + y1  * c;
+    auto x2p  = +x2  * c + y2  * s;
+    auto y2p  = -x2  * s + y2  * c;
+    auto vx1p = +vx1 * c + vy1 * s;
+    auto vy1p = -vx1 * s + vy1 * c;
+    auto vx2p = +vx2 * c + vy2 * s;
+    auto vy2p = -vx2 * s + vy2 * c;
 
     auto c1 = point_mass_t{M1, x1p, y1p, vx1p, vy1p};
     auto c2 = point_mass_t{M2, x2p, y2p, vx2p, vy2p};

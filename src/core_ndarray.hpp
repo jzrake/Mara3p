@@ -573,10 +573,11 @@ inline auto range(long i1)
     return range(0, i1);
 }
 
-inline auto linspace(double x0, double x1, uint count)
+template<typename T>
+auto linspace(T x0, T x1, uint count)
 {
     return make_array(
-        indexing([=] (auto i) { return x0 + i * (x1 - x0) / (count - 1); }),
+        indexing([=] (auto i) { return x0 + (x1 - x0) * double(i) / double(count - 1); }),
         uivec(count));
 }
 

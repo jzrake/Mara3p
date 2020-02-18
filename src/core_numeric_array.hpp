@@ -131,6 +131,12 @@ auto& get(array_t<T, S>& t)
     return std::get<I>(t.impl);
 }
 
+template<typename T, std::size_t S>
+auto as_tuple(array_t<T, S> a)
+{
+    return a.impl;
+}
+
 template<typename T, std::size_t S, typename FunctionType>
 auto map(array_t<T, S> t, FunctionType f)
 {   

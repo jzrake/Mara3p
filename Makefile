@@ -79,6 +79,9 @@ problems/sedov: problems/sedov.o
 problems/sedov2d: problems/sedov2d.o src/scheme_sedov2d.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
+problems/minidisk: problems/minidisk.o
+	$(CXX) -o $@ $^ $(LDFLAGS)
+
 clean:
 	$(RM) $(OBJ) $(DEP) $(ALL_TARGETS)
 
