@@ -45,24 +45,23 @@
  *
  * Although computables are composed in a semantically functional way, the
  * objects themselves are not immutable. Mapping over a computable gives it a
- * new outgoing edge. Letting a computable go out of scope removes an outgoing
- * edge from its upstream computables. Evaluating a computable detaches it from
- * its dependencies (removes all of its incoming edges).
+ * new outgoing edge. Letting a computable go out of scope removes an incoming
+ * edge from its upstream computables.
  *
- * A computable has aspects of std::optional and std::future. When first
+ * A computable implements aspects of std::optional and std::future. When first
  * created, its has_value() method returns false, and calling value() raises an
  * exception. When the computable has no incoming edges but has not yet been
  * evaluated, its eligible() method returns true. When eligible, the computable
  * can be submitted for computation by calling the submit(schedule) method,
  * where schedule is a function object () -> std::future<T>. This causes the
- * computable's std::future instance becomes valid, and its pending() method
- * returns true. When the future is ready, the computable's ready() method
- * returns true. Once ready, calling the complete() method invalidates the
- * future (causing pending() to return false), causes value() to return the
- * computation result, and clears the computation std::function object, allowing
- * the release of upstram computed values. Calling complete() also removes all
- * of the computable's outgoing edges, possibly triggering any of its downstream
- * values to become eligible.
+ * computable's std::future instance to become valid, and its pending() method
+ * to return true. When the computation has finished (the future is ready), the
+ * computable's ready() method returns true. Once ready, calling the complete()
+ * method invalidates the future (causing pending() to return false), causes
+ * value() to return the computation result, and clears the computation
+ * std::function object, allowing the release of captured upstream values.
+ * Calling complete() also removes all of the computable's outgoing edges,
+ * possibly triggering any of its downstream values to become eligible.
  */
 
 
@@ -328,8 +327,7 @@ auto zip(computable_t<ValueType>... c)
 
 
 /**
- * @brief      Evaluate a computable synchronously by recursively evaluating its
- *             unevaluated dependencies.
+ * @brief      Evaluate a computable on a (possibly asynchronous) scheduler.
  *
  * @param[in]  computable  The computable to evaluate
  * @param[in]  schedule    The scheduling function
