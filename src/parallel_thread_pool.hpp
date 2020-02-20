@@ -1,6 +1,6 @@
 /**
  ==============================================================================
- Copyright 2019, Jonathan Zrake
+ Copyright 2019-2020, Jonathan Zrake
 
  Permission is hereby granted, free of charge, to any person obtaining a copy of
  this software and associated documentation files (the "Software"), to deal in
@@ -79,7 +79,7 @@ public:
 
         for (int n = 0; n < num_workers; ++n)
         {
-            threads.push_back(make_worker(n));
+            threads.push_back(make_worker());
         }
     }
 
@@ -155,7 +155,7 @@ private:
      * is returned. That should only be the case when the pool is shutting
      * down.
      */
-    task_t next(int id)
+    task_t next()
     {
         std::unique_lock<std::mutex> lock(mutex);
         condition.wait(lock, [this] { return stop || ! pending_tasks.empty(); });
@@ -187,11 +187,11 @@ private:
     /**
      * Called by the constructor to create the workers.
      */
-    std::thread make_worker(int id)
+    std::thread make_worker()
     {
-        return std::thread([this, id] ()
+        return std::thread([this] ()
         {
-            while (auto task = next(id))
+            while (auto task = next())
             {
                 task.run();
                 complete(task.tag.get());
