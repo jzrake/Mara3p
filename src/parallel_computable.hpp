@@ -26,9 +26,10 @@
 
 
 
-#include <set>
 #include <any>
 #include <future>
+#include <set>
+#include <string>
 
 
 
@@ -39,21 +40,19 @@
  * by the RxCpp observable interface.
  *
  * It is based around a class template called a `computable', which may be seen
- * as a composable future. The implementation is sort of a type-erased
- * continuation monad. Computables can be mapped over and zipped together like
- * any functor. Internally, these operations contruct a directed acyclic graph.
- *
- * Although computables are composed in a semantically functional way, the
- * objects themselves are not immutable. Mapping over a computable gives it a
- * new outgoing edge. Letting a computable go out of scope removes an incoming
+ * as a composable future. Computables can be mapped over and zipped together
+ * like any functor. Internally, these operations contruct a directed acyclic
+ * graph. Although computables are composed in a semantically functional way,
+ * the objects themselves are not immutable. Mapping over a computable gives it
+ * a new outgoing edge. Letting a computable go out of scope removes an incoming
  * edge from its upstream computables.
  *
  * A computable implements aspects of std::optional and std::future. When first
  * created, its has_value() method returns false, and calling value() raises an
  * exception. When the computable has no incoming edges but has not yet been
  * evaluated, its eligible() method returns true. When eligible, the computable
- * can be submitted for computation by calling the submit(schedule) method,
- * where schedule is a function object () -> std::future<T>. This causes the
+ * can be submitted for computation by calling the submit(scheduler) method,
+ * where scheduler is a function object () -> std::future<T>. This causes the
  * computable's std::future instance to become valid, and its pending() method
  * to return true. When the computation has finished (the future is ready), the
  * computable's ready() method returns true. Once ready, calling the complete()
@@ -109,6 +108,10 @@ public:
 
     //=========================================================================
     computable_node_t(const computable_node_t& other) = delete;
+    computable_node_t(const std::any& value) : value(value), node_id(++last_node_id)
+    {
+    }
+
     computable_node_t(set_t all_incoming) : node_id(++last_node_id)
     {
         for (auto i : all_incoming)
@@ -164,11 +167,11 @@ public:
         return incoming.empty() && computation != nullptr;
     }
 
-    void submit(async_invoke_t schedule)
+    void submit(async_invoke_t scheduler)
     {
         if (eligible())
         {
-            future_value = schedule(computation);
+            future_value = scheduler(computation);
         }
         else
         {
@@ -176,9 +179,9 @@ public:
         }
     }
 
-    void complete()
+    void set(std::any new_value)
     {
-        if (pending())
+        if (! pending())
         {
             for (auto o : outgoing)
             {
@@ -186,7 +189,19 @@ public:
             }
             outgoing.clear();
             computation = nullptr;
-            value = future_value.get();
+            value = std::move(new_value);
+        }
+        else
+        {
+            throw std::logic_error("computable_node_t::set (node is pending)");
+        }
+    }
+
+    void complete()
+    {
+        if (pending())
+        {
+            set(future_value.get());
         }
         else
         {
@@ -264,8 +279,8 @@ public:
 private:
     //=========================================================================
     std::function<std::any()> computation;
-    std::any value;
     std::future<std::any> future_value;
+    std::any value;
     set_t incoming;
     set_t outgoing;
     unsigned long node_id;
@@ -283,6 +298,11 @@ template<typename ValueType>
 class computable_t
 {
 public:
+
+    computable_t(const ValueType& value)
+    : g(std::make_shared<computable_node_t>(value))
+    {
+    }
 
     computable_t(std::function<ValueType()> computation, computable_node_t::set_t incoming)
     : g(std::make_shared<computable_node_t>(incoming))
@@ -332,6 +352,12 @@ private:
 
 
 //=============================================================================
+template<typename ValueType>
+auto just(ValueType value)
+{
+    return computable_t<ValueType>(value);
+}
+
 template<typename Function>
 auto from(Function f)
 {
@@ -360,12 +386,12 @@ auto zip(computable_t<ValueType>... c)
  * @brief      Evaluate a computable on a (possibly asynchronous) scheduler.
  *
  * @param[in]  computable  The computable to evaluate
- * @param[in]  schedule    The scheduling function
+ * @param[in]  scheduler    The scheduling function
  *
  * @tparam     ValueType   The computable value type
  */
 template<typename ValueType>
-void evaluate(computable_t<ValueType> computable, async_invoke_t schedule)
+void evaluate(computable_t<ValueType> computable, async_invoke_t scheduler)
 {
     auto eligible  = computable.node()->primitives();
     auto pending   = computable_node_t::set_t();
@@ -375,7 +401,7 @@ void evaluate(computable_t<ValueType> computable, async_invoke_t schedule)
     {
         for (auto node : eligible)
         {
-            node->submit(schedule);
+            node->submit(scheduler);
             pending.insert(node);
         }
 

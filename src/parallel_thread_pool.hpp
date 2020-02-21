@@ -128,6 +128,11 @@ public:
         return promised_result->get_future();
     }
 
+    auto scheduler()
+    {
+        return [this] (auto f) { return enqueue(f); };
+    }
+
 
 private:
 
