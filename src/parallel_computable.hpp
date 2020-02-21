@@ -109,10 +109,15 @@ public:
 
     //=========================================================================
     computable_node_t(const computable_node_t& other) = delete;
-    computable_node_t(set_t incoming)
-    : incoming(incoming)
-    , node_id(++last_node_id)
+    computable_node_t(set_t all_incoming) : node_id(++last_node_id)
     {
+        for (auto i : all_incoming)
+        {
+            if (! i->has_value())
+            {
+                incoming.insert(i);
+            }
+        }
         for (auto i : incoming)
         {
             i->outgoing.insert(this);
