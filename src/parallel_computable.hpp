@@ -132,6 +132,11 @@ public:
         }
     }
 
+    auto id() const
+    {
+        return node_id;
+    }
+
     bool has_value() const
     {
         return value.has_value();
@@ -179,6 +184,7 @@ public:
             {
                 o->incoming.erase(this);
             }
+            outgoing.clear();
             computation = nullptr;
             value = future_value.get();
         }
@@ -216,15 +222,18 @@ public:
 
     void primitives(set_t& result)
     {
-        if (eligible())
+        if (! result.count(this))
         {
-            result.insert(this);
-        }
-        else
-        {
-            for (auto i : incoming)
+            if (eligible())
             {
-                i->primitives(result);
+                result.insert(this);
+            }
+            else
+            {
+                for (auto i : incoming)
+                {
+                    i->primitives(result);
+                }
             }
         }
     }
@@ -234,6 +243,22 @@ public:
         auto result = set_t();
         primitives(result);
         return result;
+    }
+
+    bool is_or_precedes(computable_node_t* other) const
+    {
+        if (other == this || outgoing.count(other))
+        {
+            return true;
+        }
+        for (auto o : outgoing)
+        {
+            if (o->is_or_precedes(other))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
 private:
@@ -365,12 +390,14 @@ void evaluate(computable_t<ValueType> computable, async_invoke_t schedule)
 
         for (auto node : completed)
         {
+            auto outgoing = node->outgoing_nodes();
+
             pending.erase(node);
             node->complete();
 
-            for (auto next : node->outgoing_nodes())
+            for (auto next : outgoing)
             {
-                if (next->eligible())
+                if (next->eligible() && next->is_or_precedes(computable.node()))
                 {
                     eligible.insert(next);
                 }
