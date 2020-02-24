@@ -476,6 +476,36 @@ std::size_t size(tree_t<ValueType, ChildrenType, Ratio> tree)
  * @brief      { function_description }
  *
  * @param[in]  tree          The tree
+ * @param[in]  function      The function
+ *
+ * @tparam     ValueType     { description }
+ * @tparam     ChildrenType  { description }
+ * @tparam     Ratio         { description }
+ * @tparam     FunctionType  { description }
+ */
+template<typename ValueType, uint Ratio, typename FunctionType>
+void sink(shared_tree<ValueType, Ratio> tree, FunctionType function)
+{
+    if (has_value(tree))
+    {
+        function(std::get<ValueType>(tree.provider));
+    }
+    else
+    {
+        for (std::size_t i = 0; i < Ratio; ++i)
+        {
+            sink(std::get<shared_children_t<ValueType, Ratio>>(tree.provider).ptr->operator[](i), function);
+        }
+    }
+}
+
+
+
+
+/**
+ * @brief      { function_description }
+ *
+ * @param[in]  tree          The tree
  *
  * @tparam     ValueType     { description }
  * @tparam     ChildrenType  { description }
@@ -508,6 +538,7 @@ auto to_shared(tree_t<ValueType, ChildrenType, Ratio> tree)
 //=============================================================================
 template<typename V, typename C, uint R, typename F> auto operator|(tree_t<V, C, R> t, F f) { return f(t); }
 template<typename F> auto map(F f) { return [f] (auto tree) { return map(tree, f); }; }
+template<typename F> auto maps(F f) { return [f] (auto tree) { return to_shared(map(tree, f)); }; }
 inline auto to_shared() { return [] (auto tree) { return to_shared(tree); }; }
 
 } // namespace bsp

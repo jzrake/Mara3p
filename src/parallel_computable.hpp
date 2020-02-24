@@ -299,6 +299,10 @@ class computable_t
 {
 public:
 
+    computable_t()
+    {
+    }
+
     computable_t(const ValueType& value)
     : g(std::make_shared<computable_node_t>(value))
     {
@@ -394,7 +398,7 @@ auto zip(computable_t<ValueType>... c)
  * @tparam     ValueType   The computable value type
  */
 template<typename ValueType>
-void compute(computable_t<ValueType> computable, async_invoke_t scheduler)
+void compute(computable_t<ValueType> computable, async_invoke_t scheduler=synchronous_execution)
 {
     auto eligible  = computable.node()->primitives();
     auto pending   = computable_node_t::set_t();
