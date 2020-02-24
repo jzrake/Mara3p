@@ -169,6 +169,12 @@ void side_effects(timed_state_pair_t p)
     }
 }
 
+auto time_point_sequence()
+{
+    using namespace std::chrono;
+    return seq::generate(high_resolution_clock::now(), [] (auto) { return high_resolution_clock::now(); });
+}
+
 
 
 
@@ -176,7 +182,7 @@ void side_effects(timed_state_pair_t p)
 int main()
 {
     auto simulation = seq::generate(initial_state(), advance)
-    | seq::pair_with(control::time_point_sequence())
+    | seq::pair_with(time_point_sequence())
     | seq::window()
     | seq::take_while(should_continue);
 

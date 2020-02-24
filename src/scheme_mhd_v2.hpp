@@ -47,7 +47,7 @@ namespace mhd_scheme_v2 {
 
 //=============================================================================
 using position_t                   = geometric::euclidean_vector_t<dimensional::unit_length>;
-using multilevel_index_t           = bqo_tree::tree_index_t<3>;
+using multilevel_index_t           = bsp::tree_index_t<3>;
 using cell_primitive_variables_t   = nd::shared_array<mhd::primitive_t, 3>;
 using cell_conserved_density_t     = nd::shared_array<mhd::conserved_density_t, 3>;
 using face_godunov_data_t          = std::array<nd::shared_array<mhd::godunov_data_t, 3>, 3>;

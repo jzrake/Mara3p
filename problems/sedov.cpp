@@ -357,15 +357,7 @@ auto side_effects(const mara::config_t& run_config, timed_state_pair_t p)
         print_run_loop(run_config, p);            
 }
 
-
-
-
-/**
- * @brief      Return a sequence of high resolution time points
- *
- * @return     A sequence of std::high_resolution_clock::time_point
- */
-inline auto time_point_sequence()
+auto time_point_sequence()
 {
     using namespace std::chrono;
     return seq::generate(high_resolution_clock::now(), [] (auto) { return high_resolution_clock::now(); });
@@ -384,7 +376,7 @@ int main(int argc, const char* argv[])
     mara::pretty_print(std::cout, "config", run_config);
 
     auto simulation = seq::generate(initial_app_state(run_config), advance(run_config))
-    | seq::pair_with(control::time_point_sequence())
+    | seq::pair_with(time_point_sequence())
     | seq::window()
     | seq::take_while(should_continue(run_config));
 

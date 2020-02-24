@@ -35,7 +35,7 @@
 
 
 //=============================================================================
-namespace bqo_tree { // bqo := binary tree, quad-tree, oct-tree
+namespace bsp { // bqo := binary tree, quad-tree, oct-tree
 
 
 
@@ -87,7 +87,7 @@ unsigned long to_integral(numeric::array_t<bool, BitCount> bits)
  *
  * @tparam     Rank  The rank of the tree to be indexed (having ratio 2^Rank)
  */
-template<bsp_tree::uint Rank>
+template<bsp::uint Rank>
 struct tree_index_t
 {
     unsigned long level = 0;
@@ -133,7 +133,7 @@ bool check_root(const tree_index_t<R>& i)
     {
         if (any(i.coordinates))
         {
-            throw std::invalid_argument("bqo_tree::tree_index_t (invalid tree index)");
+            throw std::invalid_argument("bsp::tree_index_t (invalid tree index)");
         }
         return true;
     }
@@ -290,7 +290,7 @@ tree_index_t<R> next_sibling(const tree_index_t<R>& i)
 {
     if (is_last_child(i))
     {
-        throw std::out_of_range("bqo_tree::next_sibling (is the last child)");
+        throw std::out_of_range("bsp::next_sibling (is the last child)");
     }
     return tree_index_t<R>{i.level, parent_index(i).coordinates * 2 + binary_repr<R>(sibling_index(i) + 1)};
 }
@@ -402,7 +402,7 @@ tree_index_t<Rank> tree_index()
 
 /**
  * @brief      Return the child of the given (non-leaf) tree node. This function
- *             wraps the bsp_tree method based on linear indexes.
+ *             wraps the bsp method based on linear indexes.
  *
  * @param[in]  tree          The tree (throws out_of_range if not a leaf)
  * @param[in]  orthant       The orthant (ray, quadrant, octant)
@@ -413,8 +413,8 @@ tree_index_t<Rank> tree_index()
  *
  * @return     A tree node that is a child of the given node
  */
-template<typename ValueType, typename ChildrenType, bsp_tree::uint Rank>
-auto child_at(const bsp_tree::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, numeric::array_t<bool, Rank> orthant)
+template<typename ValueType, typename ChildrenType, bsp::uint Rank>
+auto child_at(const bsp::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, numeric::array_t<bool, Rank> orthant)
 {
     return child_at(tree, to_integral(orthant));
 }
@@ -435,9 +435,9 @@ auto child_at(const bsp_tree::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, 
  *
  * @return     A tree node that is a descendant of the given node
  */
-template<typename ValueType, typename ChildrenType, bsp_tree::uint Rank>
-auto node_at(const bsp_tree::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, tree_index_t<Rank> index)
--> bsp_tree::tree_t<ValueType, ChildrenType, 1 << Rank>
+template<typename ValueType, typename ChildrenType, bsp::uint Rank>
+auto node_at(const bsp::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, tree_index_t<Rank> index)
+-> bsp::tree_t<ValueType, ChildrenType, 1 << Rank>
 {
     return check_root(index) ? tree : node_at(child_at(tree, orthant(index)), advance_level(index));
 }
@@ -458,11 +458,19 @@ auto node_at(const bsp_tree::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, t
  *
  * @return     True or false
  */
-template<typename ValueType, typename ChildrenType, bsp_tree::uint Rank>
-bool contains(const bsp_tree::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, tree_index_t<Rank> index)
+template<typename ValueType, typename ChildrenType, bsp::uint Rank>
+bool contains(const bsp::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, tree_index_t<Rank> index)
 {
     return has_value(tree) ? check_root(index) : contains(child_at(tree, orthant(index)), advance_level(index));
 }
+
+
+
+
+template<bsp::uint Ratio> struct rank_for_ratio_t {};
+template<> struct rank_for_ratio_t<2> { static const bsp::uint value = 1; };
+template<> struct rank_for_ratio_t<4> { static const bsp::uint value = 2; };
+template<> struct rank_for_ratio_t<8> { static const bsp::uint value = 3; };
 
 
 
@@ -479,14 +487,14 @@ bool contains(const bsp_tree::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, 
  *
  * @return     An optional to the tree start, as expected by sequence operators
  */
-template<typename ValueType, typename ChildrenType>
-std::optional<tree_index_t<3>> start(bsp_tree::tree_t<ValueType, ChildrenType, 8> tree, tree_index_t<3> current={})
+template<typename ValueType, typename ChildrenType, bsp::uint Ratio, bsp::uint Rank=rank_for_ratio_t<Ratio>::value>
+std::optional<tree_index_t<Rank>> start(bsp::tree_t<ValueType, ChildrenType, Ratio> tree, tree_index_t<Rank> current={})
 {
     return has_value(tree) ? current : start(child_at(tree, 0), child_indexes(current).at(0));
 }
 
-template<typename ValueType, typename ChildrenType, bsp_tree::uint Rank>
-std::optional<tree_index_t<Rank>> next(bsp_tree::tree_t<ValueType, ChildrenType, 1 << Rank> tree, tree_index_t<Rank> current)
+template<typename ValueType, typename ChildrenType, bsp::uint Ratio, bsp::uint Rank=rank_for_ratio_t<Ratio>::value>
+std::optional<tree_index_t<Rank>> next(bsp::tree_t<ValueType, ChildrenType, Ratio> tree, tree_index_t<Rank> current)
 {
     if (check_root(current))
     {
@@ -522,8 +530,8 @@ std::optional<tree_index_t<Rank>> next(bsp_tree::tree_t<ValueType, ChildrenType,
     return current;
 }
 
-template<typename ValueType, typename ChildrenType, bsp_tree::uint Rank>
-auto obtain(bsp_tree::tree_t<ValueType, ChildrenType, 1 << Rank> tree, tree_index_t<Rank> index)
+template<typename ValueType, typename ChildrenType, bsp::uint Ratio, bsp::uint Rank=rank_for_ratio_t<Ratio>::value>
+auto obtain(bsp::tree_t<ValueType, ChildrenType, Ratio> tree, tree_index_t<Rank> index)
 {
     return value(node_at(tree, index));
 }
@@ -532,10 +540,10 @@ auto obtain(bsp_tree::tree_t<ValueType, ChildrenType, 1 << Rank> tree, tree_inde
 
 
 //=============================================================================
-inline auto uniform_octree(bsp_tree::uint depth)
+inline auto uniform_quadtree(bsp::uint depth)
 {
     auto branch_function = [] (auto i) { return child_indexes(i); };
-    auto result = bsp_tree::just<8>(bqo_tree::tree_index<3>());
+    auto result = bsp::just<4>(bsp::tree_index<2>());
 
     while (depth--)
     {
@@ -544,7 +552,20 @@ inline auto uniform_octree(bsp_tree::uint depth)
     return result;
 }
 
-} // namespace bqo_tree
+inline auto uniform_octree(bsp::uint depth)
+{
+    auto branch_function = [] (auto i) { return child_indexes(i); };
+    auto result = bsp::just<8>(bsp::tree_index<3>());
+
+    while (depth--)
+    {
+        result = branch_through(result, branch_function);
+    }
+    return result;
+}
+
+} // namespace bsp
+
 
 
 
@@ -560,43 +581,43 @@ inline auto uniform_octree(bsp_tree::uint depth)
 //=============================================================================
 inline void test_bqo_tree()
 {
-    require(bqo_tree::to_integral(numeric::array(false, false, false)) == 0);
-    require(bqo_tree::to_integral(numeric::array(true, true, true)) == 7);
-    require(bqo_tree::to_integral(numeric::array(true, false, false)) == 1); // the 2^0 bit is on the left
-    require(bqo_tree::to_integral(bqo_tree::binary_repr<3>(6)) == 6);
+    require(bsp::to_integral(numeric::array(false, false, false)) == 0);
+    require(bsp::to_integral(numeric::array(true, true, true)) == 7);
+    require(bsp::to_integral(numeric::array(true, false, false)) == 1); // the 2^0 bit is on the left
+    require(bsp::to_integral(bsp::binary_repr<3>(6)) == 6);
 
-    require(orthant(bqo_tree::tree_index_t<3>{1, {0, 0, 0}}) == numeric::array(false, false, false));
-    require(orthant(bqo_tree::tree_index_t<3>{1, {0, 0, 1}}) == numeric::array(false, false, true));
-    require(orthant(bqo_tree::tree_index_t<3>{1, {0, 1, 0}}) == numeric::array(false, true, false));
-    require(orthant(bqo_tree::tree_index_t<3>{1, {1, 0, 0}}) == numeric::array(true, false, false));
-    require(orthant(bqo_tree::tree_index_t<3>{2, {0, 0, 1}}) == numeric::array(false, false, false));
-    require(orthant(bqo_tree::tree_index_t<3>{2, {0, 1, 0}}) == numeric::array(false, false, false));
-    require(orthant(bqo_tree::tree_index_t<3>{2, {1, 0, 0}}) == numeric::array(false, false, false));
-    require(orthant(bqo_tree::tree_index_t<3>{2, {0, 0, 2}}) == numeric::array(false, false, true));
-    require(orthant(bqo_tree::tree_index_t<3>{2, {0, 2, 0}}) == numeric::array(false, true, false));
-    require(orthant(bqo_tree::tree_index_t<3>{2, {2, 0, 0}}) == numeric::array(true, false, false));
+    require(orthant(bsp::tree_index_t<3>{1, {0, 0, 0}}) == numeric::array(false, false, false));
+    require(orthant(bsp::tree_index_t<3>{1, {0, 0, 1}}) == numeric::array(false, false, true));
+    require(orthant(bsp::tree_index_t<3>{1, {0, 1, 0}}) == numeric::array(false, true, false));
+    require(orthant(bsp::tree_index_t<3>{1, {1, 0, 0}}) == numeric::array(true, false, false));
+    require(orthant(bsp::tree_index_t<3>{2, {0, 0, 1}}) == numeric::array(false, false, false));
+    require(orthant(bsp::tree_index_t<3>{2, {0, 1, 0}}) == numeric::array(false, false, false));
+    require(orthant(bsp::tree_index_t<3>{2, {1, 0, 0}}) == numeric::array(false, false, false));
+    require(orthant(bsp::tree_index_t<3>{2, {0, 0, 2}}) == numeric::array(false, false, true));
+    require(orthant(bsp::tree_index_t<3>{2, {0, 2, 0}}) == numeric::array(false, true, false));
+    require(orthant(bsp::tree_index_t<3>{2, {2, 0, 0}}) == numeric::array(true, false, false));
 
-    require_throws(next_on(bqo_tree::tree_index<3>(), 3));
-    require(  next_on(with_level(bqo_tree::tree_index<3>(), 3), 0).coordinates == numeric::array(1, 0, 0));
-    require(  next_on(with_level(bqo_tree::tree_index<3>(), 3), 1).coordinates == numeric::array(0, 1, 0));
-    require(  next_on(with_level(bqo_tree::tree_index<3>(), 3), 2).coordinates == numeric::array(0, 0, 1));
-    require(  prev_on(with_level(bqo_tree::tree_index<3>(), 3), 0).coordinates == numeric::array(7, 0, 0));
-    require(  prev_on(with_level(bqo_tree::tree_index<3>(), 3), 1).coordinates == numeric::array(0, 7, 0));
-    require(  prev_on(with_level(bqo_tree::tree_index<3>(), 3), 2).coordinates == numeric::array(0, 0, 7));
-    require(  valid(with_coordinates(with_level(bqo_tree::tree_index<3>(), 3), {0, 0, 7})));
-    require(! valid(with_coordinates(with_level(bqo_tree::tree_index<3>(), 3), {0, 0, 8})));
+    require_throws(next_on(bsp::tree_index<3>(), 3));
+    require(  next_on(with_level(bsp::tree_index<3>(), 3), 0).coordinates == numeric::array(1, 0, 0));
+    require(  next_on(with_level(bsp::tree_index<3>(), 3), 1).coordinates == numeric::array(0, 1, 0));
+    require(  next_on(with_level(bsp::tree_index<3>(), 3), 2).coordinates == numeric::array(0, 0, 1));
+    require(  prev_on(with_level(bsp::tree_index<3>(), 3), 0).coordinates == numeric::array(7, 0, 0));
+    require(  prev_on(with_level(bsp::tree_index<3>(), 3), 1).coordinates == numeric::array(0, 7, 0));
+    require(  prev_on(with_level(bsp::tree_index<3>(), 3), 2).coordinates == numeric::array(0, 0, 7));
+    require(  valid(with_coordinates(with_level(bsp::tree_index<3>(), 3), {0, 0, 7})));
+    require(! valid(with_coordinates(with_level(bsp::tree_index<3>(), 3), {0, 0, 8})));
 
     auto branch_function = [] (auto i) { return child_indexes(i); };
-    auto tree64 = branch_through(branch_through(bsp_tree::just<8>(bqo_tree::tree_index<3>()), branch_function), branch_function);
-    auto index = with_coordinates(with_level(bqo_tree::tree_index<3>(), 2), {0, 1, 2});
+    auto tree64 = branch_through(branch_through(bsp::just<8>(bsp::tree_index<3>()), branch_function), branch_function);
+    auto index = with_coordinates(with_level(bsp::tree_index<3>(), 2), {0, 1, 2});
 
-    require(size(bsp_tree::from(child_indexes(bqo_tree::tree_index<3>()))) == 8);
-    require(size(branch(bsp_tree::just<8>(bqo_tree::tree_index<3>()), branch_function)) == 8);
+    require(size(bsp::from(child_indexes(bsp::tree_index<3>()))) == 8);
+    require(size(branch(bsp::just<8>(bsp::tree_index<3>()), branch_function)) == 8);
     require(size(tree64) == 64);
-    require(has_value(bqo_tree::node_at(tree64, index)));
+    require(has_value(bsp::node_at(tree64, index)));
     require(  contains(tree64, index));
     require(! contains(tree64, child_indexes(index)[0]));
-    require_throws(bqo_tree::node_at(tree64, child_indexes(index)[0]));
+    require_throws(bsp::node_at(tree64, child_indexes(index)[0]));
 }
 
 #endif // DO_UNIT_TESTS

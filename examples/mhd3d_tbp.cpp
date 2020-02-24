@@ -160,7 +160,7 @@ struct state_t
     rational::number_t                                    iteration;
     dimensional::unit_time                                time;
     dimensional::unit_time                                time_step;
-    bsp_tree::shared_tree_t<bqo_tree::tree_index_t<3>, 8> mesh_topology;
+    bsp::shared_tree<bsp::tree_index_t<3>, 8>             mesh_topology;
 };
 
 
@@ -173,7 +173,7 @@ state_t initial_state()
         0,
         0.0,
         0.0,
-        bqo_tree::uniform_octree(1),
+        bsp::uniform_octree(1),
     };
 }
 

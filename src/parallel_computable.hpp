@@ -67,7 +67,7 @@
 
 
 //=============================================================================
-namespace computable
+namespace pr // parallel runtime
 {
 
 
@@ -348,6 +348,9 @@ private:
     std::shared_ptr<computable_node_t> g;
 };
 
+template <typename T>
+using computable = computable_t<T>;
+
 
 
 
@@ -383,15 +386,15 @@ auto zip(computable_t<ValueType>... c)
 
 
 /**
- * @brief      Evaluate a computable on a (possibly asynchronous) scheduler.
+ * @brief      Compute a computable on a (possibly asynchronous) scheduler.
  *
- * @param[in]  computable  The computable to evaluate
- * @param[in]  scheduler    The scheduling function
+ * @param[in]  computable  The computable to compute
+ * @param[in]  scheduler   The scheduling function
  *
  * @tparam     ValueType   The computable value type
  */
 template<typename ValueType>
-void evaluate(computable_t<ValueType> computable, async_invoke_t scheduler)
+void compute(computable_t<ValueType> computable, async_invoke_t scheduler)
 {
     auto eligible  = computable.node()->primitives();
     auto pending   = computable_node_t::set_t();

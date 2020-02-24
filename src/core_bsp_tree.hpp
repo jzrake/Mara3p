@@ -36,7 +36,7 @@
 
 
 // bsp := Binary Space Partitioning (kd-tree, quad-tree, oct-tree)
-namespace bsp_tree {
+namespace bsp {
 
 
 using uint = unsigned long;
@@ -116,16 +116,16 @@ struct zipped_children_t
 
 //=============================================================================
 template<typename ValueType, uint Ratio>
-using shared_tree_t = tree_t<ValueType, shared_children_t<ValueType, Ratio>, Ratio>;
+using shared_tree = tree_t<ValueType, shared_children_t<ValueType, Ratio>, Ratio>;
 
 template<uint Ratio, typename ValueType>
 auto just(ValueType value)
 {
-    return shared_tree_t<ValueType, Ratio>{value};
+    return shared_tree<ValueType, Ratio>{value};
 }
 
 template<typename ValueType, uint Ratio>
-auto shared_trees(numeric::array_t<shared_tree_t<ValueType, Ratio>, Ratio> child_trees)
+auto shared_trees(numeric::array_t<shared_tree<ValueType, Ratio>, Ratio> child_trees)
 {
     return shared_children_t<ValueType, Ratio>{
         std::make_shared<decltype(child_trees)>(child_trees)
@@ -148,13 +148,13 @@ template<typename... ValueTypes>
 auto from(ValueTypes... values)
 {
     using value_type = std::common_type_t<ValueTypes...>;
-    return shared_tree_t<value_type, sizeof...(ValueTypes)>{shared_values(numeric::array(values...))};
+    return shared_tree<value_type, sizeof...(ValueTypes)>{shared_values(numeric::array(values...))};
 }
 
 template<typename ValueType, std::size_t Ratio>
 auto from(numeric::array_t<ValueType, Ratio> values)
 {
-    return shared_tree_t<ValueType, Ratio>{shared_values(values)};
+    return shared_tree<ValueType, Ratio>{shared_values(values)};
 }
 
 
@@ -227,7 +227,7 @@ template<typename ValueType, typename ChildrenType, uint Ratio>
 auto children(tree_t<ValueType, ChildrenType, Ratio> tree)
 {
     if (has_value(tree))
-        throw std::out_of_range("bsp_tree::child (tree is a leaf)");
+        throw std::out_of_range("bsp::child (tree is a leaf)");
     return std::get<ChildrenType>(tree.provider);
 }
 
@@ -250,7 +250,7 @@ template<typename ValueType, typename ChildrenType, uint Ratio>
 auto child_at(const tree_t<ValueType, ChildrenType, Ratio>& tree, std::size_t i)
 {
     if (i >= Ratio)
-        throw std::out_of_range("bsp_tree::child (index must be <= Ratio)");
+        throw std::out_of_range("bsp::child (index must be <= Ratio)");
     return children(tree)(i);
 }
 
@@ -277,7 +277,7 @@ auto attach(tree_t<ValueType, ChildrenType, Ratio> tree, AttachType attach_funct
         "The attach function must be ValueType -> ChildrenType");
 
     if (! has_value(tree))
-        throw std::invalid_argument("bsp_tree::attach (can only attach leaf nodes)");
+        throw std::invalid_argument("bsp::attach (can only attach leaf nodes)");
 
     return tree_t<ValueType, ChildrenType, Ratio>{
         attach_function(value(tree))
@@ -335,7 +335,7 @@ auto attach_if(tree_t<ValueType, ChildrenType, Ratio> tree, AttachType attach_fu
  * @return     { description_of_the_return_value }
  */
 template<typename ValueType, uint Ratio, typename BranchType>
-auto branch(shared_tree_t<ValueType, Ratio> tree, BranchType branch_function)
+auto branch(shared_tree<ValueType, Ratio> tree, BranchType branch_function)
 {
     return attach(tree, [f=branch_function] (auto u) { return shared_values(f(u)); });
 };
@@ -360,7 +360,7 @@ auto branch(shared_tree_t<ValueType, Ratio> tree, BranchType branch_function)
  */
 template<typename ValueType, uint Ratio, typename BranchType, typename PredicateType,
 typename = std::enable_if_t<std::is_same_v<std::invoke_result_t<BranchType, ValueType>, numeric::array_t<ValueType, Ratio>>>>
-auto branch_if(shared_tree_t<ValueType, Ratio> tree, BranchType branch_function, PredicateType predicate)
+auto branch_if(shared_tree<ValueType, Ratio> tree, BranchType branch_function, PredicateType predicate)
 {
     return attach_if(tree, [f=branch_function] (auto u) { return shared_values(f(u)); }, predicate); 
 }
@@ -383,7 +383,7 @@ auto branch_if(shared_tree_t<ValueType, Ratio> tree, BranchType branch_function,
  */
 template<typename ValueType, uint Ratio, typename BranchType,
 typename = std::enable_if_t<std::is_same_v<std::invoke_result_t<BranchType, ValueType>, numeric::array_t<ValueType, Ratio>>>>
-auto branch_through(shared_tree_t<ValueType, Ratio> tree, BranchType branch_function)
+auto branch_through(shared_tree<ValueType, Ratio> tree, BranchType branch_function)
 {
     return branch_if(tree, branch_function, [] (auto) { return true; });
 }
@@ -446,7 +446,7 @@ auto zip(tree_t<ValueType, ChildrenType, Ratio>... trees)
     if (! any(numeric::array_t{has_value(trees)...}))
         return result_tree_type{result_children_type{std::tuple(children(trees)...)}};
 
-    throw std::invalid_argument("bsp_tree::zip (argument trees have different topology)");
+    throw std::invalid_argument("bsp::zip (argument trees have different topology)");
 }
 
 
@@ -469,7 +469,48 @@ std::size_t size(tree_t<ValueType, ChildrenType, Ratio> tree)
     return has_value(tree) ? 1 : detail::sum<Ratio>([&] (auto i) { return size(child_at(tree, i)); });
 }
 
-} // namespace bsp_tree
+
+
+
+/**
+ * @brief      { function_description }
+ *
+ * @param[in]  tree          The tree
+ *
+ * @tparam     ValueType     { description }
+ * @tparam     ChildrenType  { description }
+ * @tparam     Ratio         { description }
+ *
+ * @return     { description_of_the_return_value }
+ */
+template<typename ValueType, typename ChildrenType, uint Ratio>
+auto to_shared(tree_t<ValueType, ChildrenType, Ratio> tree)
+{
+    static_assert(! std::is_same_v<ChildrenType, shared_children_t<ValueType, Ratio>>, "tree is already shared");
+
+    if (has_value(tree))
+    {
+        return just<Ratio>(value(tree));
+    }
+
+    auto children = numeric::array_t<shared_tree<ValueType, Ratio>, Ratio>();
+
+    for (std::size_t i = 0; i < Ratio; ++i)
+    {
+        children[i] = to_shared(child_at(tree, i));
+    }
+    return tree_t<ValueType, shared_children_t<ValueType, Ratio>, Ratio>{shared_trees(children)};
+}
+
+
+
+
+//=============================================================================
+template<typename V, typename C, uint R, typename F> auto operator|(tree_t<V, C, R> t, F f) { return f(t); }
+template<typename F> auto map(F f) { return [f] (auto tree) { return map(tree, f); }; }
+inline auto to_shared() { return [] (auto tree) { return to_shared(tree); }; }
+
+} // namespace bsp
 
 
 
@@ -484,10 +525,10 @@ std::size_t size(tree_t<ValueType, ChildrenType, Ratio> tree)
 //=============================================================================
 inline void test_bsp_tree()
 {
-    require(size(bsp_tree::just<2>(12)) == 1);
-    require(size(bsp_tree::from(1, 2, 3)) == 3);
-    require(size(attach(bsp_tree::just<2>(0), [] (int n) { return bsp_tree::shared_values(n + 12, n + 13); })) == 2);
-    require(size(branch(bsp_tree::just<2>(0), [] (int n) { return std::array{n + 12, n + 13}; })) == 2);
+    require(size(bsp::just<2>(12)) == 1);
+    require(size(bsp::from(1, 2, 3)) == 3);
+    require(size(attach(bsp::just<2>(0), [] (int n) { return bsp::shared_values(n + 12, n + 13); })) == 2);
+    require(size(branch(bsp::just<2>(0), [] (int n) { return std::array{n + 12, n + 13}; })) == 2);
 }
 
 #endif // DO_UNIT_TESTS
