@@ -57,7 +57,7 @@ using namespace dimensional;
 using namespace std::placeholders;
 
 static auto mach_number = 10.0;
-static auto omega_frame = dimensional::quantity_t<0, 0, -1>(1.0);
+static auto omega_frame = unit_rate(1.0);
 
 
 
@@ -168,9 +168,54 @@ auto computable(shared_tree<pr::computable<ValueType>, Ratio> tree)
 
 
 //=============================================================================
-auto initial_primitive(solver_data_t solver_data)
+template<typename KeyType, typename ValueType>
+class memoizer_t
 {
-    return [rs=solver_data.softening_length] (numeric::array_t<unit_length, 2> p)
+public:
+    memoizer_t(std::function<ValueType(KeyType)> function) : function(function) {}
+
+    ValueType operator()(const KeyType& arg_tuple)
+    {
+        auto lock = std::lock_guard<std::mutex>(mutex);
+
+        if (! cache.count(arg_tuple))
+        {
+            cache[arg_tuple] = function(arg_tuple);
+        }
+        return cache[arg_tuple];
+    }
+
+    template<typename... Args>
+    ValueType operator()(Args... args)
+    {
+        return this->operator()(std::tuple(args...));
+    }
+
+private:
+    std::mutex mutex;
+    std::function<ValueType(KeyType)> function;
+    std::map<KeyType, ValueType> cache;
+};
+
+template<typename... Args, typename Function>
+auto memoizer(Function function)
+{
+    using arg_type = std::tuple<Args...>;
+    using res_type = std::invoke_result_t<Function, Args...>;
+
+    return memoizer_t<arg_type, res_type>([function] (arg_type args)
+    {
+        return std::apply(function, args);
+    });
+}
+
+
+
+
+//=============================================================================
+auto initial_primitive(unit_length softening_length)
+{
+    return [rs=softening_length] (numeric::array_t<unit_length, 2> p)
     {
         auto [x, y] = as_tuple(p);
         auto ph = two_body::potential(two_body::point_mass_t(), x, y, rs);
@@ -189,13 +234,13 @@ auto sound_speed_squared(numeric::array_t<unit_length, 2> p, unit_length softeni
     return -ph / mach_number / mach_number;
 }
 
-auto buffer_rate_field(solver_data_t solver_data)
+auto buffer_rate_field(unit_length domain_radius, unit_length buffer_scale, unit_rate buffer_rate)
 {
-    return [solver_data] (numeric::array_t<unit_length, 2> p)
+    return [=] (numeric::array_t<unit_length, 2> p)
     {
         auto r = sqrt(sum(p * p));
-        auto y = (r - solver_data.domain_radius) / solver_data.buffer_scale;
-        return 0.5 * solver_data.buffer_rate * (1.0 + std::tanh(y));
+        auto y = (r - domain_radius) / buffer_scale;
+        return 0.5 * buffer_rate * (1.0 + std::tanh(y));
     };
 }
 
@@ -257,14 +302,63 @@ auto face_coordinates(bsp::uint n, unit_length dr, bsp::tree_index_t<2> block, b
     throw std::invalid_argument("face_coordinates (invalid axis)");
 }
 
-auto cell_coordinates(bsp::uint n, unit_length dr, bsp::tree_index_t<2> block)
+nd::shared_array<numeric::array_t<unit_length, 2>, 2>
+cell_coordinates(int block_size, unit_length domain_radius, bsp::tree_index_t<2> block)
 {
-    auto [xv, yv] = vertex_positions(n, dr, block);
-    auto xc = xv | nd::adjacent_mean(0);
-    auto yc = yv | nd::adjacent_mean(0);
-    auto vec2 = nd::map(util::apply_to([] (auto x, auto y) { return numeric::array(x, y); }));
+    static auto memoize = memoizer<int, unit_length, bsp::tree_index_t<2>>(
+    [] (auto block_size, auto domain_radius, auto block)
+    {
+        auto [xv, yv] = vertex_positions(block_size, domain_radius, block);
+        auto xc = xv | nd::adjacent_mean(0);
+        auto yc = yv | nd::adjacent_mean(0);
+        auto vec2 = nd::map(util::apply_to([] (auto x, auto y) { return numeric::array(x, y); }));
 
-    return nd::cartesian_product(xc, yc) | vec2;
+        return nd::cartesian_product(xc, yc) | vec2 | nd::to_shared();
+    });
+    return memoize(block_size, domain_radius, block);
+}
+
+
+
+
+//=============================================================================
+nd::shared_array<unit_rate, 2>
+buffer_rate_field_array(solver_data_t solver_data, bsp::tree_index_t<2> block)
+{
+    static auto memoize = memoizer<int, unit_length, unit_length, unit_rate, bsp::tree_index_t<2>>(
+    [] (auto block_size, auto domain_radius, auto buffer_scale, auto buffer_rate, auto block)
+    {
+        auto xc = cell_coordinates(block_size, domain_radius, block);
+        auto br = xc | nd::map(buffer_rate_field(domain_radius, buffer_scale, buffer_rate));
+        return br | nd::to_shared();
+    });
+    return memoize(solver_data.block_size, solver_data.domain_radius, solver_data.buffer_scale, solver_data.buffer_rate, block);
+}
+
+nd::shared_array<iso2d::conserved_density_t, 2>
+initial_conserved_array(solver_data_t solver_data, bsp::tree_index_t<2> block)
+{
+    static auto memoize = memoizer<int, unit_length, unit_length, bsp::tree_index_t<2>>(
+    [] (auto block_size, auto domain_radius, auto softening_length, auto block)
+    {
+        auto xc = cell_coordinates(block_size, domain_radius, block);
+        auto uc = xc | nd::map(initial_primitive(softening_length)) | nd::map(iso2d::conserved_density);
+        return uc | nd::to_shared();
+    });
+    return memoize(solver_data.block_size, solver_data.domain_radius, solver_data.softening_length, block);
+}
+
+nd::shared_array<numeric::array_t<unit_acceleration, 2>, 2>
+centrifugal_term_array(solver_data_t solver_data, bsp::tree_index_t<2> block)
+{
+    static auto memoize = memoizer<int, unit_length, bsp::tree_index_t<2>>(
+    [] (auto block_size, auto domain_radius, auto block)
+    {
+        auto xc = cell_coordinates(block_size, domain_radius, block);
+        auto cen = xc | nd::map(centrifugal_term);
+        return cen | nd::to_shared();
+    });
+    return memoize(solver_data.block_size, solver_data.domain_radius, block);
 }
 
 
@@ -273,17 +367,8 @@ auto cell_coordinates(bsp::uint n, unit_length dr, bsp::tree_index_t<2> block)
 //=============================================================================
 solution_t initial(solver_data_t solver_data)
 {
-    auto iu = [solver_data] (auto block)
-    {
-        auto xc = cell_coordinates(solver_data.block_size, solver_data.domain_radius, block);
-        auto uc = xc | nd::map(initial_primitive(solver_data)) | nd::map(iso2d::conserved_density) | nd::to_shared();
-        return uc;
-    };
-
-    auto _tp_ = bsp::uniform_quadtree(solver_data.depth);
-    auto _uc_ = _tp_ | bsp::map(iu) | bsp::to_shared();
-
-    return {0, 0.0, _uc_};
+    auto uc = bsp::uniform_quadtree(solver_data.depth) |  bsp::maps(std::bind(initial_conserved_array, solver_data, _1));
+    return {0, 0.0, uc};
 }
 
 
@@ -361,8 +446,8 @@ auto updated_conserved(
     auto xc = cell_coordinates(solver_data.block_size, solver_data.domain_radius, block);
     auto dl = 2.0 * solver_data.domain_radius / double(solver_data.block_size) / double(1 << block.level);
 
-    auto dfx = fx | nd::adjacent_diff(0);
-    auto dfy = fy | nd::adjacent_diff(1);
+    auto dfx = fx | nd::adjacent_diff(0) | nd::to_shared();
+    auto dfy = fy | nd::adjacent_diff(1) | nd::to_shared();
 
     auto elements = two_body::orbital_elements();
     auto inertial = two_body::orbital_state(elements, time);
@@ -370,8 +455,8 @@ auto updated_conserved(
 
     auto ag1 = xc | nd::map(gravitational_acceleration(state.first));
     auto ag2 = xc | nd::map(gravitational_acceleration(state.second));
-    auto cen = xc | nd::map(centrifugal_term);
     auto cor = pc | nd::map(iso2d::velocity_vector) | nd::map(coriolis_term);
+    auto cen = centrifugal_term_array(solver_data, block);
 
     auto ss1 = -uc * (xc | nd::map(sink_rate_field(solver_data, two_body::position(state.first))))  | nd::to_shared();
     auto ss2 = -uc * (xc | nd::map(sink_rate_field(solver_data, two_body::position(state.second)))) | nd::to_shared();
@@ -380,8 +465,8 @@ auto updated_conserved(
     auto sf1 = nd::zip(pc, cen) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms))      | nd::to_shared();
     auto sf2 = nd::zip(pc, cor) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms))      | nd::to_shared();
 
-    auto uinit = xc | nd::map(initial_primitive(solver_data)) | nd::map(iso2d::conserved_density);
-    auto br    = xc | nd::map(buffer_rate_field(solver_data));
+    auto uinit = initial_conserved_array(solver_data, block);
+    auto br    = buffer_rate_field_array(solver_data, block);
     auto sb    = -(uc - uinit) * br;
     auto u1    = uc - (dfx + dfy) * dt / dl + (sg1 + sg2 + ss1 + ss2 + sf1 + sf2 + sb) * dt;
 
@@ -392,11 +477,15 @@ auto updated_conserved(
 
 
 //=============================================================================
-void side_effects(solution_t solution)
+void side_effects(const mara::config_t& cfg, solution_t solution)
 {
     if (long(solution.iteration) % 50 == 0)
     {
-        auto fname = util::format("chkpt.%04ld.h5", long(solution.iteration) / 50);
+        auto outdir = cfg.get_string("outdir");
+        auto fname = util::format("%s/chkpt.%04ld.h5", outdir.data(), long(solution.iteration) / 50);
+
+        mara::filesystem::require_dir(outdir);
+
         auto h5f = h5::File(fname, "w");
         h5::write(h5f, "solution", solution);
         std::printf("write %s\n", fname.data());
@@ -466,7 +555,7 @@ int main(int argc, const char* argv[])
 
     while (solution.time < tfinal)
     {
-        side_effects(solution);
+        side_effects(cfg, solution);
 
         auto [s1, ticks] = control::invoke_timed(step, solution, solver_data, pool);
 
@@ -477,6 +566,8 @@ int main(int argc, const char* argv[])
 
         std::printf("[%06ld] orbit=%lf kzps=%lf\n", long(solution.iteration), solution.time.value / 2 / M_PI, kzps);
     }
+
+    side_effects(cfg, solution);
 
     return 0;
 }
