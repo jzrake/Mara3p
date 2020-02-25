@@ -26,6 +26,7 @@
 
 
 
+#include <iostream>
 #include "app_config.hpp"
 #include "app_control.hpp"
 #include "app_filesystem.hpp"
@@ -36,9 +37,14 @@
 #include "app_hdf5_ndarray_dimensional.hpp"
 #include "app_hdf5_numeric_array.hpp"
 #include "app_hdf5_rational.hpp"
+#include "core_bqo_tree.hpp"
+#include "core_bsp_tree.hpp"
 #include "core_ndarray.hpp"
 #include "core_ndarray_ops.hpp"
+#include "core_sequence.hpp"
 #include "core_util.hpp"
+#include "parallel_computable.hpp"
+#include "parallel_thread_pool.hpp"
 #include "physics_iso2d.hpp"
 #include "physics_two_body.hpp"
 #include "scheme_plm_gradient.hpp"
@@ -47,25 +53,9 @@
 
 
 //=============================================================================
-auto config_template()
-{
-    return mara::config_template()
-    .item("n",                    300)   // number of zones per side
-    .item("domain_radius",        1.5)   // half-size of the domain
-    .item("softening_length",    0.01)   // gravitational softening length
-    .item("sink_radius",         0.01)   // radius of mass sinks
-    .item("sink_rate",            1e3)   // rate of mass and momentum removal at sinks
-    .item("buffer_damping_rate",  1e2)   // maximum rate of buffer driving
-    .item("tfinal",             100.0)   // time to stop the simulation
-    .item("restart", std::string(""))    // a checkpoint file to restart from
-    .item("outdir",  std::string("."));  // the directory where output files are written
-}
-
-
-
-
-//=============================================================================
 using namespace dimensional;
+using namespace std::placeholders;
+
 static auto mach_number = 10.0;
 static auto omega_frame = dimensional::quantity_t<0, 0, -1>(1.0);
 
@@ -73,11 +63,63 @@ static auto omega_frame = dimensional::quantity_t<0, 0, -1>(1.0);
 
 
 //=============================================================================
+auto config_template()
+{
+    return mara::config_template()
+    .item("block_size",            32)   // number of zones per side
+    .item("depth",                  2)   // number of levels in the mesh
+    .item("domain_radius",        1.5)   // half-size of the domain
+    .item("softening_length",    0.01)   // gravitational softening length
+    .item("sink_radius",         0.01)   // radius of mass sinks
+    .item("sink_rate",            1e3)   // rate of mass and momentum removal at sinks
+    .item("buffer_rate",          1e2)   // maximum rate of buffer driving
+    .item("buffer_scale",         0.2)   // buffer onset distance
+    .item("tfinal",             100.0)   // time to stop the simulation
+    .item("threads",                1)   // number of threads to execute on
+    .item("restart", std::string(""))    // a checkpoint file to restart from
+    .item("outdir",  std::string("."));  // the directory where output files are written
+}
+
+struct solver_data_t
+{
+    int                 block_size;
+    int                 depth;
+    unit_length         domain_radius;
+    unit_length         softening_length;
+    unit_length         sink_radius;
+    unit_rate           sink_rate;
+    unit_rate           buffer_rate;
+    unit_length         buffer_scale;
+};
+
+auto make_solver_data(const mara::config_t& cfg)
+{
+    return solver_data_t{
+        cfg.get_int("block_size"),
+        cfg.get_int("depth"),
+        cfg.get_double("domain_radius"),
+        cfg.get_double("softening_length"),
+        cfg.get_double("sink_radius"),
+        cfg.get_double("sink_rate"),
+        cfg.get_double("buffer_rate"),
+        cfg.get_double("buffer_scale"),
+    };
+}
+
+
+
+
+//=============================================================================
+using conserved_array_t = nd::shared_array<iso2d::conserved_density_t, 2>;
+using primitive_array_t = nd::shared_array<iso2d::primitive_t, 2>;
+using godunov_f_array_t = nd::shared_array<iso2d::flux_vector_t, 2>;
+using conserved_tree_t  = bsp::shared_tree<conserved_array_t, 4>;
+
 struct solution_t
 {
-    rational::number_t                              iteration;
-    dimensional::unit_time                          time;
-    nd::shared_array<iso2d::conserved_density_t, 2> conserved;
+    rational::number_t      iteration;
+    dimensional::unit_time  time;
+    conserved_tree_t        conserved;
 };
 
 
@@ -91,7 +133,13 @@ void write(const Group& group, std::string name, const solution_t& solution)
     auto sgroup = group.require_group(name);
     write(sgroup, "iteration", solution.iteration);
     write(sgroup, "time", solution.time);
-    write(sgroup, "conserved", solution.conserved);
+
+    auto ugroup = sgroup.require_group("conserved");
+
+    sink(indexify(solution.conserved), util::apply_to([&ugroup] (auto index, auto value)
+    {
+        write(ugroup, format_tree_index(index), value);
+    }));
 }
 
 }
@@ -100,14 +148,32 @@ void write(const Group& group, std::string name, const solution_t& solution)
 
 
 //=============================================================================
-auto initial_primitive(const mara::config_t& cfg)
-{
-    auto softening_length = unit_length(cfg.get_double("softening_length"));
+namespace bsp {
 
-    return [softening_length] (numeric::array_t<unit_length, 2> p)
+template<typename ValueType, uint Ratio>
+auto computable(shared_tree<pr::computable<ValueType>, Ratio> tree)
+{
+    auto nodes = pr::computable_node_t::set_t();
+    sink(tree, [&nodes] (auto& b) { nodes.insert(b.node()); });
+
+    return pr::computable_t<shared_tree<ValueType, Ratio>>([tree] ()
+    {
+        return tree | bsp::maps([] (auto v) { return v.value(); });
+    }, nodes);
+}
+
+}
+
+
+
+
+//=============================================================================
+auto initial_primitive(solver_data_t solver_data)
+{
+    return [rs=solver_data.softening_length] (numeric::array_t<unit_length, 2> p)
     {
         auto [x, y] = as_tuple(p);
-        auto ph = two_body::potential(two_body::point_mass_t(), x, y, softening_length);
+        auto ph = two_body::potential(two_body::point_mass_t(), x, y, rs);
         auto r0 = sqrt(x * x + y * y);
         auto vp = sqrt(-ph) - omega_frame * r0;
         auto vx = vp * (-y / r0);
@@ -123,30 +189,23 @@ auto sound_speed_squared(numeric::array_t<unit_length, 2> p, unit_length softeni
     return -ph / mach_number / mach_number;
 }
 
-auto buffer_rate_field(const mara::config_t& cfg)
+auto buffer_rate_field(solver_data_t solver_data)
 {
-    auto domain_radius = dimensional::quantity_t<0, 1, 0>(cfg.get_double("domain_radius"));
-    auto buffer_rate   = dimensional::quantity_t<0, 0,-1>(cfg.get_double("buffer_damping_rate"));
-    auto tightness     = dimensional::quantity_t<0,-1, 0>(5.0);
-
-    return [domain_radius, buffer_rate, tightness] (numeric::array_t<unit_length, 2> p)
+    return [solver_data] (numeric::array_t<unit_length, 2> p)
     {
         auto r = sqrt(sum(p * p));
-        auto y = tightness * (r - domain_radius);
-        return 0.5 * buffer_rate * (1.0 + std::tanh(y));
+        auto y = (r - solver_data.domain_radius) / solver_data.buffer_scale;
+        return 0.5 * solver_data.buffer_rate * (1.0 + std::tanh(y));
     };
 }
 
-auto sink_rate_field(const mara::config_t& cfg, numeric::array_t<unit_length, 2> sink_position)
+auto sink_rate_field(solver_data_t solver_data, numeric::array_t<unit_length, 2> sink_position)
 {
-    auto sink_radius = dimensional::quantity_t<0, 1, 0>(cfg.get_double("sink_radius"));
-    auto sink_rate   = dimensional::quantity_t<0, 0,-1>(cfg.get_double("sink_rate"));
-
-    return [sink_radius, sink_rate, sink_position] (numeric::array_t<unit_length, 2> p)
+    return [solver_data, sink_position] (numeric::array_t<unit_length, 2> p)
     {
         auto r6 = pow<3>(sum((p - sink_position) * (p - sink_position)));
-        auto s6 = pow<6>(sink_radius);
-        return sink_rate * std::exp(-r6 / s6);
+        auto s6 = pow<6>(solver_data.sink_radius);
+        return solver_data.sink_rate * std::exp(-r6 / s6);
     };
 }
 
@@ -163,133 +222,170 @@ auto centrifugal_term(numeric::array_t<unit_length, 2> p)
 }
 
 
+
+
 //=============================================================================
-auto face_coordinates(uint n, unit_length domain_radius, uint axis)
+auto vertex_positions(uint n, unit_length dr, bsp::tree_index_t<2> block)
 {
-    auto xv = nd::linspace(-domain_radius, domain_radius, n + 1);
-    auto yv = nd::linspace(-domain_radius, domain_radius, n + 1);
+    auto [i0, j0] = as_tuple(block.coordinates);
+    auto [i1, j1] = std::tuple(i0 + 1, j0 + 1);
+    auto dl = double(1 << block.level);
+
+    auto x0 = dr * (-1 + 2 * i0 / dl);
+    auto x1 = dr * (-1 + 2 * i1 / dl);
+    auto y0 = dr * (-1 + 2 * j0 / dl);
+    auto y1 = dr * (-1 + 2 * j1 / dl);
+
+    auto xv = nd::linspace(x0, x1, n + 1);
+    auto yv = nd::linspace(y0, y1, n + 1);
+
+    return std::tuple(xv, yv);
+}
+
+auto face_coordinates(bsp::uint n, unit_length dr, bsp::tree_index_t<2> block, bsp::uint axis)
+{
+    auto [xv, yv] = vertex_positions(n, dr, block);
     auto xc = xv | nd::adjacent_mean(0);
-    auto yc = xv | nd::adjacent_mean(0);
+    auto yc = yv | nd::adjacent_mean(0);
     auto vec2 = nd::map(util::apply_to([] (auto x, auto y) { return numeric::array(x, y); }));
 
     switch (axis)
     {
-        case 1: return nd::cartesian_product(xv, yc) | vec2 | nd::to_shared();
-        case 2: return nd::cartesian_product(xc, yv) | vec2 | nd::to_shared();
+        case 0: return nd::cartesian_product(xv, yc) | vec2 | nd::to_shared();
+        case 1: return nd::cartesian_product(xc, yv) | vec2 | nd::to_shared();
     }
     throw std::invalid_argument("face_coordinates (invalid axis)");
 }
 
-auto cell_coordinates(uint n, unit_length domain_radius)
+auto cell_coordinates(bsp::uint n, unit_length dr, bsp::tree_index_t<2> block)
 {
-    auto xv = nd::linspace(-domain_radius, domain_radius, n + 1) | nd::adjacent_mean();
-    auto yv = nd::linspace(-domain_radius, domain_radius, n + 1) | nd::adjacent_mean();
+    auto [xv, yv] = vertex_positions(n, dr, block);
+    auto xc = xv | nd::adjacent_mean(0);
+    auto yc = yv | nd::adjacent_mean(0);
     auto vec2 = nd::map(util::apply_to([] (auto x, auto y) { return numeric::array(x, y); }));
 
-    return nd::cartesian_product(xv, yv) | vec2;
+    return nd::cartesian_product(xc, yc) | vec2;
 }
 
 
 
 
 //=============================================================================
-solution_t initial(const mara::config_t& cfg)
+solution_t initial(solver_data_t solver_data)
 {
-    auto n = cfg.get_int("n");
-    auto domain_radius = unit_length(cfg.get_double("domain_radius"));
+    auto iu = [solver_data] (auto block)
+    {
+        auto xc = cell_coordinates(solver_data.block_size, solver_data.domain_radius, block);
+        auto uc = xc | nd::map(initial_primitive(solver_data)) | nd::map(iso2d::conserved_density) | nd::to_shared();
+        return uc;
+    };
 
-    auto xc = cell_coordinates(n, domain_radius);
-    auto u = xc | nd::map(initial_primitive(cfg)) | nd::map(iso2d::conserved_density);
-    return solution_t{0, 0.0, nd::to_shared(u)};
+    auto _tp_ = bsp::uniform_quadtree(solver_data.depth);
+    auto _uc_ = _tp_ | bsp::map(iu) | bsp::to_shared();
+
+    return {0, 0.0, _uc_};
 }
 
-solution_t next(const mara::config_t& cfg, solution_t solution)
+
+
+
+//=============================================================================
+template<typename ArrayType>
+auto extend(bsp::shared_tree<pr::computable<ArrayType>, 4> __pc__, bsp::tree_index_t<2> block, bsp::uint axis)
 {
-    using namespace std::placeholders;
+    auto _pl_ = value_at(__pc__, prev_on(block, axis));
+    auto _pc_ = value_at(__pc__, block);
+    auto _pr_ = value_at(__pc__, next_on(block, axis));
 
-    auto n                = cfg.get_int("n");
-    auto domain_radius    = unit_length(cfg.get_double("domain_radius"));
-    auto softening_length = unit_length(cfg.get_double("softening_length"));
-
-    auto riemann = [rs=softening_length] (uint axis)
+    return pr::zip(_pl_, _pc_, _pr_) | pr::mapv([axis] (auto pl, auto pc, auto pr)
     {
-        return [axis, rs] (auto pl, auto pr, auto xf)
-        {
-            auto cs2 = sound_speed_squared(xf, rs);
-            return iso2d::riemann_hlle(pl, pr, cs2, geometric::unit_vector_on(axis));
-        };
+        return select(pl, axis, -1) | nd::concat(pc, axis) | nd::concat(select(pr, axis, 0, 1), axis) | nd::to_shared();
+    });
+}
+
+auto recover_primitive_array(conserved_array_t uc)
+{
+    return uc | nd::maps(iso2d::recover_primitive);
+}
+
+auto estimate_gradient(primitive_array_t pc, bsp::uint axis, double theta)
+{
+    return pc | nd::adjacent_zip3(axis) | nd::map(mara::plm_gradient(theta)) | nd::to_shared();
+}
+
+auto godunov_fluxes(
+    primitive_array_t pc,
+    primitive_array_t gc,
+    solver_data_t solver_data,
+    bsp::tree_index_t<2> block,
+    bsp::uint axis)
+{
+    auto riemann = [axis, rs=solver_data.softening_length] (auto pl, auto pr, auto xf)
+    {
+        auto cs2 = sound_speed_squared(xf, rs);
+        return iso2d::riemann_hlle(pl, pr, cs2, geometric::unit_vector_on(axis + 1));
     };
 
-    auto elements = two_body::orbital_elements();
-    auto inertial = two_body::orbital_state(elements, solution.time);
-    auto state    = two_body::rotate(inertial, omega_frame * solution.time);
-
-    auto gravitational_acceleration = [softening_length] (auto component)
-    {
-        return [c=component, s=softening_length] (auto p)
-        {
-            return two_body::gravitational_acceleration(c, p[0], p[1], s);
-        };
-    };
-
-    auto xf1 = face_coordinates(n, domain_radius, 1);
-    auto xf2 = face_coordinates(n, domain_radius, 2);
-    auto xc  = cell_coordinates(n, domain_radius);
-    auto u0  = solution.conserved;
-    auto pc  = u0 | nd::map(iso2d::recover_primitive) | nd::to_shared();
-
-    auto gx = pc | nd::extend_zero_gradient(0) | nd::adjacent_zip3(0) | nd::map(mara::plm_gradient(2.0)) | nd::to_shared();
-    auto gy = pc | nd::extend_zero_gradient(1) | nd::adjacent_zip3(1) | nd::map(mara::plm_gradient(2.0)) | nd::to_shared();
-    auto plx = pc - 0.5 * gx;
-    auto prx = pc + 0.5 * gx;
-    auto ply = pc - 0.5 * gy;
-    auto pry = pc + 0.5 * gy;
+    auto xf = face_coordinates(solver_data.block_size, solver_data.domain_radius, block, axis);
+    auto pl = pc - 0.5 * gc;
+    auto pr = pc + 0.5 * gc;
 
     auto fx = nd::zip(
-        prx | nd::select(0, 0, -1),
-        plx | nd::select(0, 1),
-        xf1 | nd::select(0, 1, -1))
-    | nd::map(util::apply_to(riemann(1)))
-    | nd::extend_zero_gradient(0)
+        pr | nd::select(axis, 0, -1),
+        pl | nd::select(axis, 1),
+        xf)
+    | nd::map(util::apply_to(riemann))
     | nd::to_shared();
 
-    auto fy = nd::zip(
-        pry | nd::select(1, 0, -1),
-        ply | nd::select(1, 1),
-        xf2 | nd::select(1, 1, -1))
-    | nd::map(util::apply_to(riemann(2)))
-    | nd::extend_zero_gradient(1)
-    | nd::to_shared();
+    return fx;
+}
 
-    auto dl  = 2.0 * domain_radius / double(n);
-    auto dt  = 0.25 * dl / nd::max(pc | nd::map(std::bind(iso2d::fastest_wavespeed, _1, unit_specific_energy(0.0))));
+auto updated_conserved(
+    conserved_array_t uc,
+    primitive_array_t pc,
+    godunov_f_array_t fx,
+    godunov_f_array_t fy,
+    unit_time time,
+    unit_time dt,
+    bsp::tree_index_t<2> block,
+    solver_data_t solver_data)
+{
+    auto gravitational_acceleration = [rs=solver_data.softening_length] (auto component)
+    {
+        return [c=component, rs] (auto p)
+        {
+            return two_body::gravitational_acceleration(c, p[0], p[1], rs);
+        };
+    };
+
+    auto xc = cell_coordinates(solver_data.block_size, solver_data.domain_radius, block);
+    auto dl = 2.0 * solver_data.domain_radius / double(solver_data.block_size) / double(1 << block.level);
 
     auto dfx = fx | nd::adjacent_diff(0);
     auto dfy = fy | nd::adjacent_diff(1);
+
+    auto elements = two_body::orbital_elements();
+    auto inertial = two_body::orbital_state(elements, time);
+    auto state    = two_body::rotate(inertial, omega_frame * time);
 
     auto ag1 = xc | nd::map(gravitational_acceleration(state.first));
     auto ag2 = xc | nd::map(gravitational_acceleration(state.second));
     auto cen = xc | nd::map(centrifugal_term);
     auto cor = pc | nd::map(iso2d::velocity_vector) | nd::map(coriolis_term);
 
-    auto ss1 = -u0 * (xc | nd::map(sink_rate_field(cfg, two_body::position(state.first))));
-    auto ss2 = -u0 * (xc | nd::map(sink_rate_field(cfg, two_body::position(state.second))));
-    auto sg1 = nd::zip(pc, ag1) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms));
-    auto sg2 = nd::zip(pc, ag2) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms));
-    auto sf1 = nd::zip(pc, cen) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms));
-    auto sf2 = nd::zip(pc, cor) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms));
+    auto ss1 = -uc * (xc | nd::map(sink_rate_field(solver_data, two_body::position(state.first))))  | nd::to_shared();
+    auto ss2 = -uc * (xc | nd::map(sink_rate_field(solver_data, two_body::position(state.second)))) | nd::to_shared();
+    auto sg1 = nd::zip(pc, ag1) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms))      | nd::to_shared();
+    auto sg2 = nd::zip(pc, ag2) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms))      | nd::to_shared();
+    auto sf1 = nd::zip(pc, cen) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms))      | nd::to_shared();
+    auto sf2 = nd::zip(pc, cor) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms))      | nd::to_shared();
 
-    auto uinit = xc | nd::map(initial_primitive(cfg)) | nd::map(iso2d::conserved_density);
-    auto br    = xc | nd::map(buffer_rate_field(cfg));
+    auto uinit = xc | nd::map(initial_primitive(solver_data)) | nd::map(iso2d::conserved_density);
+    auto br    = xc | nd::map(buffer_rate_field(solver_data));
+    auto sb    = -(uc - uinit) * br;
+    auto u1    = uc - (dfx + dfy) * dt / dl + (sg1 + sg2 + ss1 + ss2 + sf1 + sf2 + sb) * dt;
 
-    auto sb = -(u0 - uinit) * br;
-    auto u1 = u0 - (dfx + dfy) * dt / dl + (sg1 + sg2 + ss1 + ss2 + sf1 + sf2 + sb) * dt;
-
-    return {
-        solution.iteration + 1,
-        solution.time + dt,
-        u1 | nd::to_shared()
-    };
+    return u1 | nd::to_shared();
 }
 
 
@@ -311,24 +407,75 @@ void side_effects(solution_t solution)
 
 
 //=============================================================================
+solution_t step(solution_t solution, solver_data_t solver_data, mara::ThreadPool& pool)
+{
+    auto mesh   = indexes(solution.conserved);
+    auto _uc_   = solution.conserved | bsp::maps([] (auto uc) { return pr::just(uc); });
+    auto _pc_   = _uc_ | bsp::maps(pr::map(recover_primitive_array));
+
+    auto _p_ext_x_ = mesh | bsp::maps([_pc_] (auto index) { return extend(_pc_, index, 0); });
+    auto _p_ext_y_ = mesh | bsp::maps([_pc_] (auto index) { return extend(_pc_, index, 1); });
+    auto _gradient_x_ = _p_ext_x_ | bsp::maps(pr::map(std::bind(estimate_gradient, _1, 0, 2.0)));
+    auto _gradient_y_ = _p_ext_y_ | bsp::maps(pr::map(std::bind(estimate_gradient, _1, 1, 2.0)));
+    auto _gradient_ext_x_ = mesh | bsp::maps([_gradient_x_] (auto index) { return extend(_gradient_x_, index, 0); });
+    auto _gradient_ext_y_ = mesh | bsp::maps([_gradient_y_] (auto index) { return extend(_gradient_y_, index, 1); });
+
+    auto _godunov_fluxes_x_ = zip(_p_ext_x_, _gradient_ext_x_, mesh) | bsp::mapvs([solver_data] (auto pc, auto gc, auto i)
+    {
+        return pr::zip(pc, gc) | pr::mapv(std::bind(godunov_fluxes, _1, _2, solver_data, i, 0));
+    });
+
+    auto _godunov_fluxes_y_ = zip(_p_ext_y_, _gradient_ext_y_, mesh) | bsp::mapvs([solver_data] (auto pc, auto gc, auto i)
+    {
+        return pr::zip(pc, gc) | pr::mapv(std::bind(godunov_fluxes, _1, _2, solver_data, i, 1));
+    });
+
+    auto dl = 2.0 * solver_data.domain_radius / double(solver_data.block_size) / double(1 << solver_data.depth);
+    auto dt = 0.25 * dl / unit_velocity(10.0);
+
+    auto u1 = computable(zip(_uc_, _pc_, _godunov_fluxes_x_, _godunov_fluxes_y_, mesh)
+    | bsp::mapvs([t=solution.time, dt, solver_data] (auto uc, auto pc, auto fx, auto fy, auto block)
+    {
+        return pr::zip(uc, pc, fx, fy) | pr::mapv(std::bind(updated_conserved, _1, _2, _3, _4, t, dt, block, solver_data));
+    }));
+
+    compute(u1, pool.scheduler());
+
+    return {
+        solution.iteration + 1,
+        solution.time + dt,
+        solution.conserved = u1.value(),
+    };
+}
+
+
+
+
+//=============================================================================
 int main(int argc, const char* argv[])
 {
     auto cfg = config_template().create().update(mara::argv_to_string_map(argc, argv));
-    auto solution = initial(cfg);
 
-    auto ncells = cfg.get_int("n") * cfg.get_int("n");
-    auto tfinal = unit_time(cfg.get_double("tfinal"));
+    auto solver_data = make_solver_data(cfg);
+    auto solution    = initial(solver_data);
+    auto tfinal      = unit_time(cfg.get_double("tfinal"));
+
+    mara::pretty_print(std::cout, "config", cfg);
+
+    auto pool = mara::ThreadPool(cfg.get_int("threads"));
 
     while (solution.time < tfinal)
     {
         side_effects(solution);
 
-        auto [s1, ticks] = control::invoke_timed(next, cfg, solution);
-        auto kzps = 1e6 * ncells / std::chrono::duration_cast<std::chrono::nanoseconds>(ticks).count();
+        auto [s1, ticks] = control::invoke_timed(step, solution, solver_data, pool);
 
         solution = s1;
 
-        std::printf("[%ld] t=%lf kzps=%lf\n", long(solution.iteration), solution.time.value, kzps);
+        auto ncells = std::pow(solver_data.block_size * (1 << solver_data.depth), 2);
+        auto kzps = 1e6 * ncells / std::chrono::duration_cast<std::chrono::nanoseconds>(ticks).count();
+
+        std::printf("[%06ld] orbit=%lf kzps=%lf\n", long(solution.iteration), solution.time.value / 2 / M_PI, kzps);
     }
 
     return 0;
