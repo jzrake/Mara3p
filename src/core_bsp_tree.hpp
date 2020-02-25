@@ -106,7 +106,7 @@ struct zipped_children_t
 {
     auto operator()(std::size_t i) const
     {       
-        return apply([] (auto... c) { return zip(c...); }, detail::map([i] (auto c) { return c(i); }, children));
+        return apply([] (auto... c) { return zip(c...); }, detail::map(children, [i] (auto c) { return c(i); }));
     }
     std::tuple<ChildrenType...> children;
 };
@@ -440,10 +440,10 @@ auto zip(tree_t<ValueType, ChildrenType, Ratio>... trees)
     using result_children_type = zipped_children_t<ChildrenType...>;
     using result_tree_type     = tree_t<result_value_type, result_children_type, Ratio>;
 
-    if (all(numeric::array_t{has_value(trees)...}))
+    if (all(numeric::array(has_value(trees)...)))
         return result_tree_type{std::tuple(value(trees)...)};
 
-    if (! any(numeric::array_t{has_value(trees)...}))
+    if (! any(numeric::array(has_value(trees)...)))
         return result_tree_type{result_children_type{std::tuple(children(trees)...)}};
 
     throw std::invalid_argument("bsp::zip (argument trees have different topology)");
@@ -483,20 +483,24 @@ std::size_t size(tree_t<ValueType, ChildrenType, Ratio> tree)
  * @tparam     Ratio         { description }
  * @tparam     FunctionType  { description }
  */
+template<typename ValueType, typename ChildrenType, uint Ratio, typename FunctionType>
+void sink(tree_t<ValueType, ChildrenType, Ratio> tree, FunctionType function)
+{
+    if (has_value(tree))
+        function(value(tree));
+    else
+        for (std::size_t i = 0; i < Ratio; ++i)
+            sink(child_at(tree, i), function);
+}
+
 template<typename ValueType, uint Ratio, typename FunctionType>
 void sink(shared_tree<ValueType, Ratio> tree, FunctionType function)
 {
     if (has_value(tree))
-    {
         function(std::get<ValueType>(tree.provider));
-    }
     else
-    {
         for (std::size_t i = 0; i < Ratio; ++i)
-        {
             sink(std::get<shared_children_t<ValueType, Ratio>>(tree.provider).ptr->operator[](i), function);
-        }
-    }
 }
 
 
@@ -522,7 +526,6 @@ auto to_shared(tree_t<ValueType, ChildrenType, Ratio> tree)
     {
         return just<Ratio>(value(tree));
     }
-
     auto children = numeric::array_t<shared_tree<ValueType, Ratio>, Ratio>();
 
     for (std::size_t i = 0; i < Ratio; ++i)
@@ -537,8 +540,10 @@ auto to_shared(tree_t<ValueType, ChildrenType, Ratio> tree)
 
 //=============================================================================
 template<typename V, typename C, uint R, typename F> auto operator|(tree_t<V, C, R> t, F f) { return f(t); }
-template<typename F> auto map(F f) { return [f] (auto tree) { return map(tree, f); }; }
-template<typename F> auto maps(F f) { return [f] (auto tree) { return to_shared(map(tree, f)); }; }
+template<typename F> auto map  (F f) { return [f] (auto tree) { return map(tree, f); }; }
+template<typename F> auto maps (F f) { return [f] (auto tree) { return to_shared(map(tree, f)); }; }
+template<typename F> auto mapv (F f) { return [f] (auto tree) { return map(tree, [f] (auto t) { return std::apply(f, t); }); }; }
+template<typename F> auto mapvs(F f) { return [f] (auto tree) { return to_shared(map(tree, [f] (auto t) { return std::apply(f, t); })); }; }
 inline auto to_shared() { return [] (auto tree) { return to_shared(tree); }; }
 
 } // namespace bsp

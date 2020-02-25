@@ -260,6 +260,7 @@ using unit_scalar           = quantity_t<0, 0, 0>;
 using unit_mass             = quantity_t<1, 0, 0>;
 using unit_length           = quantity_t<0, 1, 0>;
 using unit_time             = quantity_t<0, 0, 1>;
+using unit_rate             = quantity_t<0, 0,-1>;
 using unit_velocity         = decltype(unit_length()   / unit_time());
 using unit_acceleration     = decltype(unit_velocity() / unit_time());
 using unit_momentum         = decltype(unit_velocity() * unit_mass());

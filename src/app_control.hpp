@@ -128,7 +128,7 @@ template<typename T> auto milliseconds_separating(timed_pair_t<T> p)
 };
 
 template<typename Function, typename... Args>
-auto invoke_timed(Function f, Args... args)
+auto invoke_timed(Function f, Args&&... args)
 {
     auto t0 = std::chrono::high_resolution_clock::now();
     auto result = std::invoke(f, args...);

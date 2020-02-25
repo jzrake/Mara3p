@@ -359,6 +359,12 @@ using computable = computable_t<T>;
 
 
 //=============================================================================
+template<typename ValueType, typename Function>
+auto operator|(computable_t<ValueType> c, Function f)
+{
+    return f(c);
+}
+
 template<typename ValueType>
 auto just(ValueType value)
 {
@@ -372,6 +378,13 @@ auto from(Function f)
     return computable_t<value_type>(f, {});
 }
 
+template<typename... ValueType>
+auto zip(computable_t<ValueType>... c)
+{
+    using value_type = std::tuple<ValueType...>;
+    return computable_t<value_type>([c...] () { return std::tuple(c.value()...); }, {c.node()...});
+}
+
 template<typename ValueType, typename Function>
 auto map(computable_t<ValueType> c, Function f)
 {
@@ -379,11 +392,16 @@ auto map(computable_t<ValueType> c, Function f)
     return computable_t<value_type>([c, f] () { return f(c.value()); }, {c.node()});
 }
 
-template<typename... ValueType>
-auto zip(computable_t<ValueType>... c)
+template<typename Function>
+auto map(Function f)
 {
-    using value_type = std::tuple<ValueType...>;
-    return computable_t<value_type>([c...] () { return std::tuple(c.value()...); }, {c.node()...});
+    return [f] (auto c) { return map(c, f); };
+}
+
+template<typename Function>
+auto mapv(Function f)
+{
+    return [f] (auto c) { return map(c, [f] (auto t) { return std::apply(f, t); }); };
 }
 
 

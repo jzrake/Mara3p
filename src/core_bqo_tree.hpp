@@ -27,15 +27,29 @@
 
 
 #pragma once
+#include <algorithm>
+#include <cmath>
+#include <iomanip>
 #include <optional>
-#include "core_numeric_array.hpp"
+#include <sstream>
+#include <string>
 #include "core_bsp_tree.hpp"
+#include "core_numeric_array.hpp"
 
 
 
 
 //=============================================================================
 namespace bsp { // bqo := binary tree, quad-tree, oct-tree
+
+
+
+
+//=============================================================================
+template<uint Ratio> struct rank_for_ratio_t {};
+template<> struct rank_for_ratio_t<2> { static const uint value = 1; };
+template<> struct rank_for_ratio_t<4> { static const uint value = 2; };
+template<> struct rank_for_ratio_t<8> { static const uint value = 3; };
 
 
 
@@ -87,7 +101,7 @@ unsigned long to_integral(numeric::array_t<bool, BitCount> bits)
  *
  * @tparam     Rank  The rank of the tree to be indexed (having ratio 2^Rank)
  */
-template<bsp::uint Rank>
+template<uint Rank>
 struct tree_index_t
 {
     unsigned long level = 0;
@@ -384,6 +398,70 @@ template<std::size_t R> bool operator> (const tree_index_t<R>& a, const tree_ind
 
 
 
+
+/**
+ * @brief      Return a stringified tree index that can be re-parsed by the
+ *             read_tree_index method.
+ *
+ * @param[in]  index  The tree index
+ *
+ * @tparam     Rank   The rank of the tree
+ *
+ * @return     A string, formatted like "level:i-j-k"
+ */
+template<std::size_t Rank>
+std::string format_tree_index(tree_index_t<Rank> index)
+{
+    std::stringstream ss;
+    ss << index.level;
+
+    for (std::size_t i = 0; i < Rank; ++i)
+    {
+        ss
+        << (i == 0 ? ':' : '-')
+        << std::setfill('0')
+        << std::setw(1 + std::log10(1 << index.level))
+        << index.coordinates[i];
+    }
+    return ss.str();
+}
+
+
+
+
+/**
+ * @brief      Return a tree index from a string formatted with
+ *             format_tree_index.
+ *
+ * @param[in]  str   The string representation of the index
+ *
+ * @tparam     Rank  The rank of the tree
+ *
+ * @return     The index
+ */
+template<std::size_t Rank>
+tree_index_t<Rank> read_tree_index(std::string str)
+{
+    if (std::count(str.begin(), str.end(), '-') != Rank - 1)
+    {
+        throw std::invalid_argument("bsp::read_tree_index (string has wrong rank)");
+    }
+    auto result = tree_index_t<Rank>();
+
+    result.level = std::stoi(str.substr(0, str.find(':')));
+    str.erase(0, str.find(':') + 1);
+
+    for (std::size_t i = 0; i < Rank; ++i)
+    {
+        result.coordinates[i] = std::stoi(str.substr(0, str.find('-')));
+        str.erase(0, str.find('-') + 1);
+    }
+    return result;
+}
+
+
+
+
 /**
  * @brief      Return a default-constructed tree_index_t
  *
@@ -409,12 +487,12 @@ tree_index_t<Rank> tree_index()
  *
  * @tparam     ValueType     The value type of the tree
  * @tparam     ChildrenType  The tree's children provider type
- * @tparam     Rank          The rank of the tree
+ * @tparam     Ratio         The ratio of the tree (2, 4, or 8)
  *
  * @return     A tree node that is a child of the given node
  */
-template<typename ValueType, typename ChildrenType, bsp::uint Rank>
-auto child_at(const bsp::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, numeric::array_t<bool, Rank> orthant)
+template<typename ValueType, typename ChildrenType, uint Ratio>
+auto child_at(const tree_t<ValueType, ChildrenType, Ratio>& tree, numeric::array_t<bool, rank_for_ratio_t<Ratio>::value> orthant)
 {
     return child_at(tree, to_integral(orthant));
 }
@@ -431,15 +509,36 @@ auto child_at(const bsp::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, numer
  *
  * @tparam     ValueType     The value type of the tree
  * @tparam     ChildrenType  The tree's children provider type
- * @tparam     Rank          The rank of the tree
+ * @tparam     Ratio         The ratio of the tree (2, 4, or 8)
  *
  * @return     A tree node that is a descendant of the given node
  */
-template<typename ValueType, typename ChildrenType, bsp::uint Rank>
-auto node_at(const bsp::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, tree_index_t<Rank> index)
--> bsp::tree_t<ValueType, ChildrenType, 1 << Rank>
+template<typename ValueType, typename ChildrenType, uint Ratio>
+auto node_at(const tree_t<ValueType, ChildrenType, Ratio>& tree, tree_index_t<rank_for_ratio_t<Ratio>::value> index)
+-> tree_t<ValueType, ChildrenType, Ratio>
 {
     return check_root(index) ? tree : node_at(child_at(tree, orthant(index)), advance_level(index));
+}
+
+
+
+
+/**
+ * @brief      { function_description }
+ *
+ * @param[in]  tree          The tree
+ * @param[in]  index         The index
+ *
+ * @tparam     ValueType     { description }
+ * @tparam     ChildrenType  { description }
+ * @tparam     Ratio         { description }
+ *
+ * @return     { description_of_the_return_value }
+ */
+template<typename ValueType, typename ChildrenType, uint Ratio>
+auto value_at(const tree_t<ValueType, ChildrenType, Ratio>& tree, tree_index_t<rank_for_ratio_t<Ratio>::value> index)
+{
+    return value(node_at(tree, index));
 }
 
 
@@ -458,8 +557,8 @@ auto node_at(const bsp::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, tree_i
  *
  * @return     True or false
  */
-template<typename ValueType, typename ChildrenType, bsp::uint Rank>
-bool contains(const bsp::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, tree_index_t<Rank> index)
+template<typename ValueType, typename ChildrenType, uint Ratio>
+bool contains(const tree_t<ValueType, ChildrenType, Ratio>& tree, tree_index_t<rank_for_ratio_t<Ratio>::value> index)
 {
     return has_value(tree) ? check_root(index) : contains(child_at(tree, orthant(index)), advance_level(index));
 }
@@ -467,10 +566,39 @@ bool contains(const bsp::tree_t<ValueType, ChildrenType, 1 << Rank>& tree, tree_
 
 
 
-template<bsp::uint Ratio> struct rank_for_ratio_t {};
-template<> struct rank_for_ratio_t<2> { static const bsp::uint value = 1; };
-template<> struct rank_for_ratio_t<4> { static const bsp::uint value = 2; };
-template<> struct rank_for_ratio_t<8> { static const bsp::uint value = 3; };
+/**
+ * @brief      { function_description }
+ *
+ * @param[in]  tree             The tree
+ * @param[in]  index_in_parent  The index in parent
+ *
+ * @tparam     ValueType        { description }
+ * @tparam     ChildrenType     { description }
+ * @tparam     Ratio            { description }
+ *
+ * @return     { description_of_the_return_value }
+ */
+template<typename ValueType, typename ChildrenType, uint Ratio, uint Rank=rank_for_ratio_t<Ratio>::value>
+auto indexes(const tree_t<ValueType, ChildrenType, Ratio>& tree, tree_index_t<Rank> index_in_parent={})
+{
+    using provider_type = shared_children_t<tree_index_t<Rank>, Ratio>;
+
+    if (has_value(tree))
+    {
+        return just<Ratio>(index_in_parent);
+    }
+    auto A = child_indexes(index_in_parent);
+    auto B = children(tree);
+    auto C = map(numeric::range<Ratio>(), [A, B] (auto i) { return indexes(B(i), A[i]); });
+
+    return tree_t<tree_index_t<Rank>, provider_type, Ratio>{shared_trees(C)};
+}
+
+template<typename ValueType, typename ChildrenType, uint Ratio>
+auto indexify(const tree_t<ValueType, ChildrenType, Ratio>& tree)
+{
+    return zip(indexes(tree), tree);
+}
 
 
 
@@ -487,14 +615,14 @@ template<> struct rank_for_ratio_t<8> { static const bsp::uint value = 3; };
  *
  * @return     An optional to the tree start, as expected by sequence operators
  */
-template<typename ValueType, typename ChildrenType, bsp::uint Ratio, bsp::uint Rank=rank_for_ratio_t<Ratio>::value>
-std::optional<tree_index_t<Rank>> start(bsp::tree_t<ValueType, ChildrenType, Ratio> tree, tree_index_t<Rank> current={})
+template<typename ValueType, typename ChildrenType, uint Ratio, uint Rank=rank_for_ratio_t<Ratio>::value>
+std::optional<tree_index_t<Rank>> start(tree_t<ValueType, ChildrenType, Ratio> tree, tree_index_t<Rank> current={})
 {
     return has_value(tree) ? current : start(child_at(tree, 0), child_indexes(current).at(0));
 }
 
-template<typename ValueType, typename ChildrenType, bsp::uint Ratio, bsp::uint Rank=rank_for_ratio_t<Ratio>::value>
-std::optional<tree_index_t<Rank>> next(bsp::tree_t<ValueType, ChildrenType, Ratio> tree, tree_index_t<Rank> current)
+template<typename ValueType, typename ChildrenType, uint Ratio, uint Rank=rank_for_ratio_t<Ratio>::value>
+std::optional<tree_index_t<Rank>> next(tree_t<ValueType, ChildrenType, Ratio> tree, tree_index_t<Rank> current)
 {
     if (check_root(current))
     {
@@ -530,8 +658,8 @@ std::optional<tree_index_t<Rank>> next(bsp::tree_t<ValueType, ChildrenType, Rati
     return current;
 }
 
-template<typename ValueType, typename ChildrenType, bsp::uint Ratio, bsp::uint Rank=rank_for_ratio_t<Ratio>::value>
-auto obtain(bsp::tree_t<ValueType, ChildrenType, Ratio> tree, tree_index_t<Rank> index)
+template<typename ValueType, typename ChildrenType, uint Ratio, uint Rank=rank_for_ratio_t<Ratio>::value>
+auto obtain(tree_t<ValueType, ChildrenType, Ratio> tree, tree_index_t<Rank> index)
 {
     return value(node_at(tree, index));
 }
@@ -540,10 +668,10 @@ auto obtain(bsp::tree_t<ValueType, ChildrenType, Ratio> tree, tree_index_t<Rank>
 
 
 //=============================================================================
-inline auto uniform_quadtree(bsp::uint depth)
+inline auto uniform_quadtree(uint depth)
 {
     auto branch_function = [] (auto i) { return child_indexes(i); };
-    auto result = bsp::just<4>(bsp::tree_index<2>());
+    auto result = just<4>(tree_index<2>());
 
     while (depth--)
     {
@@ -552,10 +680,10 @@ inline auto uniform_quadtree(bsp::uint depth)
     return result;
 }
 
-inline auto uniform_octree(bsp::uint depth)
+inline auto uniform_octree(uint depth)
 {
     auto branch_function = [] (auto i) { return child_indexes(i); };
-    auto result = bsp::just<8>(bsp::tree_index<3>());
+    auto result = just<8>(tree_index<3>());
 
     while (depth--)
     {
@@ -565,7 +693,6 @@ inline auto uniform_octree(bsp::uint depth)
 }
 
 } // namespace bsp
-
 
 
 

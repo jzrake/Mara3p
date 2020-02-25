@@ -648,6 +648,12 @@ auto map(array_t<ProviderType, Rank> array, FunctionType function)
         shape(array));
 }
 
+template<typename ProviderType, uint Rank, typename FunctionType>
+auto maps(array_t<ProviderType, Rank> array, FunctionType function)
+{
+    return to_shared(map(array, function));
+}
+
 template<typename ProviderType1, typename ProviderType2, uint Rank>
 auto concat(array_t<ProviderType1, Rank> array1, array_t<ProviderType2, Rank> array2, uint axis=0)
 {
@@ -769,6 +775,12 @@ template<typename FunctionType>
 auto map(FunctionType f)
 {
     return [f] (auto a) { return map(a, f); };
+}
+
+template<typename FunctionType>
+auto maps(FunctionType f)
+{
+    return [f] (auto a) { return maps(a, f); };
 }
 
 template<typename ProviderType, uint Rank>
