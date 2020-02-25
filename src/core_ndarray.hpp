@@ -107,6 +107,12 @@ constexpr std::size_t size(uivec_t<Rank>)
 }
 
 template<uint Rank>
+auto as_tuple(const uivec_t<Rank>& t)
+{
+    return t.impl;
+}
+
+template<uint Rank>
 auto begin(const uivec_t<Rank>& t)
 {
     return std::begin(t.impl);

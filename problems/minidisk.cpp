@@ -74,6 +74,7 @@ auto config_template()
     .item("sink_rate",            1e3)   // rate of mass and momentum removal at sinks
     .item("buffer_rate",          1e2)   // maximum rate of buffer driving
     .item("buffer_scale",         0.2)   // buffer onset distance
+    .item("cfl",                  0.5)   // Courant number
     .item("tfinal",             100.0)   // time to stop the simulation
     .item("threads",                1)   // number of threads to execute on
     .item("restart", std::string(""))    // a checkpoint file to restart from
@@ -90,6 +91,7 @@ struct solver_data_t
     unit_rate           sink_rate;
     unit_rate           buffer_rate;
     unit_length         buffer_scale;
+    unit_scalar         cfl;
 };
 
 auto make_solver_data(const mara::config_t& cfg)
@@ -103,6 +105,7 @@ auto make_solver_data(const mara::config_t& cfg)
         cfg.get_double("sink_rate"),
         cfg.get_double("buffer_rate"),
         cfg.get_double("buffer_scale"),
+        cfg.get_double("cfl"),
     };
 }
 
@@ -376,15 +379,44 @@ solution_t initial(solver_data_t solver_data)
 
 //=============================================================================
 template<typename ArrayType>
-auto extend(bsp::shared_tree<pr::computable<ArrayType>, 4> __pc__, bsp::tree_index_t<2> block, bsp::uint axis)
+auto extend_x(bsp::shared_tree<pr::computable<ArrayType>, 4> __pc__, bsp::tree_index_t<2> block)
 {
-    auto _pl_ = value_at(__pc__, prev_on(block, axis));
+    auto _pl_ = value_at(__pc__, prev_on(block, 0));
     auto _pc_ = value_at(__pc__, block);
-    auto _pr_ = value_at(__pc__, next_on(block, axis));
+    auto _pr_ = value_at(__pc__, next_on(block, 0));
 
-    return pr::zip(_pl_, _pc_, _pr_) | pr::mapv([axis] (auto pl, auto pc, auto pr)
+    return pr::zip(_pl_, _pc_, _pr_) | pr::mapv([] (auto pl, auto pc, auto pr)
     {
-        return select(pl, axis, -1) | nd::concat(pc, axis) | nd::concat(select(pr, axis, 0, 1), axis) | nd::to_shared();
+        auto nx = shape(pc, 0);
+        auto ny = shape(pc, 1);
+
+        return nd::make_array(nd::indexing([pl, pc, pr, nx] (auto i, auto j)
+        {
+            if (i == 0)      return pl(nx - 1, j);
+            if (i == nx + 1) return pr(0, j);
+            return                  pc(i - 1, j);
+        }), nd::uivec(nx + 2, ny)) | nd::to_shared();
+    });
+}
+
+template<typename ArrayType>
+auto extend_y(bsp::shared_tree<pr::computable<ArrayType>, 4> __pc__, bsp::tree_index_t<2> block)
+{
+    auto _pl_ = value_at(__pc__, prev_on(block, 1));
+    auto _pc_ = value_at(__pc__, block);
+    auto _pr_ = value_at(__pc__, next_on(block, 1));
+
+    return pr::zip(_pl_, _pc_, _pr_) | pr::mapv([] (auto pl, auto pc, auto pr)
+    {
+        auto nx = shape(pc, 0);
+        auto ny = shape(pc, 1);
+
+        return nd::make_array(nd::indexing([pl, pc, pr, ny] (auto i, auto j)
+        {
+            if (j == 0)      return pl(i, ny - 1);
+            if (j == ny + 1) return pr(i, 0);
+            return                  pc(i, j - 1);
+        }), nd::uivec(nx, ny + 2)) | nd::to_shared();
     });
 }
 
@@ -501,13 +533,12 @@ solution_t step(solution_t solution, solver_data_t solver_data, mara::ThreadPool
     auto mesh   = indexes(solution.conserved);
     auto _uc_   = solution.conserved | bsp::maps([] (auto uc) { return pr::just(uc); });
     auto _pc_   = _uc_ | bsp::maps(pr::map(recover_primitive_array));
-
-    auto _p_ext_x_ = mesh | bsp::maps([_pc_] (auto index) { return extend(_pc_, index, 0); });
-    auto _p_ext_y_ = mesh | bsp::maps([_pc_] (auto index) { return extend(_pc_, index, 1); });
+    auto _p_ext_x_ = mesh | bsp::maps([_pc_] (auto index) { return extend_x(_pc_, index); });
+    auto _p_ext_y_ = mesh | bsp::maps([_pc_] (auto index) { return extend_y(_pc_, index); });
     auto _gradient_x_ = _p_ext_x_ | bsp::maps(pr::map(std::bind(estimate_gradient, _1, 0, 2.0)));
     auto _gradient_y_ = _p_ext_y_ | bsp::maps(pr::map(std::bind(estimate_gradient, _1, 1, 2.0)));
-    auto _gradient_ext_x_ = mesh | bsp::maps([_gradient_x_] (auto index) { return extend(_gradient_x_, index, 0); });
-    auto _gradient_ext_y_ = mesh | bsp::maps([_gradient_y_] (auto index) { return extend(_gradient_y_, index, 1); });
+    auto _gradient_ext_x_ = mesh | bsp::maps([_gradient_x_] (auto index) { return extend_x(_gradient_x_, index); });
+    auto _gradient_ext_y_ = mesh | bsp::maps([_gradient_y_] (auto index) { return extend_y(_gradient_y_, index); });
 
     auto _godunov_fluxes_x_ = zip(_p_ext_x_, _gradient_ext_x_, mesh) | bsp::mapvs([solver_data] (auto pc, auto gc, auto i)
     {
@@ -520,7 +551,7 @@ solution_t step(solution_t solution, solver_data_t solver_data, mara::ThreadPool
     });
 
     auto dl = 2.0 * solver_data.domain_radius / double(solver_data.block_size) / double(1 << solver_data.depth);
-    auto dt = 0.25 * dl / unit_velocity(10.0);
+    auto dt = solver_data.cfl * 0.5 * dl / sqrt(two_body::G * unit_mass(0.5) / solver_data.softening_length);
 
     auto u1 = computable(zip(_uc_, _pc_, _godunov_fluxes_x_, _godunov_fluxes_y_, mesh)
     | bsp::mapvs([t=solution.time, dt, solver_data] (auto uc, auto pc, auto fx, auto fy, auto block)
