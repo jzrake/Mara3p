@@ -56,8 +56,9 @@
 using namespace dimensional;
 using namespace std::placeholders;
 
-static auto mach_number = 10.0;
-static auto omega_frame = unit_rate(1.0);
+static const auto mach_number   = 10.0;
+static const auto omega_frame   = unit_rate(1.0);
+static const auto binary_period = unit_time(2 * M_PI);
 
 
 
@@ -75,7 +76,8 @@ auto config_template()
     .item("buffer_rate",          1e2)   // maximum rate of buffer driving
     .item("buffer_scale",         0.2)   // buffer onset distance
     .item("cfl",                  0.5)   // Courant number
-    .item("tfinal",             100.0)   // time to stop the simulation
+    .item("orbits",             100.0)   // time to stop the simulation
+    .item("cpi",                 1000)   // checkpoint interval
     .item("threads",                1)   // number of threads to execute on
     .item("restart", std::string(""))    // a checkpoint file to restart from
     .item("outdir",  std::string("."));  // the directory where output files are written
@@ -511,10 +513,12 @@ auto updated_conserved(
 //=============================================================================
 void side_effects(const mara::config_t& cfg, solution_t solution)
 {
-    if (long(solution.iteration) % 50 == 0)
+    auto cpi = cfg.get_int("cpi");
+
+    if (long(solution.iteration) % cpi == 0)
     {
         auto outdir = cfg.get_string("outdir");
-        auto fname = util::format("%s/chkpt.%04ld.h5", outdir.data(), long(solution.iteration) / 50);
+        auto fname = util::format("%s/chkpt.%04ld.h5", outdir.data(), long(solution.iteration) / cpi);
 
         mara::filesystem::require_dir(outdir);
 
@@ -578,13 +582,13 @@ int main(int argc, const char* argv[])
 
     auto solver_data = make_solver_data(cfg);
     auto solution    = initial(solver_data);
-    auto tfinal      = unit_time(cfg.get_double("tfinal"));
+    auto orbits      = cfg.get_double("orbits");
 
     mara::pretty_print(std::cout, "config", cfg);
 
     auto pool = mara::ThreadPool(cfg.get_int("threads"));
 
-    while (solution.time < tfinal)
+    while (solution.time < orbits * binary_period)
     {
         side_effects(cfg, solution);
 
@@ -596,6 +600,7 @@ int main(int argc, const char* argv[])
         auto kzps = 1e6 * ncells / std::chrono::duration_cast<std::chrono::nanoseconds>(ticks).count();
 
         std::printf("[%06ld] orbit=%lf kzps=%lf\n", long(solution.iteration), solution.time.value / 2 / M_PI, kzps);
+        std::fflush(stdout);
     }
 
     side_effects(cfg, solution);
