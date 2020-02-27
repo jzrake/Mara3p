@@ -30,7 +30,7 @@
 #include "scheme_plm_gradient.hpp"
 #include "scheme_sedov2d.hpp"
 
-static const double temperature_floor = 0.0;
+static const double temperature_floor = 1e-6;
 
 
 

@@ -55,25 +55,26 @@ static mara::ThreadPool thread_pool;
 auto config_template()
 {
     return mara::config_template()
-    .item("nt",                   256)   // number of radial tracks
-    .item("rk",                   2)     // Runge-Kutta order (1, 2, or 3)
+    .item("nt",                   100)   // number of radial tracks
+    .item("rk",                     1)     // Runge-Kutta order (1, 2, or 3)
     .item("max_aspect",           4.0)   // aspect ratio of the longest cell allowed
     .item("min_aspect",           0.0)   // aspect ratio of the widest cell allowed
-    .item("focus",                0.0)   // amount by which to increase resolution near the poles [0, 1)
-    .item("tfinal",              10.0)   // time to stop the simulation
-    .item("cpi",                   50)   // number of iterations between checkpoints
-    .item("vtk",                   50)   // number of iterations between VTK outputs
+    .item("focus",                0.5)   // amount by which to increase resolution near the poles [0, 1)
+    .item("tfinal",            1000.0)   // time to stop the simulation
+    .item("cpi",                 5000)   // number of iterations between checkpoints
+    .item("vtk",                  500)   // number of iterations between VTK outputs
     .item("cfl",                  0.5)   // courant number
-    .item("router",               1e1)   // outer boundary radius
-    .item("envelop_end_time",    10.0)   // time at which the relativistic envelope switches to a wind
+    .item("router",               5.0)   // outer boundary radius
+    .item("envelop_end_time",   100.0)   // time at which the relativistic envelope switches to a wind
     .item("envelop_mdot_index",   4.0)   // alpha in envelop mdot(t) = (t / t0)^alpha
     .item("envelop_u_index",     0.22)   // psi in envelop u(m) = u1 (m / m1)^(-psi)
     .item("envelop_u",          10.00)   // maximum gamma-beta in outer envelop
-    .item("engine_mdot",          1e4)   // engine mass rate
-    .item("engine_onset",        50.0)   // the engine onset time [inner boundary light-crossing time]
-    .item("engine_duration",    100.0)   // the engine duration   [inner boundary light-crossing time]
-    .item("engine_u",            10.0)   // the engine gamma-beta
-    .item("engine_theta",         0.2)   // the engine opening angle
+    .item("engine_mdot",          1e3)   // engine mass rate
+    .item("engine_onset",       200.0)   // the engine onset time [inner boundary light-crossing time]
+    .item("engine_duration",    500.0)   // the engine duration   [inner boundary light-crossing time]
+    .item("engine_u",            50.0)   // the engine gamma-beta
+    .item("engine_theta",         0.3)   // the engine opening angle
+    // .item("engine_index",         2.0)   // shape parameter n of nozzle ~ exp(-(q / qj)^n)
     .item("threads",                1)   // the number of concurrent threads to execute on
     .item("restart", std::string(""))    // a checkpoint file to restart from
     .item("outdir",  std::string("."));  // the directory where output files are written
@@ -281,59 +282,127 @@ void write_vtk(const mara::config_t& cfg, solution_t solution)
 
 
 //=============================================================================
-auto integrated_envelop_mdot(const mara::config_t& cfg, unit_time t)
+class jet_wind_nozzle_prescription_t
 {
-    auto envelop_end_time = unit_time(cfg.get_double("envelop_end_time"));
-    auto m0    = unit_mass(1.0);
-    auto md    = unit_mass_rate(1.0);
-    auto alpha = unit_scalar(cfg.get_double("envelop_mdot_index")).value;
-    auto tt    = std::min(t, envelop_end_time);
-    return m0 + md * tt * std::pow(tt / unit_time(1.0), alpha) / (1. + alpha);
-}
+public:
 
-auto wind_mass_loss_rate(const mara::config_t& cfg, unit_scalar q)
-{
-    auto envelop_mdot     = unit_mass_rate(1.0);
-    auto engine_mdot      = unit_mass_rate(cfg.get_double("engine_mdot"));
-    auto engine_onset     = unit_time     (cfg.get_double("engine_onset"));
-    auto envelop_end_time = unit_time     (cfg.get_double("envelop_end_time"));
-    auto engine_theta     = unit_scalar   (cfg.get_double("engine_theta"));
-    auto alpha            = unit_scalar   (cfg.get_double("envelop_mdot_index")).value;
-
-    return [envelop_mdot, engine_mdot, alpha, envelop_end_time, engine_onset, engine_theta, q] (auto t)
+    jet_wind_nozzle_prescription_t(const mara::config_t& cfg)
     {
-        auto p    = unit_scalar(M_PI) - q;
-        auto f    = (q < engine_theta ? 1.0 : 0.0) + (p < engine_theta ? 1.0 : 0.0);
-        auto mdot_env = envelop_mdot * std::pow(std::min(t, envelop_end_time) / unit_time(1.0), alpha);
-        return t < engine_onset ? mdot_env : mdot_env * (1 - f) + engine_mdot * f;
-    };
-}
+        alpha            = cfg.get_double("envelop_mdot_index");
+        engine_duration  = cfg.get_double("engine_duration");
+        // engine_index     = cfg.get_double("engine_index");
+        engine_mdot      = cfg.get_double("engine_mdot");
+        engine_onset     = cfg.get_double("engine_onset");
+        engine_theta     = cfg.get_double("engine_theta");
+        engine_u         = cfg.get_double("engine_u");
+        envelop_end_time = cfg.get_double("envelop_end_time");
+        envelop_u        = cfg.get_double("envelop_u");
+        psi              = cfg.get_double("envelop_u_index");
+    }
 
-auto wind_gamma_beta(const mara::config_t& cfg, unit_scalar q)
-{
-    auto engine_onset    = unit_time     (cfg.get_double("engine_onset"));
-    auto engine_duration = unit_time     (cfg.get_double("engine_duration"));
-    auto engine_u        = unit_scalar   (cfg.get_double("engine_u"));
-    auto engine_theta    = unit_scalar   (cfg.get_double("engine_theta"));
-    auto envelop_u       = unit_scalar   (cfg.get_double("envelop_u"));
-    auto psi             = unit_scalar   (cfg.get_double("envelop_u_index"));
-    auto fred            = mara::fast_rise_exponential_decay(engine_onset, engine_duration);
-
-    return [&cfg, envelop_u, engine_u, engine_theta, fred, psi, q] (auto t)
+    double angular_profile(unit_scalar q) const
     {
-        auto m0   = integrated_envelop_mdot(cfg, 1.0);
-        auto m    = integrated_envelop_mdot(cfg, t);
-        auto p    = unit_scalar(M_PI) - q;
-        auto f    = (q < engine_theta ? 1.0 : 0.0) + (p < engine_theta ? 1.0 : 0.0);
-        return envelop_u * std::pow(m / m0, -psi) + engine_u * fred(t) * f;
-    };
-}
+        auto p = unit_scalar(M_PI) - q;
+        // auto n = engine_index;
+        // return std::exp(-std::pow(q / engine_theta, n)) + std::exp(-std::pow(p / engine_theta, n));
+        return double(q < engine_theta) + double(p < engine_theta);
+    }
 
-auto wind_profile(const mara::config_t& cfg, unit_length r, unit_scalar q, unit_time t)
+    double temporal_profile(unit_time t) const
+    {
+        auto x = (t - engine_onset) / engine_duration;
+        return x < 0.0 ? 0.0 : std::sqrt(2.0 * x) * std::exp(0.5 - x);
+    }
+
+    unit_mass integrated_envelop_mdot(unit_time t) const
+    {
+        auto tt = std::min(t, envelop_end_time);
+        return m0 + md * t0 * (std::pow(tt / t0, 1 + alpha) - 1) / (1 + alpha);
+    }
+
+    unit_mass_rate ambient_mdot(unit_time t) const
+    {
+        auto tt = std::min(t, envelop_end_time);
+        return md * std::pow(tt / t0, alpha);
+    }
+
+    unit_scalar ambient_gamma_beta(unit_time t) const
+    {
+        return envelop_u * std::pow(integrated_envelop_mdot(t) / m0, -psi);
+    }
+
+    unit_scalar ambient_gamma(unit_time t) const
+    {
+        auto u = ambient_gamma_beta(t);
+        return std::sqrt(1.0 + u * u);
+    }
+
+    unit_power ambient_kinetic_luminosity(unit_time t) const
+    {
+        auto c2     = srhd::light_speed * srhd::light_speed;
+        return (ambient_gamma(t) - 1.0) * ambient_mdot(t) * c2;
+    }
+
+    unit_mass_rate mdot(unit_scalar q, unit_time t) const
+    {
+        auto f = angular_profile(q) * temporal_profile(t);
+        auto mdot_a = ambient_mdot(t);
+        auto mdot_j = engine_mdot;
+        return mdot_a * std::pow(mdot_j / mdot_a, f);
+    }
+
+    unit_power kinetic_luminosity(unit_scalar q, unit_time t) const
+    {
+        auto c2     = srhd::light_speed * srhd::light_speed;
+        auto f      = angular_profile(q) * temporal_profile(t);
+        auto edot_a = ambient_kinetic_luminosity(t);
+        auto edot_j = (std::sqrt(1.0 + engine_u * engine_u) - 1.0) * engine_mdot * c2;
+        return edot_a * std::pow(edot_j / edot_a, f);
+    }
+
+    unit_scalar gamma(unit_scalar q, unit_time t) const
+    {
+        auto c2 = srhd::light_speed * srhd::light_speed;
+        return 1.0 + kinetic_luminosity(q, t) / mdot(q, t) / c2;
+    }
+
+    unit_scalar gamma_beta(unit_scalar q, unit_time t) const
+    {
+        auto G = gamma(q, t);
+        return std::sqrt(G * G - 1.0);
+    }
+
+    auto mdot_function(unit_scalar q) const
+    {
+        return [this, q] (unit_time t) { return mdot(q, t); };
+    }
+
+    auto gamma_beta_function(unit_scalar q) const
+    {
+        return [this, q] (unit_time t) { return gamma_beta(q, t); };
+    }
+
+private:
+    unit_time      t0 = 1.0;
+    unit_mass      m0 = 1.0;
+    unit_mass_rate md = 1.0;
+    unit_mass_rate engine_mdot;
+    unit_scalar    alpha;
+    // unit_scalar    engine_index;
+    unit_scalar    engine_theta;
+    unit_scalar    engine_u;
+    unit_scalar    envelop_u;
+    unit_scalar    psi;
+    unit_time      engine_duration;
+    unit_time      engine_onset;
+    unit_time      envelop_end_time;
+};
+
+auto wind_profile(const jet_wind_nozzle_prescription_t& nozzle, unit_length r, unit_scalar q, unit_time t)
 {
     return mara::cold_relativistic_wind_t()
-    .with_mass_loss_rate(wind_mass_loss_rate(cfg, q))
-    .with_gamma_beta    (wind_gamma_beta    (cfg, q))
+    .with_mass_loss_rate(nozzle.mdot_function(q))
+    .with_gamma_beta    (nozzle.gamma_beta_function(q))
     .primitive(r, t, 1e-6);
 }
 
@@ -395,7 +464,7 @@ sedov::radial_godunov_data_t outer_bc(
     auto mode = srhd::riemann_solver_mode_hllc_fluxes_across_contact_t();
     auto nhat = geometric::unit_vector_on(1);
     auto pl = back(pc);
-    auto pr = back(pc);
+    auto pr = primitive_func(back(track.face_radii), cell_center_theta(track));
     return srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);
 }
 
@@ -423,9 +492,10 @@ solution_t remesh(solution_t solution, unit_scalar max_aspect, unit_scalar min_a
 solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt, bool use_plm)
 {
     auto eval = evaluate_on(thread_pool);
-    auto wind = std::bind(wind_profile, cfg, _1, _2, solution.time);
-    auto ibc = std::bind(inner_bc, _1, sedov::primitive_function_t{wind}, _2);
-    auto obc = std::bind(outer_bc, _1, sedov::primitive_function_t{wind}, _2);
+    auto windi = std::bind(wind_profile, cfg, _1, _2, solution.time);
+    auto windo = std::bind(wind_profile, cfg, _1, _2, unit_time(1.0));
+    auto ibc = std::bind(inner_bc, _1, sedov::primitive_function_t{windi}, _2);
+    auto obc = std::bind(outer_bc, _1, sedov::primitive_function_t{windo}, _2);
     auto radial_gradient = std::bind(sedov::radial_gradient, _1, _2, use_plm);
     auto polar_godunov   = std::bind(sedov::polar_godunov_data, _1, _2, _3, _4, use_plm);
 
@@ -442,7 +512,7 @@ solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt,
     | nd::extend_uniform(sedov::track_data_t())
     | nd::adjacent_zip4()
     | nd::map(sedov::copy_track_data4)
-    | nd::map(util::apply_to(polar_godunov))
+    | nd::mapv(polar_godunov)
     | nd::extend_uniform(nd::shared_array<sedov::polar_godunov_data_t, 1>{})
     | eval;
 
@@ -504,6 +574,20 @@ int main(int argc, const char* argv[])
     mara::filesystem::require_dir(outdir);
     write_vtk(cfg, solution);
     write_checkpoint(cfg, solution);        
+
+
+    // for (std::size_t i = 0; i < 100; ++i)
+    // {
+    //     auto q = unit_scalar(i * 0.25 * M_PI * 1e-2);
+    //     auto p = wind_profile(cfg, 1.0, q, cfg.get_double("engine_onset") * 2.0);
+    //     auto F = srhd::flux(p, geometric::unit_vector_on(1), 4. / 3);
+    //     auto L = srhd::conserved_energy_density(F);
+    //     auto M = srhd::conserved_mass_density(F);
+    //     auto G = (L + M * srhd::light_speed * srhd::light_speed) / M / srhd::light_speed / srhd::light_speed;
+    //     std::printf("q=%lf Edot=%lf Mdot=%lf gamma=%lf\n", q.value, L.value, M.value, G.value);
+    // }
+    // exit(1);
+
 
     while (solution.time < tfinal)
     {

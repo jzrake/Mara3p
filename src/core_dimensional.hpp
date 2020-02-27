@@ -67,7 +67,7 @@ struct quantity_t
     quantity_t() {}
     quantity_t(double value) : value(value) {}
 
-    operator double()
+    operator double() const
     {
         static_assert(N1 == 0 && N2 == 0 && N3 == 0, "only scalars are implicitly convertable to double");
         return value;
