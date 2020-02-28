@@ -52,6 +52,27 @@
 
 
 
+/*
+ * Todo list:
+ * 
+ * [x] eccentric orbits and non-equal mass binaries
+ * [ ] configurable frame rotation rate
+ * [ ] configurable Mach number
+ * [ ] inclusion of viscous stress
+ * [ ] variable size blocks in FMR mesh
+ *     ( ) generalize extend method with prolongation
+ *     ( ) flux correction
+ *     ( ) upsampling in plotting script
+ * [ ] proper stepping of side effects
+ * [ ] checkpoint read / restart
+ * [ ] VTK output option
+ * [ ] time series of forces, work, orbital element evolution, etc.
+ * [ ] computable execution statistics to discover bottlenecks
+ */
+
+
+
+
 //=============================================================================
 using namespace dimensional;
 using namespace std::placeholders;
@@ -70,6 +91,8 @@ auto config_template()
     .item("block_size",            32)   // number of zones per side
     .item("depth",                  2)   // number of levels in the mesh
     .item("domain_radius",        1.5)   // half-size of the domain
+    .item("eccentricity",         0.0)   // binary orbital eccentricity
+    .item("mass_ratio",           1.0)   // binary mass ratio M2 / M1
     .item("softening_length",    0.01)   // gravitational softening length
     .item("sink_radius",         0.01)   // radius of mass sinks
     .item("sink_rate",            1e3)   // rate of mass and momentum removal at sinks
@@ -90,6 +113,8 @@ struct solver_data_t
     int                 depth;
     unit_length         domain_radius;
     unit_length         softening_length;
+    unit_scalar         eccentricity;
+    unit_scalar         mass_ratio;
     unit_length         sink_radius;
     unit_rate           sink_rate;
     unit_rate           buffer_rate;
@@ -104,6 +129,8 @@ auto make_solver_data(const mara::config_t& cfg)
         cfg.get_int("depth"),
         cfg.get_double("domain_radius"),
         cfg.get_double("softening_length"),
+        cfg.get_double("eccentricity"),
+        cfg.get_double("mass_ratio"),
         cfg.get_double("sink_radius"),
         cfg.get_double("sink_rate"),
         cfg.get_double("buffer_rate"),
@@ -484,7 +511,11 @@ auto updated_conserved(
     auto dfx = fx | nd::adjacent_diff(0) | nd::to_shared();
     auto dfy = fy | nd::adjacent_diff(1) | nd::to_shared();
 
-    auto elements = two_body::orbital_elements();
+    auto a = unit_length(1.0);
+    auto M = unit_mass(1.0);
+    auto q = solver_data.mass_ratio;
+    auto e = solver_data.eccentricity;
+    auto elements = two_body::orbital_elements(a, M, q, e);
     auto inertial = two_body::orbital_state(elements, time);
     auto state    = two_body::rotate(inertial, omega_frame * time);
 
