@@ -56,8 +56,8 @@
  * Todo list:
  * 
  * [x] eccentric orbits and non-equal mass binaries
- * [ ] configurable frame rotation rate
- * [ ] configurable Mach number
+ * [x] configurable frame rotation rate
+ * [x] configurable Mach number
  * [x] compute (rather than estimate) allowed time step
  * [ ] inclusion of viscous stress
  * [ ] variable size blocks in FMR mesh
@@ -78,8 +78,6 @@
 using namespace dimensional;
 using namespace std::placeholders;
 
-static const auto mach_number   = 10.0;
-static const auto omega_frame   = unit_rate(1.0);
 static const auto binary_period = unit_time(2 * M_PI);
 
 
@@ -91,6 +89,8 @@ auto config_template()
     return mara::config_template()
     .item("block_size",            64)   // number of zones per side
     .item("depth",                  1)   // number of levels in the mesh
+    .item("omega_frame",          1.0)   // reference frame rotation frequency (1.0 for co-rotating)
+    .item("mach_number",         10.0)   // Mach number of the disk
     .item("domain_radius",        1.5)   // half-size of the domain
     .item("eccentricity",         0.0)   // binary orbital eccentricity
     .item("mass_ratio",           1.0)   // binary mass ratio M2 / M1
@@ -98,8 +98,8 @@ auto config_template()
     .item("sink_radius",         0.01)   // radius of mass sinks
     .item("sink_rate",            1e3)   // rate of mass and momentum removal at sinks
     .item("buffer_rate",          1e2)   // maximum rate of buffer driving
-    .item("buffer_scale",         0.2)   // buffer onset distance
-    .item("cfl",                  0.5)   // Courant number
+    .item("buffer_scale",         0.2)   // length scale of buffer onset
+    .item("cfl",                  0.3)   // Courant number
     .item("orbits",             100.0)   // time to stop the simulation
     .item("cpi",                 1000)   // checkpoint interval
     .item("threads",                1)   // number of threads to execute on
@@ -112,6 +112,8 @@ struct solver_data_t
 {
     int                 block_size;
     int                 depth;
+    unit_rate           omega_frame;
+    unit_scalar         mach_number;
     unit_length         domain_radius;
     unit_length         softening_length;
     unit_scalar         eccentricity;
@@ -128,6 +130,8 @@ auto make_solver_data(const mara::config_t& cfg)
     return solver_data_t{
         cfg.get_int("block_size"),
         cfg.get_int("depth"),
+        cfg.get_double("omega_frame"),
+        cfg.get_double("mach_number"),
         cfg.get_double("domain_radius"),
         cfg.get_double("softening_length"),
         cfg.get_double("eccentricity"),
@@ -247,9 +251,9 @@ auto memoizer(Function function)
 
 
 //=============================================================================
-auto initial_primitive(unit_length softening_length)
+auto initial_primitive(unit_length softening_length, unit_rate omega_frame)
 {
-    return [rs=softening_length] (numeric::array_t<unit_length, 2> p)
+    return [rs=softening_length, omega_frame] (numeric::array_t<unit_length, 2> p)
     {
         auto [x, y] = as_tuple(p);
         auto ph = two_body::potential(two_body::point_mass_t(), x, y, rs);
@@ -261,7 +265,7 @@ auto initial_primitive(unit_length softening_length)
     };
 }
 
-auto sound_speed_squared(numeric::array_t<unit_length, 2> p, unit_length softening_length)
+auto sound_speed_squared(numeric::array_t<unit_length, 2> p, unit_length softening_length, unit_scalar mach_number)
 {
     auto [x, y] = as_tuple(p);
     auto ph = two_body::potential(two_body::point_mass_t(), x, y, softening_length);
@@ -288,16 +292,15 @@ auto sink_rate_field(solver_data_t solver_data, numeric::array_t<unit_length, 2>
     };
 }
 
-auto coriolis_term(geometric::euclidean_vector_t<unit_velocity> v)
+auto coriolis_term(geometric::euclidean_vector_t<unit_velocity> v, unit_rate omega_frame)
 {
     auto [vx, vy, vz] = as_tuple(v);
     return 2.0 * omega_frame * numeric::array(vy, -vx);
 }
 
-auto centrifugal_term(numeric::array_t<unit_length, 2> p)
+auto centrifugal_term(numeric::array_t<unit_length, 2> p, unit_rate omega_frame)
 {
-    auto [x, y] = as_tuple(p);
-    return omega_frame * omega_frame * numeric::array(x, y);
+    return omega_frame * omega_frame * p;
 }
 
 
@@ -366,33 +369,46 @@ buffer_rate_field_array(solver_data_t solver_data, bsp::tree_index_t<2> block)
         auto br = xc | nd::map(buffer_rate_field(domain_radius, buffer_scale, buffer_rate));
         return br | nd::to_shared();
     });
-    return memoize(solver_data.block_size, solver_data.domain_radius, solver_data.buffer_scale, solver_data.buffer_rate, block);
+    return memoize(
+        solver_data.block_size,
+        solver_data.domain_radius,
+        solver_data.buffer_scale,
+        solver_data.buffer_rate, block);
 }
 
 nd::shared_array<iso2d::conserved_density_t, 2>
 initial_conserved_array(solver_data_t solver_data, bsp::tree_index_t<2> block)
 {
-    static auto memoize = memoizer<int, unit_length, unit_length, bsp::tree_index_t<2>>(
-    [] (auto block_size, auto domain_radius, auto softening_length, auto block)
+    static auto memoize = memoizer<int, unit_length, unit_length, unit_rate, bsp::tree_index_t<2>>(
+    [] (auto block_size, auto domain_radius, auto softening_length, auto omega_frame, auto block)
     {
         auto xc = cell_coordinates(block_size, domain_radius, block);
-        auto uc = xc | nd::map(initial_primitive(softening_length)) | nd::map(iso2d::conserved_density);
+        auto uc = xc | nd::map(initial_primitive(softening_length, omega_frame)) | nd::map(iso2d::conserved_density);
         return uc | nd::to_shared();
     });
-    return memoize(solver_data.block_size, solver_data.domain_radius, solver_data.softening_length, block);
+    return memoize(
+        solver_data.block_size,
+        solver_data.domain_radius,
+        solver_data.softening_length,
+        solver_data.omega_frame,
+        block);
 }
 
 nd::shared_array<numeric::array_t<unit_acceleration, 2>, 2>
 centrifugal_term_array(solver_data_t solver_data, bsp::tree_index_t<2> block)
 {
-    static auto memoize = memoizer<int, unit_length, bsp::tree_index_t<2>>(
-    [] (auto block_size, auto domain_radius, auto block)
+    static auto memoize = memoizer<int, unit_length, unit_rate, bsp::tree_index_t<2>>(
+    [] (auto block_size, auto domain_radius, auto omega_frame, auto block)
     {
         auto xc = cell_coordinates(block_size, domain_radius, block);
-        auto cen = xc | nd::map(centrifugal_term);
+        auto cen = xc | nd::map(std::bind(centrifugal_term, _1, omega_frame));
         return cen | nd::to_shared();
     });
-    return memoize(solver_data.block_size, solver_data.domain_radius, block);
+    return memoize(
+        solver_data.block_size,
+        solver_data.domain_radius,
+        solver_data.omega_frame,
+        block);
 }
 
 
@@ -468,9 +484,9 @@ auto godunov_fluxes(
     bsp::tree_index_t<2> block,
     bsp::uint axis)
 {
-    auto riemann = [axis, rs=solver_data.softening_length] (auto pl, auto pr, auto xf)
+    auto riemann = [axis, rs=solver_data.softening_length, mach=solver_data.mach_number] (auto pl, auto pr, auto xf)
     {
-        auto cs2 = sound_speed_squared(xf, rs);
+        auto cs2 = sound_speed_squared(xf, rs, mach);
         return iso2d::riemann_hlle(pl, pr, cs2, geometric::unit_vector_on(axis + 1));
     };
 
@@ -546,11 +562,11 @@ auto updated_conserved(
     auto e = solver_data.eccentricity;
     auto elements = two_body::orbital_elements(a, M, q, e);
     auto inertial = two_body::orbital_state(elements, time);
-    auto state    = two_body::rotate(inertial, omega_frame * time);
+    auto state    = two_body::rotate(inertial, solver_data.omega_frame * time);
 
     auto ag1 = xc | nd::map(gravitational_acceleration(state.first));
     auto ag2 = xc | nd::map(gravitational_acceleration(state.second));
-    auto cor = pc | nd::map(iso2d::velocity_vector) | nd::map(coriolis_term);
+    auto cor = pc | nd::map(iso2d::velocity_vector) | nd::map(std::bind(coriolis_term, _1, solver_data.omega_frame));
     auto cen = centrifugal_term_array(solver_data, block);
 
     auto ss1 = -uc * (xc | nd::map(sink_rate_field(solver_data, two_body::position(state.first))))  | nd::to_shared();
