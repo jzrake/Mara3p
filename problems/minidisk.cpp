@@ -79,6 +79,7 @@ auto config_template()
     .item("orbits",             100.0)   // time to stop the simulation
     .item("cpi",                 1000)   // checkpoint interval
     .item("threads",                1)   // number of threads to execute on
+    .item("fold",                   1)   // number of encodings per time step batch
     .item("restart", std::string(""))    // a checkpoint file to restart from
     .item("outdir",  std::string("."));  // the directory where output files are written
 }
@@ -511,6 +512,65 @@ auto updated_conserved(
 
 
 //=============================================================================
+auto encode_step(rational::number_t iteration, unit_time time, bsp::shared_tree<pr::computable<conserved_array_t>, 4> conserved, solver_data_t solver_data)
+{
+    auto mesh   = indexes(conserved);
+    auto _uc_   = conserved;
+    auto _pc_   = _uc_ | bsp::maps(pr::map(recover_primitive_array));
+    auto _p_ext_x_ = mesh | bsp::maps([_pc_] (auto index) { return extend_x(_pc_, index); });
+    auto _p_ext_y_ = mesh | bsp::maps([_pc_] (auto index) { return extend_y(_pc_, index); });
+    auto _gradient_x_ = _p_ext_x_ | bsp::maps(pr::map(std::bind(estimate_gradient, _1, 0, 2.0)));
+    auto _gradient_y_ = _p_ext_y_ | bsp::maps(pr::map(std::bind(estimate_gradient, _1, 1, 2.0)));
+    auto _gradient_ext_x_ = mesh | bsp::maps([_gradient_x_] (auto index) { return extend_x(_gradient_x_, index); });
+    auto _gradient_ext_y_ = mesh | bsp::maps([_gradient_y_] (auto index) { return extend_y(_gradient_y_, index); });
+
+    auto _godunov_fluxes_x_ = zip(_p_ext_x_, _gradient_ext_x_, mesh) | bsp::mapvs([solver_data] (auto pc, auto gc, auto block)
+    {
+        return pr::zip(pc, gc) | pr::mapv(std::bind(godunov_fluxes, _1, _2, solver_data, block, 0));
+    });
+
+    auto _godunov_fluxes_y_ = zip(_p_ext_y_, _gradient_ext_y_, mesh) | bsp::mapvs([solver_data] (auto pc, auto gc, auto block)
+    {
+        return pr::zip(pc, gc) | pr::mapv(std::bind(godunov_fluxes, _1, _2, solver_data, block, 1));
+    });
+
+    auto dl = 2.0 * solver_data.domain_radius / double(solver_data.block_size) / double(1 << solver_data.depth);
+    auto dt = solver_data.cfl * 0.5 * dl / sqrt(two_body::G * unit_mass(0.5) / solver_data.softening_length);
+
+    auto u1 = zip(_uc_, _pc_, _godunov_fluxes_x_, _godunov_fluxes_y_, mesh)
+    | bsp::mapvs([t=time, dt, solver_data] (auto uc, auto pc, auto fx, auto fy, auto block)
+    {
+        return pr::zip(uc, pc, fx, fy) | pr::mapv(std::bind(updated_conserved, _1, _2, _3, _4, t, dt, block, solver_data));
+    });
+
+    return std::tuple(iteration + 1, time + dt, u1);
+}
+
+
+
+
+//=============================================================================
+solution_t step(solution_t solution, solver_data_t solver_data, int nfold, mara::ThreadPool& pool)
+{
+    auto [iter, time, uc] = std::tuple(solution.iteration, solution.time, solution.conserved | bsp::maps([] (auto uc) { return pr::just(uc); }));
+
+    for (std::size_t i = 0; i < nfold; ++i)
+    {
+        std::tie(iter, time, uc) = encode_step(iter, time, uc, solver_data);
+    }
+
+    auto master = computable(uc);
+    compute(master, pool.scheduler());
+
+    return {
+        iter, time, master.value(),
+    };
+}
+
+
+
+
+//=============================================================================
 void side_effects(const mara::config_t& cfg, solution_t solution)
 {
     auto cpi = cfg.get_int("cpi");
@@ -532,50 +592,6 @@ void side_effects(const mara::config_t& cfg, solution_t solution)
 
 
 //=============================================================================
-solution_t step(solution_t solution, solver_data_t solver_data, mara::ThreadPool& pool)
-{
-    auto mesh   = indexes(solution.conserved);
-    auto _uc_   = solution.conserved | bsp::maps([] (auto uc) { return pr::just(uc); });
-    auto _pc_   = _uc_ | bsp::maps(pr::map(recover_primitive_array));
-    auto _p_ext_x_ = mesh | bsp::maps([_pc_] (auto index) { return extend_x(_pc_, index); });
-    auto _p_ext_y_ = mesh | bsp::maps([_pc_] (auto index) { return extend_y(_pc_, index); });
-    auto _gradient_x_ = _p_ext_x_ | bsp::maps(pr::map(std::bind(estimate_gradient, _1, 0, 2.0)));
-    auto _gradient_y_ = _p_ext_y_ | bsp::maps(pr::map(std::bind(estimate_gradient, _1, 1, 2.0)));
-    auto _gradient_ext_x_ = mesh | bsp::maps([_gradient_x_] (auto index) { return extend_x(_gradient_x_, index); });
-    auto _gradient_ext_y_ = mesh | bsp::maps([_gradient_y_] (auto index) { return extend_y(_gradient_y_, index); });
-
-    auto _godunov_fluxes_x_ = zip(_p_ext_x_, _gradient_ext_x_, mesh) | bsp::mapvs([solver_data] (auto pc, auto gc, auto i)
-    {
-        return pr::zip(pc, gc) | pr::mapv(std::bind(godunov_fluxes, _1, _2, solver_data, i, 0));
-    });
-
-    auto _godunov_fluxes_y_ = zip(_p_ext_y_, _gradient_ext_y_, mesh) | bsp::mapvs([solver_data] (auto pc, auto gc, auto i)
-    {
-        return pr::zip(pc, gc) | pr::mapv(std::bind(godunov_fluxes, _1, _2, solver_data, i, 1));
-    });
-
-    auto dl = 2.0 * solver_data.domain_radius / double(solver_data.block_size) / double(1 << solver_data.depth);
-    auto dt = solver_data.cfl * 0.5 * dl / sqrt(two_body::G * unit_mass(0.5) / solver_data.softening_length);
-
-    auto u1 = computable(zip(_uc_, _pc_, _godunov_fluxes_x_, _godunov_fluxes_y_, mesh)
-    | bsp::mapvs([t=solution.time, dt, solver_data] (auto uc, auto pc, auto fx, auto fy, auto block)
-    {
-        return pr::zip(uc, pc, fx, fy) | pr::mapv(std::bind(updated_conserved, _1, _2, _3, _4, t, dt, block, solver_data));
-    }));
-
-    compute(u1, pool.scheduler());
-
-    return {
-        solution.iteration + 1,
-        solution.time + dt,
-        solution.conserved = u1.value(),
-    };
-}
-
-
-
-
-//=============================================================================
 int main(int argc, const char* argv[])
 {
     auto cfg = config_template().create().update(mara::argv_to_string_map(argc, argv));
@@ -587,17 +603,18 @@ int main(int argc, const char* argv[])
     mara::pretty_print(std::cout, "config", cfg);
 
     auto pool = mara::ThreadPool(cfg.get_int("threads"));
+    auto fold = cfg.get_int("fold");
 
     while (solution.time < orbits * binary_period)
     {
         side_effects(cfg, solution);
 
-        auto [s1, ticks] = control::invoke_timed(step, solution, solver_data, pool);
+        auto [s1, ticks] = control::invoke_timed(step, solution, solver_data, fold, pool);
 
         solution = s1;
 
         auto ncells = std::pow(solver_data.block_size * (1 << solver_data.depth), 2);
-        auto kzps = 1e6 * ncells / std::chrono::duration_cast<std::chrono::nanoseconds>(ticks).count();
+        auto kzps = 1e6 * fold * ncells / std::chrono::duration_cast<std::chrono::nanoseconds>(ticks).count();
 
         std::printf("[%06ld] orbit=%lf kzps=%lf\n", long(solution.iteration), solution.time.value / 2 / M_PI, kzps);
         std::fflush(stdout);

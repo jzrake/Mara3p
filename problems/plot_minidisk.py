@@ -3,14 +3,6 @@
 
 
 
-import argparse
-import h5py
-import numpy as np
-import matplotlib.pyplot as plt
-
-
-
-
 def conserved(h5f, field):
     blocks = []
 
@@ -63,22 +55,46 @@ def make_movie(fig, plot_fn, args):
 
 
 
+def save_frames(fig, plot_fn, args):
+
+    for filename in args.filenames:
+        pngname = filename.replace('.h5', '.png')
+        print('{} -> {}'.format(filename, pngname))
+        plot_fn(fig, filename, args)
+        fig.savefig(pngname)
+        fig.clf()
+
+
+
+
 if __name__ == "__main__":
+    import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument('filenames', nargs='+')
     parser.add_argument('-o', '--output', default='output.mp4')
     parser.add_argument('--movie', action='store_true')
+    parser.add_argument('--frame', action='store_true')
     parser.add_argument('--cmap', default='inferno')
     parser.add_argument('--index', default=0.5, type=float)
     parser.add_argument('--range', default='[None,None]')
     args = parser.parse_args()
 
+    if args.frame:
+        import matplotlib
+        matplotlib.use('agg')
+
+    import h5py
+    import numpy as np
+    import matplotlib.pyplot as plt
 
     fig = plt.figure(figsize=[8, 8])
     fig.subplots_adjust(top=1, left=0, bottom=0, right=1)
 
     if args.movie:
         make_movie(fig, plot, args)
+    elif args.frame:
+        save_frames(fig, plot, args)
     else:
         plot(fig, args.filenames[0], args)
         plt.show()
