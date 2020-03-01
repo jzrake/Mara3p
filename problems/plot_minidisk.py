@@ -71,6 +71,9 @@ def make_movie(fig, plot_fn, args):
 
 def save_frames(fig, plot_fn, args):
 
+    if args.archive and os.path.isfile('images.tar.gz'):
+        raise IOError('images.tar.gz file already exists, please remove it')
+
     frames = []
 
     for filename in args.filenames:
@@ -84,9 +87,12 @@ def save_frames(fig, plot_fn, args):
     if args.archive:
         import tarfile
 
-        with tarfile.open(args.archive, "w:gz") as tar:
+        with tarfile.open('images.tar.gz', "w:gz") as tar:
             for frame in frames:
-                tar.add(frame, arcname=os.path.basename(frame))
+                tar.add(frame, arcname=os.path.join('images', os.path.basename(frame)))
+
+    for frame in frames:
+        os.remove(frame)
 
 
 
@@ -99,13 +105,13 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('filenames', nargs='+')
-    parser.add_argument('--archive', type=str,              default=None,      help='Compress images to a tar.gz file with this name')
     parser.add_argument('--cmap',  metavar='inferno',       default='inferno', help='Name of the matplotlib color map to use')
     parser.add_argument('--index', metavar=0.5, type=float, default=0.5,       help='Power-law index used in scaling the image')
     parser.add_argument('--range', metavar='[0.0,1.0]',     default=None,      help='Manual vmin/vmax range (use None for auto)')
     parser.add_argument('--print-quantiles', '-q', action='store_true',        help='Print a set of quantiles for the image data')
-    parser.add_argument('--frame',                 action='store_true',        help='Write a PNG image for each file rather than raising a window')
     parser.add_argument('--movie',                 action='store_true',        help='Use ffmpeg to make a movie from the provided files')
+    parser.add_argument('--frame',                 action='store_true',        help='Write a PNG image for each file rather than raising a window')
+    parser.add_argument('--archive',               action='store_true',        help='Compress images to images.tar.gz (implies --frame)')
 
     args = parser.parse_args()
 
@@ -120,7 +126,7 @@ if __name__ == "__main__":
 
     if args.movie:
         make_movie(fig, plot, args)
-    elif args.frame:
+    elif args.frame or args.archive:
         save_frames(fig, plot, args)
     else:
         plot(fig, args.filenames[0], args)
