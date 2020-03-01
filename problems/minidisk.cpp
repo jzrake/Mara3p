@@ -64,7 +64,7 @@
  *     ( ) generalize extend method with prolongation
  *     ( ) flux correction
  *     ( ) upsampling in plotting script
- * [ ] proper stepping of side effects
+ * [x] proper stepping of side effects
  * [ ] checkpoint read / restart
  * [ ] VTK output option
  * [ ] time series of forces, work, orbital element evolution, etc.
@@ -101,7 +101,7 @@ auto config_template()
     .item("buffer_scale",         0.2)   // length scale of buffer onset
     .item("cfl",                  0.3)   // Courant number
     .item("orbits",             100.0)   // time to stop the simulation
-    .item("cpi",                 1000)   // checkpoint interval
+    .item("cpi",                  0.1)   // number of orbits between checkpoints
     .item("threads",                1)   // number of threads to execute on
     .item("fold",                   1)   // number of encodings per time step batch
     .item("restart", std::string(""))    // a checkpoint file to restart from
@@ -148,6 +148,22 @@ auto make_solver_data(const mara::config_t& cfg)
 
 
 //=============================================================================
+struct side_effect_t
+{
+    unit_time next_due = 0.0;
+    int count = 0;
+};
+
+struct schedule_t
+{
+    side_effect_t checkpoint;
+    side_effect_t time_series;
+};
+
+
+
+
+//=============================================================================
 using conserved_array_t = nd::shared_array<iso2d::conserved_density_t, 2>;
 using primitive_array_t = nd::shared_array<iso2d::primitive_t, 2>;
 using godunov_f_array_t = nd::shared_array<iso2d::flux_vector_t, 2>;
@@ -178,6 +194,20 @@ void write(const Group& group, std::string name, const solution_t& solution)
     {
         write(ugroup, format_tree_index(index), value);
     }));
+}
+
+void write(const Group& group, std::string name, const side_effect_t& side_effect)
+{
+    auto sgroup = group.require_group(name);
+    write(sgroup, "next_due", side_effect.next_due);
+    write(sgroup, "count", side_effect.count);
+}
+
+void write(const Group& group, std::string name, const schedule_t& schedule)
+{
+    auto sgroup = group.require_group(name);
+    write(sgroup, "time_series", schedule.time_series);
+    write(sgroup, "checkpoint", schedule.checkpoint);
 }
 
 }
@@ -415,7 +445,7 @@ centrifugal_term_array(solver_data_t solver_data, bsp::tree_index_t<2> block)
 
 
 //=============================================================================
-solution_t initial(solver_data_t solver_data)
+solution_t initial_solution(solver_data_t solver_data)
 {
     auto uc = bsp::uniform_quadtree(solver_data.depth) |  bsp::maps(std::bind(initial_conserved_array, solver_data, _1));
     return {0, 0.0, uc};
@@ -654,19 +684,22 @@ auto step(solution_t solution, solver_data_t solver_data, int nfold, mara::Threa
 
 
 //=============================================================================
-void side_effects(const mara::config_t& cfg, solution_t solution)
+void side_effects(const mara::config_t& cfg, solution_t solution, schedule_t& schedule)
 {
-    auto cpi = cfg.get_int("cpi");
-
-    if (long(solution.iteration) % cpi == 0)
+    if (solution.time >= schedule.checkpoint.next_due)
     {
         auto outdir = cfg.get_string("outdir");
-        auto fname = util::format("%s/chkpt.%04ld.h5", outdir.data(), long(solution.iteration) / cpi);
+        auto fname = util::format("%s/chkpt.%04d.h5", outdir.data(), schedule.checkpoint.count);
 
         mara::filesystem::require_dir(outdir);
 
+        schedule.checkpoint.next_due += cfg.get_double("cpi") * binary_period;
+        schedule.checkpoint.count += 1;
+
         auto h5f = h5::File(fname, "w");
+        h5::write(h5f, "run_config", cfg);
         h5::write(h5f, "solution", solution);
+        h5::write(h5f, "schedule", schedule);
         std::printf("write %s\n", fname.data());
     }
 }
@@ -680,7 +713,8 @@ int main(int argc, const char* argv[])
     auto cfg = config_template().create().update(mara::argv_to_string_map(argc, argv));
 
     auto solver_data = make_solver_data(cfg);
-    auto solution    = initial(solver_data);
+    auto solution    = initial_solution(solver_data);
+    auto schedule    = schedule_t();
     auto orbits      = cfg.get_double("orbits");
 
     mara::pretty_print(std::cout, "config", cfg);
@@ -691,7 +725,7 @@ int main(int argc, const char* argv[])
 
     while (solution.time < orbits * binary_period)
     {
-        side_effects(cfg, solution);
+        side_effects(cfg, solution, schedule);
 
         auto [result, ticks] = control::invoke_timed(step, solution, solver_data, fold, pool);
 
@@ -704,7 +738,7 @@ int main(int argc, const char* argv[])
         std::fflush(stdout);
     }
 
-    side_effects(cfg, solution);
+    side_effects(cfg, solution, schedule);
 
     return 0;
 }
