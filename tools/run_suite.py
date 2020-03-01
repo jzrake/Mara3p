@@ -2,6 +2,7 @@
 
 
 
+
 import os
 import datetime
 import getpass
@@ -9,6 +10,7 @@ import pathlib
 import configparser
 import argparse
 import copy
+
 
 
 
@@ -21,9 +23,11 @@ Date: {date}
 
 
 
+
 def mara_command(subprog, exe='mara', **kwargs):
     return './{} {} {}'.format(exe, subprog,
         ' '.join(['{}={}'.format(k, v) for k, v in kwargs.items()]))
+
 
 
 
@@ -37,10 +41,12 @@ def run_script(template, subprog, exe='mara', runid='test', nodes=1, hours=8, **
 
 
 
+
 def load_suite(suite_file):
     suite_file_defs = dict()
     exec(open(suite_file).read(), suite_file_defs)
     return suite_file_defs['suite']
+
 
 
 
@@ -55,6 +61,7 @@ def load_machine(machine_file):
             'submit_command': 'bash',
             'submit_script': '{command}',
         }
+
 
 
 
