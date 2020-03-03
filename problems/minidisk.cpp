@@ -66,6 +66,7 @@
  *     ( ) upsampling in plotting script
  * [x] proper stepping of side effects
  * [ ] checkpoint read / restart
+ * [ ] break up code into separate source files
  * [ ] VTK output option
  * [ ] time series of forces, work, orbital element evolution, etc.
  * [ ] computable execution statistics to discover bottlenecks
@@ -697,6 +698,7 @@ void side_effects(const mara::config_t& cfg, solution_t solution, schedule_t& sc
         schedule.checkpoint.count += 1;
 
         auto h5f = h5::File(fname, "w");
+        h5::write(h5f, "git_commit", std::string(GIT_COMMIT));
         h5::write(h5f, "run_config", cfg);
         h5::write(h5f, "solution", solution);
         h5::write(h5f, "schedule", schedule);

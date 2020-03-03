@@ -36,15 +36,21 @@ ALL_TARGETS = mara \
 TARGETS = $(ALL_TARGETS)
 
 
+
+
 # If a Makefile.in exists in this directory, then use it
 -include Makefile.in
 
 
+# Record the Git commit info
+CXXFLAGS += -DGIT_COMMIT=\"$(shell git rev-parse --short=7 HEAD)\"
+
+
 # Build macros
 # =====================================================================
-SRC         := $(wildcard src/*.cpp) $(wildcard examples/*.cpp) $(wildcard problems/*.cpp)
-OBJ         := $(SRC:%.cpp=%.o)
-DEP         := $(SRC:%.cpp=%.d)
+SRC := $(wildcard src/*.cpp) $(wildcard examples/*.cpp) $(wildcard problems/*.cpp)
+OBJ := $(SRC:%.cpp=%.o)
+DEP := $(SRC:%.cpp=%.d)
 
 
 # Build rules
