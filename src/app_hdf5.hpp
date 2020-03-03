@@ -27,6 +27,7 @@
 
 
 #pragma once
+#include <tuple>
 #include <optional>
 #include <string>
 #include <vector>
