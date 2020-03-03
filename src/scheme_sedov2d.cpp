@@ -373,35 +373,46 @@ std::pair<sedov::radial_track_t, nd::shared_array<srhd::conserved_t, 1>> sedov::
     auto dr = rf | nd::adjacent_diff();
     auto ds = rc * (track.theta1 - track.theta0);
     auto aspect = dr / ds;
+    auto imin = nd::argmin(aspect)[0];
     auto imax = nd::argmax(aspect)[0];
+
+    auto make_track = [track, minimum_cell_aspect_ratio, maximum_cell_aspect_ratio] (auto rf, auto uc)
+    {
+        return remesh({rf, track.theta0, track.theta1}, uc, minimum_cell_aspect_ratio, maximum_cell_aspect_ratio);
+    };
+
+    auto make_track_and_return = [track] (auto rf, auto uc)
+    {
+        return std::make_pair(radial_track_t{rf, track.theta0, track.theta1}, uc);
+    };
 
     if (front(rf) < dimensional::unit_length(0.25))
     {
-        rf = rf | nd::select(0, 1) | nd::to_shared();
-        uc = uc | nd::select(0, 1) | nd::to_shared();
+        return make_track(rf | nd::select(0, 1) | nd::to_shared(), uc | nd::select(0, 1) | nd::to_shared());
     }
-    else if (aspect(imax) > maximum_cell_aspect_ratio)
+    if (aspect(imax) > maximum_cell_aspect_ratio)
     {
-        std::tie(rf, uc) = nd::add_partition(rf, uc, imax);
+        return std::apply(make_track_and_return, nd::add_partition(rf, uc, imax));
     }
-    else
+    if (aspect(imin) < minimum_cell_aspect_ratio)
     {
-        for (std::size_t i = 1; i < size(aspect) - 2; ++i)
+        if (imin == 0)
         {
-            if ((aspect(i + 0) < minimum_cell_aspect_ratio &&
-                 aspect(i + 1) < minimum_cell_aspect_ratio) ||
-                (aspect(i + 0) < minimum_cell_aspect_ratio &&
-                 aspect(i - 1) > minimum_cell_aspect_ratio &&
-                 aspect(i + 1) > minimum_cell_aspect_ratio))
-            {
-                std::tie(rf, uc) = nd::remove_partition(rf, uc, i + 1);
-                break;
-            }
+            return std::pair(track, uc);
+        }
+        if (imin + 1 == size(aspect))
+        {
+            return std::apply(make_track, nd::remove_partition(rf, uc, imin));
+        }
+        if (aspect(imin - 1) <= aspect(imin + 1))
+        {
+            return std::apply(make_track, nd::remove_partition(rf, uc, imin));
+        }
+        if (aspect(imin - 1) >= aspect(imin + 1))
+        {
+            return std::apply(make_track, nd::remove_partition(rf, uc, imin + 1));
         }
     }
-
-    track.face_radii = rf;
-
     return std::pair(track, uc);
 }
 
