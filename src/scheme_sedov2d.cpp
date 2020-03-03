@@ -398,7 +398,7 @@ std::pair<sedov::radial_track_t, nd::shared_array<srhd::conserved_t, 1>> sedov::
     {
         if (imin == 0)
         {
-            return std::pair(track, uc);
+            return std::apply(make_track, nd::remove_partition(rf, uc, 1));
         }
         if (imin + 1 == size(aspect))
         {

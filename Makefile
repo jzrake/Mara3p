@@ -36,8 +36,6 @@ ALL_TARGETS = mara \
 TARGETS = $(ALL_TARGETS)
 
 
-
-
 # If a Makefile.in exists in this directory, then use it
 -include Makefile.in
 
