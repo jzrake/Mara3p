@@ -26,6 +26,7 @@
 
 
 
+#pragma once
 #include <any>
 #include <future>
 #include <set>
