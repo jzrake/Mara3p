@@ -36,6 +36,10 @@
 //=============================================================================
 namespace h5 {
 
+void read(const Group& group, std::string name, minidisk::side_effect_t& side_effect);
+void read(const Group& group, std::string name, minidisk::schedule_t& schedule);
+void read(const Group& group, std::string name, minidisk::solution_t& solution);
+
 void write(const Group& group, std::string name, const minidisk::side_effect_t& side_effect);
 void write(const Group& group, std::string name, const minidisk::schedule_t& schedule);
 void write(const Group& group, std::string name, const minidisk::solution_t& solution);

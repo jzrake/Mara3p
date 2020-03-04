@@ -36,7 +36,6 @@
 #include "parallel_computable_tree.hpp"
 #include "parallel_thread_pool.hpp"
 #include "physics_two_body.hpp"
-#include "scheme_plm_gradient.hpp"
 #include "minidisk.hpp"
 #include "minidisk_io.hpp"
 
@@ -56,11 +55,12 @@
  *     ( ) flux correction
  *     ( ) upsampling in plotting script
  * [x] proper stepping of side effects
- * [ ] checkpoint read / restart
+ * [x] checkpoint read / restart
  * [x] break up code into separate source files
  * [ ] VTK output option
  * [ ] time series of forces, work, orbital element evolution, etc.
- * [ ] computable execution statistics to discover bottlenecks
+ * [ ] computable: execution statistics to discover bottlenecks
+ * [ ] computable: MPI execution strategy
  */
 
 
@@ -122,12 +122,54 @@ auto extend_y(bsp::shared_tree<pr::computable<ArrayType>, 4> __pc__, bsp::tree_i
 
 
 //=============================================================================
-static auto initial_solution(solver_data_t solver_data)
+static auto initial_solution(const mara::config_t& cfg)
 {
-    auto uc = bsp::uniform_quadtree(solver_data.depth) | bsp::maps(std::bind(initial_conserved_array, solver_data, _1));
-    return solution_t{0, 0.0, uc};
+    auto solver_data = make_solver_data(cfg);
+    auto restart = cfg.get_string("restart");
+
+    if (! restart.empty())
+    {
+        auto result = solution_t{};
+        auto h5f = h5::File(restart, "r");
+        read(h5f, "solution", result);
+        return result;
+    }
+
+    return solution_t{
+        0,
+        0.0,
+        bsp::uniform_quadtree(solver_data.depth) | bsp::maps(std::bind(initial_conserved_array, solver_data, _1)),
+    };
 }
 
+static auto initial_schedule(const mara::config_t& cfg)
+{
+    auto restart = cfg.get_string("restart");
+
+    if (! restart.empty())
+    {
+        auto result = minidisk::schedule_t{};
+        auto h5f = h5::File(restart, "r");
+        read(h5f, "schedule", result);
+        return result;
+    }
+    return minidisk::schedule_t();
+}
+
+static auto restart_run_config(const mara::config_string_map_t& args)
+{
+    if (args.count("restart"))
+    {
+        auto file = h5::File(args.at("restart"), "r");
+        return h5::read<mara::config_parameter_map_t>(file, "run_config");
+    }
+    return mara::config_parameter_map_t{};
+}
+
+
+
+
+//=============================================================================
 static auto smallest_cell_crossing_time(conserved_array_t uc, bsp::tree_index_t<2> block, solver_data_t solver_data)
 {
     auto vm = nd::max(uc | nd::map(iso2d::recover_primitive) | nd::map(std::bind(iso2d::fastest_wavespeed, _1, unit_specific_energy(0.0))));
@@ -243,17 +285,17 @@ static void side_effects(const mara::config_t& cfg, solution_t solution, schedul
 //=============================================================================
 int main(int argc, const char* argv[])
 {
-    auto cfg = minidisk::config_template().create().update(mara::argv_to_string_map(argc, argv));
+    auto args = mara::argv_to_string_map(argc, argv);
+    auto cfg         = minidisk::config_template().create().update(restart_run_config(args)).update(args);
     auto solver_data = minidisk::make_solver_data(cfg);
-    auto schedule    = minidisk::schedule_t();
-    auto solution    = initial_solution(solver_data);
+    auto schedule    = initial_schedule(cfg);
+    auto solution    = initial_solution(cfg);
     auto orbits      = cfg.get_double("orbits");
+    auto fold        = cfg.get_int("fold");
+    auto pool        = mara::ThreadPool(cfg.get_int("threads"));
+    auto relative_dt = 0.0;
 
     mara::pretty_print(std::cout, "config", cfg);
-
-    auto pool = mara::ThreadPool(cfg.get_int("threads"));
-    auto fold = cfg.get_int("fold");
-    double relative_dt = 0.0;
 
     while (solution.time < orbits * binary_period)
     {

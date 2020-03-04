@@ -39,6 +39,40 @@
 
 
 //=============================================================================
+void h5::read(const Group& group, std::string name, minidisk::side_effect_t& side_effect)
+{
+    auto sgroup = group.open_group(name);
+    read(sgroup, "next_due", side_effect.next_due);
+    read(sgroup, "count", side_effect.count);
+}
+
+void h5::read(const Group& group, std::string name, minidisk::schedule_t& schedule)
+{
+    auto sgroup = group.open_group(name);
+    read(sgroup, "time_series", schedule.time_series);
+    read(sgroup, "checkpoint", schedule.checkpoint);
+}
+
+void h5::read(const Group& group, std::string name, minidisk::solution_t& solution)
+{
+    auto sgroup = group.open_group(name);
+    auto ugroup = sgroup.open_group("conserved");
+
+    read(sgroup, "iteration", solution.iteration);
+    read(sgroup, "time", solution.time);
+
+    for (auto block_name : ugroup)
+    {
+        auto block = bsp::read_tree_index<2>(block_name);
+        auto value = read<minidisk::conserved_array_t>(ugroup, block_name);
+        solution.conserved = insert(solution.conserved, block, value);
+    }
+}
+
+
+
+
+//=============================================================================
 void h5::write(const Group& group, std::string name, const minidisk::side_effect_t& side_effect)
 {
     auto sgroup = group.require_group(name);
@@ -56,13 +90,13 @@ void h5::write(const Group& group, std::string name, const minidisk::schedule_t&
 void h5::write(const Group& group, std::string name, const minidisk::solution_t& solution)
 {
     auto sgroup = group.require_group(name);
+    auto ugroup = sgroup.require_group("conserved");
+
     write(sgroup, "iteration", solution.iteration);
     write(sgroup, "time", solution.time);
 
-    auto ugroup = sgroup.require_group("conserved");
-
     sink(indexify(solution.conserved), util::apply_to([&ugroup] (auto index, auto value)
     {
-        write(ugroup, format_tree_index(index), value);
+        write(ugroup, bsp::format_tree_index(index), value);
     }));
 }
