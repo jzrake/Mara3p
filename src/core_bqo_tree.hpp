@@ -567,6 +567,49 @@ bool contains(const tree_t<ValueType, ChildrenType, Ratio>& tree, tree_index_t<r
 
 
 /**
+ * @brief      Insert or replace a value at the given index, creating
+ *             intermediate nodes as necessary. Throws an exception if a
+ *             non-leaf node already exists at the target index.
+ *
+ * @param[in]  tree       The tree
+ * @param[in]  index      The target index
+ * @param[in]  value      The value to insert at that index
+ *
+ * @tparam     ValueType  { description }
+ * @tparam     Ratio      { description }
+ *
+ * @return     A new tree
+ *
+ * @note       This method may generate nodes with default-constructed values at
+ *             indexes other than the target index, so the value type must be
+ *             default-constructible. Its most likely use is in loading data
+ *             into the tree from a file.
+ */
+template<typename ValueType, uint Ratio>
+shared_tree<ValueType, Ratio> insert(shared_tree<ValueType, Ratio> tree, tree_index_t<rank_for_ratio_t<Ratio>::value> index, ValueType value)
+{
+    if (index.level == 0)
+    {
+        if (any(index.coordinates) || ! has_value(tree))
+        {
+            throw std::out_of_range("bsp::insert (target node already has children)");
+        }
+        return just<Ratio>(value);
+    }
+    if (has_value(tree))
+    {
+        return insert(from(numeric::array_t<ValueType, Ratio>()), index, value);
+    }
+    return {shared_trees(update(*children(tree).ptr, to_integral(orthant(index)), [next=advance_level(index), value] (auto c)
+    {
+        return insert(c, next, value);
+    }))};
+}
+
+
+
+
+/**
  * @brief      { function_description }
  *
  * @param[in]  tree             The tree

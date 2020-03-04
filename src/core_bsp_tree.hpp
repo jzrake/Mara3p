@@ -532,7 +532,7 @@ auto to_shared(tree_t<ValueType, ChildrenType, Ratio> tree)
     {
         children[i] = to_shared(child_at(tree, i));
     }
-    return tree_t<ValueType, shared_children_t<ValueType, Ratio>, Ratio>{shared_trees(children)};
+    return shared_tree<ValueType, Ratio>{shared_trees(children)};
 }
 
 
