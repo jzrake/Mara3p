@@ -48,6 +48,7 @@ using conserved_array_t = nd::shared_array<iso2d::conserved_density_t, 2>;
 using primitive_array_t = nd::shared_array<iso2d::primitive_t, 2>;
 using godunov_f_array_t = nd::shared_array<iso2d::flux_vector_t, 2>;
 using conserved_tree_t  = bsp::shared_tree<conserved_array_t, 4>;
+using unit_viscosity    = dimensional::quantity_t<0, 2,-1>;
 
 
 
@@ -78,6 +79,7 @@ struct solver_data_t
     int                 depth;
     unit_rate           omega_frame;
     unit_scalar         mach_number;
+    unit_viscosity      kinematic_viscosity;
     unit_length         domain_radius;
     unit_length         softening_length;
     unit_scalar         eccentricity;
@@ -100,6 +102,7 @@ inline auto config_template()
     .item("depth",                  1)   // number of levels in the mesh
     .item("omega_frame",          1.0)   // reference frame rotation frequency (1.0 for co-rotating)
     .item("mach_number",         10.0)   // Mach number of the disk
+    .item("nu",                   0.0)   // Kinematic viscosity coefficient
     .item("domain_radius",        1.5)   // half-size of the domain
     .item("eccentricity",         0.0)   // binary orbital eccentricity
     .item("mass_ratio",           1.0)   // binary mass ratio M2 / M1
@@ -124,6 +127,7 @@ inline auto make_solver_data(const mara::config_t& cfg)
         cfg.get_int("depth"),
         cfg.get_double("omega_frame"),
         cfg.get_double("mach_number"),
+        cfg.get_double("nu"),
         cfg.get_double("domain_radius"),
         cfg.get_double("softening_length"),
         cfg.get_double("eccentricity"),
@@ -159,6 +163,14 @@ primitive_array_t estimate_gradient(primitive_array_t pc, bsp::uint axis, double
 godunov_f_array_t godunov_fluxes(
     primitive_array_t pc,
     primitive_array_t gc,
+    solver_data_t solver_data,
+    bsp::tree_index_t<2> block,
+    bsp::uint axis);
+
+godunov_f_array_t godunov_and_viscous_fluxes(
+    primitive_array_t pc,
+    primitive_array_t gc_long,
+    primitive_array_t gc_tran,
     solver_data_t solver_data,
     bsp::tree_index_t<2> block,
     bsp::uint axis);

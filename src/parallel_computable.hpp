@@ -176,7 +176,7 @@ public:
         }
         else
         {
-            throw std::logic_error("computable_node_t::compute (node is not eligible)");
+            throw std::logic_error("computable_node_t::submit (node is not eligible)");
         }
     }
 

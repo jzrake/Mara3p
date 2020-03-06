@@ -264,6 +264,73 @@ godunov_f_array_t minidisk::godunov_fluxes(
     return fx;
 }
 
+godunov_f_array_t minidisk::godunov_and_viscous_fluxes(
+    primitive_array_t pc,
+    primitive_array_t gc_long,
+    primitive_array_t gc_tran,
+    solver_data_t solver_data,
+    bsp::tree_index_t<2> block,
+    bsp::uint axis)
+{
+    auto riemann = [axis, rs=solver_data.softening_length, mach=solver_data.mach_number] (auto pl, auto pr, auto xf)
+    {
+        auto cs2 = sound_speed_squared(xf, rs, mach);
+        return iso2d::riemann_hlle(pl, pr, cs2, geometric::unit_vector_on(axis + 1));
+    };
+
+    auto xf = face_coordinates(solver_data.block_size, solver_data.domain_radius, block, axis);
+    auto pl = (pc - 0.5 * gc_long) | nd::select(axis, 1)     | nd::to_shared();
+    auto pr = (pc + 0.5 * gc_long) | nd::select(axis, 0, -1) | nd::to_shared();
+    auto fx = nd::zip(pr, pl, xf) | nd::map(util::apply_to(riemann));
+
+    auto viscous_flux = [=] ()
+    {
+        auto nu = solver_data.kinematic_viscosity;
+        auto sl = map(pl, iso2d::mass_density);
+        auto sr = map(pr, iso2d::mass_density);
+        auto mu = (nu * 0.5 * (sl + sr)) | nd::to_shared();
+        auto dl = cell_size(block, solver_data);
+        auto block_size = solver_data.block_size;
+
+        switch (axis)
+        {
+            case 0:
+            {
+                auto dx_vx = gc_long | nd::map(iso2d::velocity_1) | nd::adjacent_mean(0) | nd::divide(dl);
+                auto dy_vx = gc_tran | nd::map(iso2d::velocity_1) | nd::adjacent_mean(0) | nd::divide(dl);
+                auto dx_vy = gc_long | nd::map(iso2d::velocity_2) | nd::adjacent_mean(0) | nd::divide(dl);
+                auto dy_vy = gc_tran | nd::map(iso2d::velocity_2) | nd::adjacent_mean(0) | nd::divide(dl);
+
+                auto tauxs = nd::zeros<dimensional::quantity_t<1,-1,-1>>(block_size + 1, block_size);
+                auto tauxx = mu * (dx_vx - dy_vy);
+                auto tauxy = mu * (dx_vy + dy_vx);
+
+                return nd::zip(tauxs, -tauxx, -tauxy) | nd::construct<iso2d::flux_vector_t>() | nd::to_shared();
+            }
+            case 1:
+            {
+                auto dx_vx = gc_tran | nd::map(iso2d::velocity_1) | nd::adjacent_mean(1) | nd::divide(dl);
+                auto dy_vx = gc_long | nd::map(iso2d::velocity_1) | nd::adjacent_mean(1) | nd::divide(dl);
+                auto dx_vy = gc_tran | nd::map(iso2d::velocity_2) | nd::adjacent_mean(1) | nd::divide(dl);
+                auto dy_vy = gc_long | nd::map(iso2d::velocity_2) | nd::adjacent_mean(1) | nd::divide(dl);
+
+                auto tauys = nd::zeros<dimensional::quantity_t<1,-1,-1>>(block_size, block_size + 1);
+                auto tauyx = mu * (dx_vy + dy_vx);
+                auto tauyy =-mu * (dx_vx - dy_vy);
+
+                return nd::zip(tauys, -tauyx, -tauyy) | nd::construct<iso2d::flux_vector_t>() | nd::to_shared();
+            }
+        }
+        throw;
+    };
+
+    if (solver_data.kinematic_viscosity == unit_viscosity(0.0))
+    {
+        return fx | nd::to_shared();
+    }
+    return (fx + viscous_flux()) | nd::to_shared();
+}
+
 conserved_array_t minidisk::updated_conserved(
     conserved_array_t uc,
     primitive_array_t pc,

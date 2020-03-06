@@ -13,8 +13,13 @@ def print_quantiles(data):
 
 
 
-def conserved(h5f, field):
+def conserved(filename, field):
+    if type(filename) is list:
+        return np.array([conserved(f, field) for f in filename]).mean(axis=0)
+
     blocks = []
+    h5f = h5py.File(filename, 'r')
+    print('loading {}/{}'.format(filename, field))
 
     for block in h5f['solution']['conserved']:
         level, rest = block.split(':')
@@ -35,16 +40,55 @@ def conserved(h5f, field):
 
 
 
-def plot(fig, filename, args):
+def run_config(filename, key):
+    if type(filename) is list:
+        return run_config(filename[0], key)
+
     h5f = h5py.File(filename, 'r')
-    sigma = conserved(h5f, 0)
-    data = sigma.T**args.index
+    return h5f['run_config'][key][()]
+
+
+
+
+def formatted_orbit(filename):
+    if len(filename) == 1:
+        h5f = h5py.File(filename[0], 'r')
+        return 'Orbit {:.01f}'.format(h5f['solution']['time'][()] / 2 / np.pi)
+    orbit0 = h5py.File(filename[ 0], 'r')['solution']['time'][()] / 2 / np.pi
+    orbit1 = h5py.File(filename[-1], 'r')['solution']['time'][()] / 2 / np.pi
+    return 'Orbits {:.01f} - {:0.1f}'.format(orbit0, orbit1)
+
+
+
+
+def plot_streamlines(ax, filename, args):
+    sigma = conserved(filename, 0)
+    vx = conserved(filename, 1) / sigma
+    vy = conserved(filename, 2) / sigma
+    R = run_config(filename, 'domain_radius')
+    X = np.linspace(-R, R, sigma.shape[0])
+    Y = np.linspace(-R, R, sigma.shape[1])
+    U = vx.T
+    V = vy.T
+    ax.streamplot(X, Y, U, V, density=3.0, linewidth=0.3, color='grey', arrowsize=0.6)
+
+
+
+
+def plot(fig, filename, args):
+    sigma = conserved(filename, 0)
+    color = sigma**args.index
     vmin, vmax = [a**args.index if a else a for a in eval(args.range or '[None,None]')]
+    R = run_config(filename, 'domain_radius')
     ax1 = fig.add_subplot(1, 1, 1)
-    ax1.imshow(data, cmap=args.cmap, vmin=vmin, vmax=vmax)
-    ax1.text(0.02, 0.02, r'orbit {:.01f}'.format(h5f['solution']['time'][()] / 2 / np.pi), transform=ax1.transAxes, color='white')
+    ax1.imshow(color.T, cmap=args.cmap, vmin=vmin, vmax=vmax, origin='bottom', extent=[-R, R, -R, R])
+    ax1.text(0.02, 0.02, formatted_orbit(filename), transform=ax1.transAxes, color='white')
     ax1.set_xticks([])
     ax1.set_yticks([])
+    ax1.set_xlim(-R, R)
+    ax1.set_ylim(-R, R)
+    if args.streamlines > 0.0:
+        plot_streamlines(ax1, filename, args)
 
     if args.print_quantiles:
         print_quantiles(sigma)
@@ -109,6 +153,7 @@ if __name__ == "__main__":
     parser.add_argument('--index', metavar=0.5, type=float, default=0.5,       help='Power-law index used in scaling the image')
     parser.add_argument('--range', metavar='[0.0,1.0]',     default=None,      help='Manual vmin/vmax range (use None for auto)')
     parser.add_argument('--print-quantiles', '-q', action='store_true',        help='Print a set of quantiles for the image data')
+    parser.add_argument('--streamlines',           action='store_true',        help='Overlay a streamplot of the velocity field')
     parser.add_argument('--movie',                 action='store_true',        help='Use ffmpeg to make a movie from the provided files')
     parser.add_argument('--frame',                 action='store_true',        help='Write a PNG image for each file rather than raising a window')
     parser.add_argument('--archive',               action='store_true',        help='Compress images to images.tar.gz (implies --frame)')
@@ -129,5 +174,5 @@ if __name__ == "__main__":
     elif args.frame or args.archive:
         save_frames(fig, plot, args)
     else:
-        plot(fig, args.filenames[0], args)
+        plot(fig, args.filenames, args)
         plt.show()

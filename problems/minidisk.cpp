@@ -77,8 +77,13 @@ static const auto binary_period = unit_time(2 * M_PI);
 
 //=============================================================================
 template<typename ArrayType>
-auto extend_x(bsp::shared_tree<pr::computable<ArrayType>, 4> __pc__, bsp::tree_index_t<2> block)
+auto extend_x(bsp::shared_tree<pr::computable<ArrayType>, 4> __pc__, bsp::tree_index_t<2> block, bool dummy=false)
 {
+    if (dummy)
+    {
+        return value_at(__pc__, block);
+    }
+
     auto _pl_ = value_at(__pc__, prev_on(block, 0));
     auto _pc_ = value_at(__pc__, block);
     auto _pr_ = value_at(__pc__, next_on(block, 0));
@@ -98,8 +103,13 @@ auto extend_x(bsp::shared_tree<pr::computable<ArrayType>, 4> __pc__, bsp::tree_i
 }
 
 template<typename ArrayType>
-auto extend_y(bsp::shared_tree<pr::computable<ArrayType>, 4> __pc__, bsp::tree_index_t<2> block)
+auto extend_y(bsp::shared_tree<pr::computable<ArrayType>, 4> __pc__, bsp::tree_index_t<2> block, bool dummy=false)
 {
+    if (dummy)
+    {
+        return value_at(__pc__, block);
+    }
+
     auto _pl_ = value_at(__pc__, prev_on(block, 1));
     auto _pc_ = value_at(__pc__, block);
     auto _pr_ = value_at(__pc__, next_on(block, 1));
@@ -199,6 +209,7 @@ static auto encode_step(
     unit_time dt,
     solver_data_t solver_data)
 {
+    auto skip_trans = solver_data.kinematic_viscosity == unit_viscosity(0.0);
     auto mesh   = indexes(conserved);
     auto _uc_   = conserved;
     auto _pc_   = _uc_ | bsp::maps(pr::map(minidisk::recover_primitive_array));
@@ -206,17 +217,24 @@ static auto encode_step(
     auto _p_ext_y_ = mesh | bsp::maps([_pc_] (auto index) { return extend_y(_pc_, index); });
     auto _gradient_x_ = _p_ext_x_ | bsp::maps(pr::map(std::bind(estimate_gradient, _1, 0, 2.0)));
     auto _gradient_y_ = _p_ext_y_ | bsp::maps(pr::map(std::bind(estimate_gradient, _1, 1, 2.0)));
-    auto _gradient_ext_x_ = mesh | bsp::maps([_gradient_x_] (auto index) { return extend_x(_gradient_x_, index); });
-    auto _gradient_ext_y_ = mesh | bsp::maps([_gradient_y_] (auto index) { return extend_y(_gradient_y_, index); });
 
-    auto _godunov_fluxes_x_ = zip(_p_ext_x_, _gradient_ext_x_, mesh) | bsp::mapvs([solver_data] (auto pc, auto gc, auto block)
+    auto _gradient_x_ext_x_ = mesh | bsp::map([g=_gradient_x_            ] (auto index) { return extend_x(g, index); });
+    auto _gradient_x_ext_y_ = mesh | bsp::map([g=_gradient_x_, skip_trans] (auto index) { return extend_y(g, index, skip_trans); });
+    auto _gradient_y_ext_x_ = mesh | bsp::map([g=_gradient_y_, skip_trans] (auto index) { return extend_x(g, index, skip_trans); });
+    auto _gradient_y_ext_y_ = mesh | bsp::map([g=_gradient_y_            ] (auto index) { return extend_y(g, index); });
+
+    auto _godunov_fluxes_x_ = zip(_p_ext_x_, _gradient_x_ext_x_, _gradient_y_ext_x_, mesh)
+    | bsp::mapvs([solver_data] (auto pc, auto gl, auto gt, auto block)
     {
-        return pr::zip(pc, gc) | pr::mapv(std::bind(godunov_fluxes, _1, _2, solver_data, block, 0));
+        return pr::zip(pc, gl, gt)
+        | pr::mapv(std::bind(godunov_and_viscous_fluxes, _1, _2, _3, solver_data, block, 0));
     });
 
-    auto _godunov_fluxes_y_ = zip(_p_ext_y_, _gradient_ext_y_, mesh) | bsp::mapvs([solver_data] (auto pc, auto gc, auto block)
+    auto _godunov_fluxes_y_ = zip(_p_ext_y_, _gradient_y_ext_y_, _gradient_x_ext_y_, mesh)
+    | bsp::mapvs([solver_data] (auto pc, auto gl, auto gt, auto block)
     {
-        return pr::zip(pc, gc) | pr::mapv(std::bind(godunov_fluxes, _1, _2, solver_data, block, 1));
+        return pr::zip(pc, gl, gt)
+        | pr::mapv(std::bind(godunov_and_viscous_fluxes, _1, _2, _3, solver_data, block, 1));
     });
 
     auto u1 = zip(_uc_, _pc_, _godunov_fluxes_x_, _godunov_fluxes_y_, mesh)

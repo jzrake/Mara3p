@@ -70,6 +70,8 @@ auto apply_of(FunctionType f)
 template<typename... Ts>
 struct tuple_t
 {
+    tuple_t(std::tuple<Ts...> impl) : impl(impl) {}
+    tuple_t() {}
     std::tuple<Ts...> impl;
 };
 
