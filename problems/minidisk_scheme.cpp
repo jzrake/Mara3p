@@ -279,8 +279,8 @@ godunov_f_array_t minidisk::godunov_and_viscous_fluxes(
     };
 
     auto xf = face_coordinates(solver_data.block_size, solver_data.domain_radius, block, axis);
-    auto pl = (pc - 0.5 * gc_long) | nd::select(axis, 1)     | nd::to_shared();
-    auto pr = (pc + 0.5 * gc_long) | nd::select(axis, 0, -1) | nd::to_shared();
+    auto pl = (pc - 0.5 * gc_long) | nd::select(axis, 1)     | nd::to_dynamic();
+    auto pr = (pc + 0.5 * gc_long) | nd::select(axis, 0, -1) | nd::to_dynamic();
     auto fx = nd::zip(pr, pl, xf) | nd::map(util::apply_to(riemann));
 
     auto viscous_flux = [=] ()
@@ -288,7 +288,7 @@ godunov_f_array_t minidisk::godunov_and_viscous_fluxes(
         auto nu = solver_data.kinematic_viscosity;
         auto sl = map(pl, iso2d::mass_density);
         auto sr = map(pr, iso2d::mass_density);
-        auto mu = (nu * 0.5 * (sl + sr)) | nd::to_shared();
+        auto mu = nu * 0.5 * (sl + sr);
         auto dl = cell_size(block, solver_data);
         auto block_size = solver_data.block_size;
 
@@ -305,7 +305,7 @@ godunov_f_array_t minidisk::godunov_and_viscous_fluxes(
                 auto tauxx = mu * (dx_vx - dy_vy);
                 auto tauxy = mu * (dx_vy + dy_vx);
 
-                return nd::zip(tauxs, -tauxx, -tauxy) | nd::construct<iso2d::flux_vector_t>() | nd::to_shared();
+                return nd::zip(tauxs, -tauxx, -tauxy) | nd::construct<iso2d::flux_vector_t>() | nd::to_dynamic();
             }
             case 1:
             {
@@ -318,7 +318,7 @@ godunov_f_array_t minidisk::godunov_and_viscous_fluxes(
                 auto tauyx = mu * (dx_vy + dy_vx);
                 auto tauyy =-mu * (dx_vx - dy_vy);
 
-                return nd::zip(tauys, -tauyx, -tauyy) | nd::construct<iso2d::flux_vector_t>() | nd::to_shared();
+                return nd::zip(tauys, -tauyx, -tauyy) | nd::construct<iso2d::flux_vector_t>() | nd::to_dynamic();
             }
         }
         throw;
@@ -352,8 +352,8 @@ conserved_array_t minidisk::updated_conserved(
     auto xc = cell_coordinates(solver_data.block_size, solver_data.domain_radius, block);
     auto dl = cell_size(block, solver_data);
 
-    auto dfx = fx | nd::adjacent_diff(0) | nd::to_shared();
-    auto dfy = fy | nd::adjacent_diff(1) | nd::to_shared();
+    auto dfx = fx | nd::adjacent_diff(0);
+    auto dfy = fy | nd::adjacent_diff(1);
 
     auto a = unit_length(1.0);
     auto M = unit_mass(1.0);
@@ -368,12 +368,12 @@ conserved_array_t minidisk::updated_conserved(
     auto cor = pc | nd::map(iso2d::velocity_vector) | nd::map(std::bind(coriolis_term, _1, solver_data.omega_frame));
     auto cen = centrifugal_term_array(solver_data, block);
 
-    auto ss1 = -uc * (xc | nd::map(sink_rate_field(solver_data, two_body::position(state.first))))  | nd::to_shared();
-    auto ss2 = -uc * (xc | nd::map(sink_rate_field(solver_data, two_body::position(state.second)))) | nd::to_shared();
-    auto sg1 = nd::zip(pc, ag1) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms))      | nd::to_shared();
-    auto sg2 = nd::zip(pc, ag2) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms))      | nd::to_shared();
-    auto sf1 = nd::zip(pc, cen) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms))      | nd::to_shared();
-    auto sf2 = nd::zip(pc, cor) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms))      | nd::to_shared();
+    auto ss1 = -uc * (xc | nd::map(sink_rate_field(solver_data, two_body::position(state.first))));
+    auto ss2 = -uc * (xc | nd::map(sink_rate_field(solver_data, two_body::position(state.second))));
+    auto sg1 = nd::zip(pc, ag1) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms));
+    auto sg2 = nd::zip(pc, ag2) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms));
+    auto sf1 = nd::zip(pc, cen) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms));
+    auto sf2 = nd::zip(pc, cor) | nd::map(util::apply_to(iso2d::acceleration_to_source_terms));
 
     auto uinit = initial_conserved_array(solver_data, block);
     auto br    = buffer_rate_field_array(solver_data, block);
