@@ -272,7 +272,7 @@ static auto step(solution_t solution, solver_data_t solver_data, int nfold, mara
     if (print_only)
     {
         auto outfile = std::fopen("minidisk.dot", "w");
-        pr::print_graph(outfile, master);
+        pr::print_graph(master, outfile);
         std::fclose(outfile);
         return std::pair(solution, unit_scalar(0.0));
     }

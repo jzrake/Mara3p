@@ -236,10 +236,12 @@ public:
         return *incoming.begin();
     }
 
-    void primitives(set_t& result)
+    void primitives(set_t& result, set_t& already_passed)
     {
-        if (! result.count(this))
+        if (! already_passed.count(this))
         {
+            already_passed.insert(this);
+
             if (eligible())
             {
                 result.insert(this);
@@ -248,7 +250,7 @@ public:
             {
                 for (auto i : incoming)
                 {
-                    i->primitives(result);
+                    i->primitives(result, already_passed);
                 }
             }
         }
@@ -257,7 +259,8 @@ public:
     auto primitives()
     {
         auto result = set_t();
-        primitives(result);
+        auto already_passed = set_t();
+        primitives(result, already_passed);
         return result;
     }
 
@@ -455,7 +458,7 @@ auto mapv(Function f, const char* name=nullptr)
 
 
 //=============================================================================
-void print_recurse(FILE* outfile, pr::computable_node_t* node, pr::computable_node_t::set_t& already_printed)
+void print_recurse(pr::computable_node_t* node, pr::computable_node_t::set_t& already_printed, FILE* outfile)
 {
     if (! already_printed.count(node))
     {
@@ -464,7 +467,7 @@ void print_recurse(FILE* outfile, pr::computable_node_t* node, pr::computable_no
         for (auto o : node->outgoing_nodes())
         {
             std::fprintf(outfile, "    %ld -> %ld;\n", node->id(), o->id());
-            print_recurse(outfile, o, already_printed);
+            print_recurse(o, already_printed, outfile);
         }
     }
 };
@@ -476,18 +479,18 @@ void print_recurse(FILE* outfile, pr::computable_node_t* node, pr::computable_no
  * @brief      Prints the execution graph for a computable in a format readable
  *             by the graphviz dot utility.
  *
- * @param      outfile  The file to write to
  * @param[in]  c        The computable to print the graph for
+ * @param      outfile  The file to write to
  *
  * @tparam     T        The computable value type
  *
  * @note       An example command to generate a PDF from an output file
  *             graph.dot is:
- *             
+ *
  *             dot -Tpdf -o graph.pdf graph.dot
  */
 template<typename T>
-void print_graph(FILE* outfile, pr::computable_t<T> c)
+void print_graph(pr::computable_t<T> c, FILE* outfile)
 {
     auto already_printed = pr::computable_node_t::set_t();
     std::fprintf(outfile, "digraph {\n");
@@ -495,7 +498,7 @@ void print_graph(FILE* outfile, pr::computable_t<T> c)
 
     for (auto node : c.node()->primitives())
     {
-        print_recurse(outfile, node, already_printed);        
+        print_recurse(node, already_printed, outfile);
     }
     for (auto node : already_printed)
     {
