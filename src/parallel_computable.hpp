@@ -27,10 +27,10 @@
 
 
 #pragma once
+#include <cstdio>
 #include <any>
 #include <future>
 #include <set>
-#include <string>
 
 
 
@@ -277,6 +277,28 @@ public:
         return false;
     }
 
+    auto& name(const char* name)
+    {
+        node_name = name;
+        return *this;
+    }
+
+    auto name() const
+    {
+        return node_name;
+    }
+
+    auto& immediate(bool should_be_immediate)
+    {
+        is_immediate = should_be_immediate;
+        return *this;
+    }
+
+    auto immediate() const
+    {
+        return is_immediate;
+    }
+
 private:
     //=========================================================================
     std::function<std::any()> computation;
@@ -285,6 +307,8 @@ private:
     set_t incoming;
     set_t outgoing;
     unsigned long node_id;
+    bool is_immediate = false;
+    const char* node_name = "";
     static unsigned long last_node_id;
     template<typename T> friend class computable_t;
 };
@@ -349,6 +373,28 @@ public:
         return g.get();
     }
 
+    auto& name(const char* name)
+    {
+        g->name(name);
+        return *this;
+    }
+
+    auto name() const
+    {
+        return g->name();
+    }
+
+    auto& immediate(bool should_be_immediate)
+    {
+        g->immediate(should_be_immediate);
+        return *this;
+    }
+
+    auto immediate() const
+    {
+        return g->immediate();
+    }
+
 private:
     std::shared_ptr<computable_node_t> g;
 };
@@ -366,12 +412,6 @@ auto operator|(computable_t<ValueType> c, Function f)
     return f(c);
 }
 
-template<typename ValueType>
-auto just(ValueType value)
-{
-    return computable_t<ValueType>(value);
-}
-
 template<typename Function>
 auto from(Function f)
 {
@@ -379,30 +419,92 @@ auto from(Function f)
     return computable_t<value_type>(f, {});
 }
 
+template<typename ValueType>
+auto just(ValueType value)
+{
+    return from([value] () { return value; }).immediate(true);
+}
+
 template<typename... ValueType>
 auto zip(computable_t<ValueType>... c)
 {
     using value_type = std::tuple<ValueType...>;
-    return computable_t<value_type>([c...] () { return std::tuple(c.value()...); }, {c.node()...});
+    return computable_t<value_type>([c...] () { return std::tuple(c.value()...); }, {c.node()...}).immediate(true);
 }
 
 template<typename ValueType, typename Function>
-auto map(computable_t<ValueType> c, Function f)
+auto map(computable_t<ValueType> c, Function f, const char* name=nullptr)
 {
     using value_type = std::invoke_result_t<Function, ValueType>;
-    return computable_t<value_type>([c, f] () { return f(c.value()); }, {c.node()});
+    return computable_t<value_type>([c, f] () { return f(c.value()); }, {c.node()}).name(name);
 }
 
 template<typename Function>
-auto map(Function f)
+auto map(Function f, const char* name=nullptr)
 {
-    return [f] (auto c) { return map(c, f); };
+    return [f, name] (auto c) { return map(c, f, name); };
 }
 
 template<typename Function>
-auto mapv(Function f)
+auto mapv(Function f, const char* name=nullptr)
 {
-    return [f] (auto c) { return map(c, [f] (auto t) { return std::apply(f, t); }); };
+    return [f, name] (auto c) { return map(c, [f] (auto t) { return std::apply(f, t); }, name); };
+}
+
+
+
+
+//=============================================================================
+void print_recurse(FILE* outfile, pr::computable_node_t* node, pr::computable_node_t::set_t& already_printed)
+{
+    if (! already_printed.count(node))
+    {
+        already_printed.insert(node);
+
+        for (auto o : node->outgoing_nodes())
+        {
+            std::fprintf(outfile, "    %ld -> %ld;\n", node->id(), o->id());
+            print_recurse(outfile, o, already_printed);
+        }
+    }
+};
+
+
+
+
+/**
+ * @brief      Prints the execution graph for a computable in a format readable
+ *             by the graphviz dot utility.
+ *
+ * @param      outfile  The file to write to
+ * @param[in]  c        The computable to print the graph for
+ *
+ * @tparam     T        The computable value type
+ *
+ * @note       An example command to generate a PDF from an output file
+ *             graph.dot is:
+ *             
+ *             dot -Tpdf -o graph.pdf graph.dot
+ */
+template<typename T>
+void print_graph(FILE* outfile, pr::computable_t<T> c)
+{
+    auto already_printed = pr::computable_node_t::set_t();
+    std::fprintf(outfile, "digraph {\n");
+    std::fprintf(outfile, "    ranksep=1.0;\n");
+
+    for (auto node : c.node()->primitives())
+    {
+        print_recurse(outfile, node, already_printed);        
+    }
+    for (auto node : already_printed)
+    {
+        std::fprintf(outfile, "    %ld [shape=box,label=\"%s\",style=%s];\n",
+            node->id(),
+            node->name(),
+            node->immediate() ? "dotted" : "filled");
+    }
+    std::fprintf(outfile, "}\n");
 }
 
 
@@ -427,7 +529,7 @@ void compute(computable_t<ValueType> computable, async_invoke_t scheduler=synchr
     {
         for (auto node : eligible)
         {
-            node->submit(scheduler);
+            node->submit(node->immediate() ? synchronous_execution : scheduler);
             pending.insert(node);
         }
 

@@ -49,7 +49,7 @@
  * [x] configurable frame rotation rate
  * [x] configurable Mach number
  * [x] compute (rather than estimate) allowed time step
- * [ ] inclusion of viscous stress
+ * [x] inclusion of viscous stress
  * [ ] variable size blocks in FMR mesh
  *     ( ) generalize extend method with prolongation
  *     ( ) flux correction
@@ -81,7 +81,7 @@ auto extend_x(bsp::shared_tree<pr::computable<ArrayType>, 4> __pc__, bsp::tree_i
 {
     if (dummy)
     {
-        return value_at(__pc__, block);
+        return map(value_at(__pc__, block), [] (auto x) { return x; }).immediate(true);
     }
 
     auto _pl_ = value_at(__pc__, prev_on(block, 0));
@@ -107,7 +107,7 @@ auto extend_y(bsp::shared_tree<pr::computable<ArrayType>, 4> __pc__, bsp::tree_i
 {
     if (dummy)
     {
-        return value_at(__pc__, block);
+        return map(value_at(__pc__, block), [] (auto x) { return x; }).immediate(true);
     }
 
     auto _pl_ = value_at(__pc__, prev_on(block, 1));
@@ -212,35 +212,36 @@ static auto encode_step(
     auto skip_trans = solver_data.kinematic_viscosity == unit_viscosity(0.0);
     auto mesh   = indexes(conserved);
     auto _uc_   = conserved;
-    auto _pc_   = _uc_ | bsp::maps(pr::map(minidisk::recover_primitive_array));
-    auto _p_ext_x_ = mesh | bsp::maps([_pc_] (auto index) { return extend_x(_pc_, index); });
-    auto _p_ext_y_ = mesh | bsp::maps([_pc_] (auto index) { return extend_y(_pc_, index); });
-    auto _gradient_x_ = _p_ext_x_ | bsp::maps(pr::map(std::bind(estimate_gradient, _1, 0, 2.0)));
-    auto _gradient_y_ = _p_ext_y_ | bsp::maps(pr::map(std::bind(estimate_gradient, _1, 1, 2.0)));
+    auto _pc_   = _uc_ | bsp::maps(pr::map(minidisk::recover_primitive_array, "P"));
+    auto _p_ext_x_ = mesh | bsp::maps([_pc_] (auto index) { return extend_x(_pc_, index).name("P-x"); });
+    auto _p_ext_y_ = mesh | bsp::maps([_pc_] (auto index) { return extend_y(_pc_, index).name("P-y"); });
+    auto _gradient_x_ = _p_ext_x_ | bsp::maps(pr::map(std::bind(estimate_gradient, _1, 0, 2.0), "Gx"));
+    auto _gradient_y_ = _p_ext_y_ | bsp::maps(pr::map(std::bind(estimate_gradient, _1, 1, 2.0), "Gy"));
 
-    auto _gradient_x_ext_x_ = mesh | bsp::map([g=_gradient_x_            ] (auto index) { return extend_x(g, index); });
-    auto _gradient_x_ext_y_ = mesh | bsp::map([g=_gradient_x_, skip_trans] (auto index) { return extend_y(g, index, skip_trans); });
-    auto _gradient_y_ext_x_ = mesh | bsp::map([g=_gradient_y_, skip_trans] (auto index) { return extend_x(g, index, skip_trans); });
-    auto _gradient_y_ext_y_ = mesh | bsp::map([g=_gradient_y_            ] (auto index) { return extend_y(g, index); });
+    auto _gradient_x_ext_x_ = mesh | bsp::map([g=_gradient_x_            ] (auto index) { return extend_x(g, index).name("Gx-x"); });
+    auto _gradient_x_ext_y_ = mesh | bsp::map([g=_gradient_x_, skip_trans] (auto index) { return extend_y(g, index, skip_trans).name("Gx-y"); });
+    auto _gradient_y_ext_x_ = mesh | bsp::map([g=_gradient_y_, skip_trans] (auto index) { return extend_x(g, index, skip_trans).name("Gy-x"); });
+    auto _gradient_y_ext_y_ = mesh | bsp::map([g=_gradient_y_            ] (auto index) { return extend_y(g, index).name("Gy-y"); });
 
     auto _godunov_fluxes_x_ = zip(_p_ext_x_, _gradient_x_ext_x_, _gradient_y_ext_x_, mesh)
     | bsp::mapvs([solver_data] (auto pc, auto gl, auto gt, auto block)
     {
         return pr::zip(pc, gl, gt)
-        | pr::mapv(std::bind(godunov_and_viscous_fluxes, _1, _2, _3, solver_data, block, 0));
+        | pr::mapv(std::bind(godunov_and_viscous_fluxes, _1, _2, _3, solver_data, block, 0), "Fx");
     });
 
     auto _godunov_fluxes_y_ = zip(_p_ext_y_, _gradient_y_ext_y_, _gradient_x_ext_y_, mesh)
     | bsp::mapvs([solver_data] (auto pc, auto gl, auto gt, auto block)
     {
         return pr::zip(pc, gl, gt)
-        | pr::mapv(std::bind(godunov_and_viscous_fluxes, _1, _2, _3, solver_data, block, 1));
+        | pr::mapv(std::bind(godunov_and_viscous_fluxes, _1, _2, _3, solver_data, block, 1), "Fy");
     });
 
     auto u1 = zip(_uc_, _pc_, _godunov_fluxes_x_, _godunov_fluxes_y_, mesh)
     | bsp::mapvs([t=time, dt, solver_data] (auto uc, auto pc, auto fx, auto fy, auto block)
     {
-        return pr::zip(uc, pc, fx, fy) | pr::mapv(std::bind(updated_conserved, _1, _2, _3, _4, t, dt, block, solver_data));
+        return pr::zip(uc, pc, fx, fy)
+        | pr::mapv(std::bind(updated_conserved, _1, _2, _3, _4, t, dt, block, solver_data), "U");
     });
 
     return std::tuple(iteration + 1, time + dt, u1);
@@ -250,12 +251,12 @@ static auto encode_step(
 
 
 //=============================================================================
-static auto step(solution_t solution, solver_data_t solver_data, int nfold, mara::ThreadPool& pool)
+static auto step(solution_t solution, solver_data_t solver_data, int nfold, mara::ThreadPool& pool, bool print_only)
 {
     auto [iter, time, uc] = std::tuple(
         solution.iteration,
         solution.time,
-        solution.conserved | bsp::maps([] (auto uc) { return pr::just(uc); }));
+        solution.conserved | bsp::maps(pr::just<conserved_array_t>));
 
     auto cfl = solver_data.cfl * std::min(1.0, 0.01 + solution.time / unit_time(0.05));
     auto dt  = smallest_cell_crossing_time(solution.conserved, solver_data) * cfl;
@@ -266,10 +267,20 @@ static auto step(solution_t solution, solver_data_t solver_data, int nfold, mara
         std::tie(iter, time, uc) = encode_step(iter, time, uc, dt, solver_data);
     }
 
-    auto master = computable(uc);
-    compute(master, pool.scheduler());
+    auto master = computable(uc).name("_U_");
 
-    return std::pair(solution_t{iter, time, master.value()}, dt / dt_est);
+    if (print_only)
+    {
+        auto outfile = std::fopen("minidisk.dot", "w");
+        pr::print_graph(outfile, master);
+        std::fclose(outfile);
+        return std::pair(solution, unit_scalar(0.0));
+    }
+    else
+    {
+        compute(master, pool.scheduler());
+        return std::pair(solution_t{iter, time, master.value()}, dt / dt_est);
+    }
 }
 
 
@@ -313,13 +324,14 @@ int main(int argc, const char* argv[])
     auto pool        = mara::ThreadPool(cfg.get_int("threads"));
     auto relative_dt = 0.0;
 
+    step(solution, solver_data, fold, pool, true);
     mara::pretty_print(std::cout, "config", cfg);
 
     while (solution.time < orbits * binary_period)
     {
         side_effects(cfg, solution, schedule);
 
-        auto [result, ticks] = control::invoke_timed(step, solution, solver_data, fold, pool);
+        auto [result, ticks] = control::invoke_timed(step, solution, solver_data, fold, pool, false);
 
         std::tie(solution, relative_dt) = result;
 
