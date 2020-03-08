@@ -27,51 +27,115 @@
 
 
 #include <vector>
+#include <map>
 #include "parallel_computable.hpp"
 
 
 
 
-unsigned long pr::computable_node_t::last_node_id = 0;
+//=============================================================================
+static void primitives(pr::computable_node_t* node, pr::node_list_t& result, pr::node_list_t& passed)
+{
+    if (! passed.count(node))
+    {
+        passed.push_back(node);
+
+        if (node->eligible())
+        {
+            result.push_back(node);
+        }
+        else
+        {
+            for (auto i : node->incoming_nodes())
+            {
+                primitives(i, result, passed);
+            }
+        }
+    }
+}
+
+static auto primitives(pr::computable_node_t* node)
+{
+    auto result = pr::node_list_t();
+    auto passed = pr::node_list_t();
+    primitives(node, result, passed);
+    return result;
+}
 
 
 
 
 //=============================================================================
-void pr::topological_sort(computable_node_t* node)
+std::pair<pr::unique_deque_t<pr::computable_node_t*>, std::deque<unsigned>>
+pr::topological_sort(computable_node_t* node)
 {
-    auto eligible = std::vector<std::pair<unsigned, computable_node_t*>>();
-    auto sorted_v = std::vector<std::pair<unsigned, computable_node_t*>>();
-    auto sorted_s = std::set<computable_node_t*>();
+    auto N0 = primitives(node);
+    auto N1 = unique_deque_t<computable_node_t*>();
 
-    for (auto p : node->primitives())
+    auto G0 = std::deque<unsigned>(N0.size(), 0);
+    auto G1 = std::deque<unsigned>();
+
+    while (! N0.empty())
     {
-        eligible.emplace_back(0, p);
-    }
+        auto n = N0.front();
+        auto g = G0.front();
 
-    while (! eligible.empty())
-    {
-        auto [generation, node] = eligible.front();
+        N0.pop_front();
+        G0.pop_front();
 
-        eligible.erase(eligible.begin());
-        sorted_s.insert(node);
-        sorted_v.emplace_back(generation, node);
+        N1.push_back(n);
+        G1.push_back(g);
 
-        for (auto o : node->outgoing_nodes())
+        for (auto o : n->outgoing_nodes())
         {
-            const auto& i = o->incoming_nodes();
-
-            if (! std::any_of(i.begin(), i.end(), [&sorted_s] (auto i) { return ! sorted_s.count(i); }))
+            if (o->is_or_precedes(node))
             {
-                eligible.emplace_back(generation + 1, o);
+                const auto& i = o->incoming_nodes();
+
+                if (! std::any_of(i.begin(), i.end(), [&N1] (auto i) { return ! N1.count(i); }))
+                {
+                    N0.push_back(o);
+                    G0.push_back(g + 1);
+                }
             }
         }
     }
+    return std::pair(N1, G1);
+}
 
-    for (auto n : sorted_v)
+
+
+
+//=============================================================================
+void pr::print_graph(computable_node_t* node, FILE* outfile)
+{
+    auto [nodes, generation] = topological_sort(node);
+    auto order = std::map<computable_node_t*, unsigned>();
+
+    for (std::size_t i = 0; i < nodes.size(); ++i)
     {
-        std::printf("gen %u: %04ld %s\n", n.first, n.second->id(), n.second->name());
+        order[nodes[i]] = i;
     }
+
+    std::fprintf(outfile, "digraph {\n");
+    std::fprintf(outfile, "    ranksep=1.0;\n");
+
+    for (auto n : nodes)
+    {
+        for (auto o : n->outgoing_nodes())
+        {
+            std::fprintf(outfile, "    %u -> %u;\n", order[n], order[o]);
+        }
+    }
+
+    for (std::size_t i = 0; i < nodes.size(); ++i)
+    {
+        std::fprintf(outfile, "    %ld [shape=box,label=\"%s(%lu %u)\",style=%s];\n",
+            i, nodes[i]->name(),
+            i, generation[i],
+            nodes[i]->immediate() ? "dotted" : "filled");
+    }
+    std::fprintf(outfile, "}\n");
 }
 
 
@@ -80,9 +144,9 @@ void pr::topological_sort(computable_node_t* node)
 //=============================================================================
 void pr::compute(computable_node_t* main_node, async_invoke_t scheduler)
 {
-    auto eligible  = main_node->primitives();
-    auto pending   = computable_node_t::set_t();
-    auto completed = computable_node_t::set_t();
+    auto eligible  = primitives(main_node);
+    auto pending   = node_list_t();
+    auto completed = node_list_t();
 
     while (! eligible.empty() || ! pending.empty())
     {

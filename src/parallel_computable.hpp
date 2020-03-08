@@ -84,6 +84,11 @@ public:
     unique_deque_t() {}
     unique_deque_t(std::initializer_list<T> items) { for (auto item : items) push_back(item); }
 
+    decltype(auto) operator[](std::size_t i) const
+    {
+        return deque.operator[](i);
+    }
+
     decltype(auto) begin() const
     {
         return deque.begin();
@@ -94,14 +99,29 @@ public:
         return deque.end();
     }
 
-    auto count(const T& value) const
+    decltype(auto) front() const
     {
-        return set.count(value);
+        return deque.front();
+    }
+
+    decltype(auto) back() const
+    {
+        return deque.back();
     }
 
     bool empty() const
     {
         return set.empty();
+    }
+
+    auto size() const
+    {
+        return deque.size();
+    }
+
+    auto count(const T& value) const
+    {
+        return set.count(value);
     }
 
     void push_back(T&& value)
@@ -175,11 +195,15 @@ private:
 
 
 
+//=============================================================================
+class computable_node_t;
+using node_list_t = unique_deque_t<computable_node_t*>;
 using async_invoke_t = std::function<std::future<std::any>(std::function<std::any()>)>;
 
 
 
 
+//=============================================================================
 inline auto synchronous_execution(std::function<std::any()> computation)
 {
     auto task = std::packaged_task<std::any()>(computation);
@@ -197,13 +221,9 @@ public:
 
 
     //=========================================================================
-    using set_t = unique_deque_t<computable_node_t*>;
-
-
-    //=========================================================================
     computable_node_t(const computable_node_t& other) = delete;
     computable_node_t(const std::any& value) : value(value) {}
-    computable_node_t(set_t all_incoming) : node_id(++last_node_id)
+    computable_node_t(node_list_t all_incoming)
     {
         for (auto i : all_incoming)
         {
@@ -224,11 +244,6 @@ public:
         {
             i->outgoing.erase(this);
         }
-    }
-
-    auto id() const
-    {
-        return node_id;
     }
 
     bool has_value() const
@@ -321,39 +336,6 @@ public:
         return incoming;
     }
 
-    const auto& first_incoming() const
-    {
-        return *incoming.begin();
-    }
-
-    void primitives(set_t& result, set_t& already_passed)
-    {
-        if (! already_passed.count(this))
-        {
-            already_passed.push_back(this);
-
-            if (eligible())
-            {
-                result.push_back(this);
-            }
-            else
-            {
-                for (auto i : incoming)
-                {
-                    i->primitives(result, already_passed);
-                }
-            }
-        }
-    }
-
-    auto primitives()
-    {
-        auto result = set_t();
-        auto already_passed = set_t();
-        primitives(result, already_passed);
-        return result;
-    }
-
     bool is_or_precedes(computable_node_t* other) const
     {
         if (other == this || outgoing.count(other))
@@ -397,12 +379,11 @@ private:
     std::function<std::any()> computation;
     std::future<std::any> future_value;
     std::any value;
-    set_t incoming;
-    set_t outgoing;
+    node_list_t incoming;
+    node_list_t outgoing;
     unsigned long node_id;
     bool is_immediate = false;
     const char* node_name = "";
-    static unsigned long last_node_id;
     template<typename T> friend class computable_t;
 };
 
@@ -424,7 +405,7 @@ public:
     {
     }
 
-    computable_t(std::function<ValueType()> computation, computable_node_t::set_t incoming)
+    computable_t(std::function<ValueType()> computation, node_list_t incoming)
     : g(std::make_shared<computable_node_t>(incoming))
     {
         g->computation = computation;
@@ -498,7 +479,7 @@ using computable = computable_t<T>;
 
 //=============================================================================
 template<typename ValueType, typename Function>
-auto operator|(computable_t<ValueType> c, Function f)
+auto operator|(computable<ValueType> c, Function f)
 {
     return f(c);
 }
@@ -507,7 +488,7 @@ template<typename Function>
 auto from(Function f)
 {
     using value_type = std::invoke_result_t<Function>;
-    return computable_t<value_type>(f, {});
+    return computable<value_type>(f, {});
 }
 
 template<typename ValueType>
@@ -517,17 +498,17 @@ auto just(ValueType value)
 }
 
 template<typename... ValueType>
-auto zip(computable_t<ValueType>... c)
+auto zip(computable<ValueType>... c)
 {
     using value_type = std::tuple<ValueType...>;
-    return computable_t<value_type>([c...] () { return std::tuple(c.value()...); }, {c.node()...}).immediate(true);
+    return computable<value_type>([c...] () { return std::tuple(c.value()...); }, {c.node()...}).immediate(true);
 }
 
 template<typename ValueType, typename Function>
-auto map(computable_t<ValueType> c, Function f, const char* name=nullptr)
+auto map(computable<ValueType> c, Function f, const char* name=nullptr)
 {
     using value_type = std::invoke_result_t<Function, ValueType>;
-    return computable_t<value_type>([c, f] () { return f(c.value()); }, {c.node()}).name(name);
+    return computable<value_type>([c, f] () { return f(c.value()); }, {c.node()}).name(name);
 }
 
 template<typename Function>
@@ -546,19 +527,7 @@ auto mapv(Function f, const char* name=nullptr)
 
 
 //=============================================================================
-inline void print_recurse(pr::computable_node_t* node, pr::computable_node_t::set_t& already_printed, FILE* outfile)
-{
-    if (! already_printed.count(node))
-    {
-        already_printed.push_back(node);
-
-        for (auto o : node->outgoing_nodes())
-        {
-            std::fprintf(outfile, "    %ld -> %ld;\n", node->id(), o->id());
-            print_recurse(o, already_printed, outfile);
-        }
-    }
-};
+void print_graph(computable_node_t* node, FILE* outfile);
 
 
 
@@ -567,41 +536,53 @@ inline void print_recurse(pr::computable_node_t* node, pr::computable_node_t::se
  * @brief      Prints the execution graph for a computable in a format readable
  *             by the graphviz dot utility.
  *
- * @param[in]  c        The computable to print the graph for
- * @param      outfile  The file to write to
+ * @param[in]  c          The computable to print the graph for
+ * @param      outfile    The file to write to
  *
- * @tparam     T        The computable value type
+ * @tparam     ValueType  The computable value type
  *
  * @note       An example command to generate a PDF from an output file
  *             graph.dot is:
  *
  *             dot -Tpdf -o graph.pdf graph.dot
  */
-template<typename T>
-void print_graph(pr::computable_t<T> c, FILE* outfile)
+template<typename ValueType>
+void print_graph(pr::computable<ValueType> c, FILE* outfile)
 {
-    auto already_printed = pr::computable_node_t::set_t();
-    std::fprintf(outfile, "digraph {\n");
-    std::fprintf(outfile, "    ranksep=1.0;\n");
-
-    for (auto node : c.node()->primitives())
-    {
-        print_recurse(node, already_printed, outfile);
-    }
-    for (auto node : already_printed)
-    {
-        std::fprintf(outfile, "    %ld [shape=box,label=\"%s\",style=%s];\n",
-            node->id(),
-            node->name(),
-            node->immediate() ? "dotted" : "filled");
-    }
-    std::fprintf(outfile, "}\n");
+    print_graph(c.node(), outfile);
 }
 
 
 
 
-void topological_sort(computable_node_t* node);
+//=============================================================================
+std::pair<node_list_t, std::deque<unsigned>> topological_sort(computable_node_t* node);
+
+
+
+
+/**
+ * @brief      Sort the nodes upstream of and including some computable
+ *             according to a stable evaluation order.
+ *
+ * @param[in]  c          The computable
+ *
+ * @tparam     ValueType  The computable value type
+ *
+ * @return     Two sequences of the same length: the first containing the sorted
+ *             nodes, and the second containing a sequence of generation of each
+ *             node.
+ */
+template<typename ValueType>
+std::pair<node_list_t, std::deque<unsigned>> topological_sort(computable<ValueType> c)
+{
+    return topological_sort(c.node());
+}
+
+
+
+
+//=============================================================================
 void compute(computable_node_t* node, async_invoke_t scheduler);
 
 
@@ -610,15 +591,15 @@ void compute(computable_node_t* node, async_invoke_t scheduler);
 /**
  * @brief      Compute a computable on a (possibly asynchronous) scheduler.
  *
- * @param[in]  computable  The computable to compute
- * @param[in]  scheduler   The scheduling function
+ * @param[in]  c          The computable to compute
+ * @param[in]  scheduler  The scheduling function
  *
- * @tparam     ValueType   The computable value type
+ * @tparam     ValueType  The computable value type
  */
 template<typename ValueType>
-void compute(computable_t<ValueType> computable, async_invoke_t scheduler=synchronous_execution)
+void compute(computable<ValueType> c, async_invoke_t scheduler=synchronous_execution)
 {
-    compute(computable.node(), scheduler);
+    compute(c.node(), scheduler);
 }
 
 } // namespace computable
