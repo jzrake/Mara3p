@@ -316,8 +316,6 @@ private:
     template<typename T> friend class computable_t;
 };
 
-unsigned long computable_node_t::last_node_id = 0;
-
 
 
 
@@ -458,7 +456,7 @@ auto mapv(Function f, const char* name=nullptr)
 
 
 //=============================================================================
-void print_recurse(pr::computable_node_t* node, pr::computable_node_t::set_t& already_printed, FILE* outfile)
+inline void print_recurse(pr::computable_node_t* node, pr::computable_node_t::set_t& already_printed, FILE* outfile)
 {
     if (! already_printed.count(node))
     {
@@ -513,6 +511,12 @@ void print_graph(pr::computable_t<T> c, FILE* outfile)
 
 
 
+void topological_sort(computable_node_t* node);
+void compute(computable_node_t* node, async_invoke_t scheduler);
+
+
+
+
 /**
  * @brief      Compute a computable on a (possibly asynchronous) scheduler.
  *
@@ -524,44 +528,7 @@ void print_graph(pr::computable_t<T> c, FILE* outfile)
 template<typename ValueType>
 void compute(computable_t<ValueType> computable, async_invoke_t scheduler=synchronous_execution)
 {
-    auto eligible  = computable.node()->primitives();
-    auto pending   = computable_node_t::set_t();
-    auto completed = computable_node_t::set_t();
-
-    while (! eligible.empty() || ! pending.empty())
-    {
-        for (auto node : eligible)
-        {
-            node->submit(node->immediate() ? synchronous_execution : scheduler);
-            pending.insert(node);
-        }
-
-        for (auto node : pending)
-        {
-            if (node->ready())
-            {
-                completed.insert(node);
-            }
-            eligible.erase(node);
-        }
-
-        for (auto node : completed)
-        {
-            auto outgoing = node->outgoing_nodes();
-
-            pending.erase(node);
-            node->complete();
-
-            for (auto next : outgoing)
-            {
-                if (next->eligible() && next->is_or_precedes(computable.node()))
-                {
-                    eligible.insert(next);
-                }
-            }
-        }
-        completed.clear();
-    }
+    compute(computable.node(), scheduler);
 }
 
 } // namespace computable

@@ -83,7 +83,7 @@ problems/sedov: problems/sedov.o
 problems/sedov2d: problems/sedov2d.o src/scheme_sedov2d.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
-problems/minidisk: problems/minidisk.o problems/minidisk_io.o problems/minidisk_scheme.o
+problems/minidisk: problems/minidisk.o problems/minidisk_io.o problems/minidisk_scheme.o src/parallel_computable.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 clean:
