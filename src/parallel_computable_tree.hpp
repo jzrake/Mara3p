@@ -40,7 +40,7 @@ template<typename ValueType, uint Ratio>
 auto computable(shared_tree<pr::computable<ValueType>, Ratio> tree)
 {
     auto nodes = pr::computable_node_t::set_t();
-    sink(tree, [&nodes] (auto& b) { nodes.insert(b.node()); });
+    sink(tree, [&nodes] (auto& b) { nodes.push_back(b.node()); });
 
     return pr::computable_t<shared_tree<ValueType, Ratio>>([tree] ()
     {

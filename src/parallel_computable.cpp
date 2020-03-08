@@ -89,14 +89,14 @@ void pr::compute(computable_node_t* main_node, async_invoke_t scheduler)
         for (auto node : eligible)
         {
             node->submit(node->immediate() ? synchronous_execution : scheduler);
-            pending.insert(node);
+            pending.push_back(node);
         }
 
         for (auto node : pending)
         {
             if (node->ready())
             {
-                completed.insert(node);
+                completed.push_back(node);
             }
             eligible.erase(node);
         }
@@ -112,7 +112,7 @@ void pr::compute(computable_node_t* main_node, async_invoke_t scheduler)
             {
                 if (next->eligible() && next->is_or_precedes(main_node))
                 {
-                    eligible.insert(next);
+                    eligible.push_back(next);
                 }
             }
         }

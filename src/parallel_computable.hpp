@@ -31,6 +31,7 @@
 #include <any>
 #include <future>
 #include <set>
+#include <deque>
 
 
 
@@ -74,6 +75,106 @@ namespace pr // parallel runtime
 
 
 
+//=============================================================================
+template<typename T>
+class unique_deque_t
+{
+public:
+
+    unique_deque_t() {}
+    unique_deque_t(std::initializer_list<T> items) { for (auto item : items) push_back(item); }
+
+    decltype(auto) begin() const
+    {
+        return deque.begin();
+    }
+
+    decltype(auto) end() const
+    {
+        return deque.end();
+    }
+
+    auto count(const T& value) const
+    {
+        return set.count(value);
+    }
+
+    bool empty() const
+    {
+        return set.empty();
+    }
+
+    void push_back(T&& value)
+    {
+        if (! count(value))
+        {
+            deque.push_back(value);
+            set.insert(value);
+        }
+    }
+
+    void push_back(const T& value)
+    {
+        if (! count(value))
+        {
+            deque.push_back(value);
+            set.insert(value);
+        }
+    }
+
+    void push_front(T&& value)
+    {
+        if (! count(value))
+        {
+            deque.push_front(value);
+            set.insert(value);
+        }
+    }
+
+    void push_front(const T& value)
+    {
+        if (! count(value))
+        {
+            deque.push_front(value);
+            set.insert(value);
+        }
+    }
+
+    void pop_front()
+    {
+        set.erase(deque.front());
+        deque.pop_front();
+    }
+
+    void pop_back()
+    {
+        set.erase(deque.back());
+        deque.pop_back();
+    }
+
+    void erase(const T& value)
+    {
+        if (count(value))
+        {
+            set.erase(value);
+            deque.erase(std::find(deque.begin(), deque.end(), value));
+        }
+    }
+
+    void clear()
+    {
+        deque.clear();
+        set.clear();
+    }
+
+private:
+    std::deque<T> deque;
+    std::set<T> set;
+};
+
+
+
+
 using async_invoke_t = std::function<std::future<std::any>(std::function<std::any()>)>;
 
 
@@ -96,35 +197,24 @@ public:
 
 
     //=========================================================================
-    struct comparator_t
-    {
-        bool operator()(computable_node_t* a, computable_node_t* b) const
-        {
-            return a->node_id < b->node_id;
-        }
-    };
-
-    using set_t = std::set<computable_node_t*, comparator_t>;
+    using set_t = unique_deque_t<computable_node_t*>;
 
 
     //=========================================================================
     computable_node_t(const computable_node_t& other) = delete;
-    computable_node_t(const std::any& value) : value(value), node_id(++last_node_id)
-    {
-    }
-
+    computable_node_t(const std::any& value) : value(value) {}
     computable_node_t(set_t all_incoming) : node_id(++last_node_id)
     {
         for (auto i : all_incoming)
         {
             if (! i->has_value())
             {
-                incoming.insert(i);
+                incoming.push_back(i);
             }
         }
         for (auto i : incoming)
         {
-            i->outgoing.insert(this);
+            i->outgoing.push_back(this);
         }
     }
 
@@ -240,11 +330,11 @@ public:
     {
         if (! already_passed.count(this))
         {
-            already_passed.insert(this);
+            already_passed.push_back(this);
 
             if (eligible())
             {
-                result.insert(this);
+                result.push_back(this);
             }
             else
             {
@@ -460,7 +550,7 @@ inline void print_recurse(pr::computable_node_t* node, pr::computable_node_t::se
 {
     if (! already_printed.count(node))
     {
-        already_printed.insert(node);
+        already_printed.push_back(node);
 
         for (auto o : node->outgoing_nodes())
         {
