@@ -256,7 +256,7 @@ static auto step(solution_t solution, solver_data_t solver_data, int nfold, mara
     auto [iter, time, uc] = std::tuple(
         solution.iteration,
         solution.time,
-        solution.conserved | bsp::maps(pr::just<conserved_array_t>));
+        solution.conserved | bsp::maps([] (auto u) { return pr::just(u); }));
 
     auto cfl = solver_data.cfl * std::min(1.0, 0.01 + solution.time / unit_time(0.05));
     auto dt  = smallest_cell_crossing_time(solution.conserved, solver_data) * cfl;
@@ -267,7 +267,7 @@ static auto step(solution_t solution, solver_data_t solver_data, int nfold, mara
         std::tie(iter, time, uc) = encode_step(iter, time, uc, dt, solver_data);
     }
 
-    auto master = computable(uc).name("_U_");
+    auto master = bsp::computable(uc).name("_U_");
 
     if (print_only)
     {

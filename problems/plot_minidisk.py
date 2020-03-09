@@ -7,7 +7,7 @@ def print_quantiles(data):
     print()
     print('Quantiles:')
     for q in [0.0, 0.1, 1.0, 10.0, 90.0, 99.0, 99.9, 100.0]:
-        print(r'{:.01f}%'.format(q).rjust(10), '.......', '{:.02e}'.format(np.quantile(data, q * 0.01)))
+        print(r'{:.01f}%'.format(q).rjust(10), '.......', '{:.02e}'.format(np.percentile(data, q)))
     print()
 
 
@@ -123,8 +123,12 @@ def save_frames(fig, plot_fn, args):
     for filename in args.filenames:
         pngname = filename.replace('.h5', '.png')
         print('{} -> {}'.format(filename, pngname))
-        plot_fn(fig, filename, args)
         frames.append(pngname)
+
+        if os.path.isfile(pngname):
+            continue
+
+        plot_fn(fig, filename, args)
         fig.savefig(pngname)
         fig.clf()
 
