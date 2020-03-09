@@ -33,8 +33,13 @@
 
 
 
+using namespace pr;
+
+
+
+
 //=============================================================================
-static void primitives(pr::computable_node_t* node, pr::node_list_t& result, pr::node_list_t& passed)
+static void primitives(computable_node_t* node, node_list_t& result, node_list_t& passed)
 {
     if (! passed.count(node))
     {
@@ -54,19 +59,35 @@ static void primitives(pr::computable_node_t* node, pr::node_list_t& result, pr:
     }
 }
 
-static auto primitives(pr::computable_node_t* node)
+static auto primitives(computable_node_t* node)
 {
-    auto result = pr::node_list_t();
-    auto passed = pr::node_list_t();
+    auto result = node_list_t();
+    auto passed = node_list_t();
     primitives(node, result, passed);
     return result;
+}
+
+static bool is_or_precedes(computable_node_t* node, computable_node_t* other)
+{
+    if (other == node || node->outgoing_nodes().count(other))
+    {
+        return true;
+    }
+    for (auto o : node->outgoing_nodes())
+    {
+        if (is_or_precedes(o, other))
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 
 
 
 //=============================================================================
-std::pair<pr::unique_deque_t<pr::computable_node_t*>, std::deque<unsigned>>
+std::pair<unique_deque_t<computable_node_t*>, std::deque<unsigned>>
 pr::topological_sort(computable_node_t* node)
 {
     auto N0 = primitives(node);
@@ -88,7 +109,7 @@ pr::topological_sort(computable_node_t* node)
 
         for (auto o : n->outgoing_nodes())
         {
-            if (o->is_or_precedes(node))
+            if (is_or_precedes(o, node))
             {
                 const auto& i = o->incoming_nodes();
 
@@ -174,7 +195,7 @@ void pr::compute(computable_node_t* main_node, async_invoke_t scheduler)
 
             for (auto next : outgoing)
             {
-                if (next->eligible() && next->is_or_precedes(main_node))
+                if (next->eligible() && is_or_precedes(next, main_node))
                 {
                     eligible.push_back(next);
                 }

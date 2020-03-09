@@ -336,22 +336,6 @@ public:
         return incoming;
     }
 
-    bool is_or_precedes(computable_node_t* other) const
-    {
-        if (other == this || outgoing.count(other))
-        {
-            return true;
-        }
-        for (auto o : outgoing)
-        {
-            if (o->is_or_precedes(other))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
     auto& name(const char* name)
     {
         node_name = name;
