@@ -386,7 +386,7 @@ std::pair<sedov::radial_track_t, nd::shared_array<srhd::conserved_t, 1>> sedov::
         return std::make_pair(radial_track_t{rf, track.theta0, track.theta1}, uc);
     };
 
-    if (front(rf) < dimensional::unit_length(0.25))
+    if (front(rf) < dimensional::unit_length(1.0))
     {
         return make_track(rf | nd::select(0, 1) | nd::to_shared(), uc | nd::select(0, 1) | nd::to_shared());
     }
