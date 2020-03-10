@@ -204,3 +204,43 @@ void pr::compute(computable_node_t* main_node, async_invoke_t scheduler)
         completed.clear();
     }
 }
+
+
+
+
+//=============================================================================
+std::deque<unsigned> pr::divvy_tasks(const node_list_t& nodes, std::deque<unsigned>& generation, unsigned num_groups)
+{
+    auto count_same = [] (const std::deque<unsigned>& items, std::size_t start_index)
+    {
+        for (std::size_t i = start_index; i < items.size(); ++i)
+        {
+            if (items[i] != items[start_index])
+            {
+                return i - start_index;
+            }
+        }
+        return items.size() - start_index;
+    };
+
+    auto delegation = std::deque<unsigned>();
+    auto gen_start = std::size_t(0);
+
+    while (gen_start < nodes.size())
+    {
+        auto gen_size = count_same(generation, gen_start);
+        
+        for (std::size_t r = 0; r < num_groups; ++r)
+        {
+            auto start = gen_start + (r + 0) * gen_size / num_groups;
+            auto final = gen_start + (r + 1) * gen_size / num_groups;
+
+            for (std::size_t i = start; i < final; ++i)
+            {
+                delegation.push_back(r);
+            }
+        }
+        gen_start += gen_size;
+    }
+    return delegation;
+}

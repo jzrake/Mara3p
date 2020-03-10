@@ -586,4 +586,21 @@ void compute(computable<ValueType> c, async_invoke_t scheduler=synchronous_execu
     compute(c.node(), scheduler);
 }
 
+
+
+
+/**
+ * @brief      Assign an execution group to a list of nodes. These nodes and
+ *             their corresponding generation number must be the result of a
+ *             call to topological_sort.
+ *
+ * @param[in]  nodes       The list of nodes (topologically sorted)
+ * @param      generation  The list of node generations
+ * @param[in]  num_groups  The number of execution groups
+ *
+ * @return     A list of execution group indexes corresponding to the list of
+ *             nodes
+ */
+std::deque<unsigned> divvy_tasks(const node_list_t& nodes, std::deque<unsigned>& generation, unsigned num_groups);
+
 } // namespace computable
