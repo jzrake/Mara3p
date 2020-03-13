@@ -51,12 +51,12 @@
  *
  * A computable implements aspects of std::optional and std::future. When first
  * created, its has_value() method returns false, and calling value() raises an
- * exception. When the computable has no incoming edges but has not yet been
- * evaluated, its eligible() method returns true. When eligible, the computable
- * can be submitted for computation by calling the submit(scheduler) method,
- * where scheduler is a function object () -> std::future<T>. This causes the
- * computable's std::future instance to become valid, and its pending() method
- * to return true. When the computation has finished (the future is ready), the
+ * exception. When a computable's upstream nodes all have values, its eligible()
+ * method returns true. When eligible, the computable can be submitted for
+ * computation by calling the submit(scheduler) method, where scheduler is a
+ * function object () -> std::future<T>. This causes the computable's
+ * std::future instance to become valid, and its pending() method to return
+ * true. When the computation has finished (the future is ready), the
  * computable's ready() method returns true. Once ready, calling the complete()
  * method invalidates the future (causing pending() to return false), causes
  * value() to return the computation result, and clears the computation
@@ -223,15 +223,8 @@ public:
     //=========================================================================
     computable_node_t(const computable_node_t& other) = delete;
     computable_node_t(const std::any& value) : value(value) {}
-    computable_node_t(node_list_t all_incoming)
+    computable_node_t(node_list_t incoming) : incoming(incoming)
     {
-        for (auto i : all_incoming)
-        {
-            if (! i->has_value())
-            {
-                incoming.push_back(i);
-            }
-        }
         for (auto i : incoming)
         {
             i->outgoing.push_back(this);
@@ -270,7 +263,18 @@ public:
 
     bool eligible() const
     {
-        return incoming.empty() && computation != nullptr;
+        if (! computation)
+        {
+            return false;
+        }
+        for (auto node : incoming)
+        {
+            if (! node->has_value())
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     void submit(async_invoke_t scheduler)
@@ -289,11 +293,11 @@ public:
     {
         if (! pending())
         {
-            for (auto o : outgoing)
+            for (auto i : incoming)
             {
-                o->incoming.erase(this);
+                i->outgoing.erase(this);
             }
-            outgoing.clear();
+            incoming.clear();
             computation = nullptr;
             value = std::move(new_value);
         }
@@ -358,6 +362,21 @@ public:
         return is_immediate;
     }
 
+    void assign_to_group(int new_group)
+    {
+        task_group = new_group;
+    }
+
+    bool has_group_number()
+    {
+        return task_group >= 0;
+    }
+
+    auto group() const
+    {
+        return task_group;
+    }
+
 private:
     //=========================================================================
     std::function<std::any()> computation;
@@ -365,7 +384,7 @@ private:
     std::any value;
     node_list_t incoming;
     node_list_t outgoing;
-    unsigned long node_id;
+    int task_group = -1;
     bool is_immediate = false;
     const char* node_name = "";
     template<typename T> friend class computable_t;
@@ -554,8 +573,11 @@ std::pair<node_list_t, std::deque<unsigned>> topological_sort(computable_node_t*
  * @tparam     ValueType  The computable value type
  *
  * @return     Two sequences of the same length: the first containing the sorted
- *             nodes, and the second containing a sequence of generation of each
- *             node.
+ *             nodes, and the second containing the generation of each node.
+ *
+ * @note       The generation index labels batches of tasks that can be
+ *             performed in parallel. In graphviz, these generations are the
+ *             rows along which the nodes are arranged.
  */
 template<typename ValueType>
 std::pair<node_list_t, std::deque<unsigned>> topological_sort(computable<ValueType> c)
@@ -600,6 +622,9 @@ void compute(computable<ValueType> c, async_invoke_t scheduler=synchronous_execu
  *
  * @return     A list of execution group indexes corresponding to the list of
  *             nodes
+ *
+ * @note       The algorithm tries to maximize concurrency by assigning each
+ *             execution group an equal number of tasks from each generation.
  */
 std::deque<unsigned> divvy_tasks(const node_list_t& nodes, std::deque<unsigned>& generation, unsigned num_groups);
 

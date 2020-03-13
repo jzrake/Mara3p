@@ -45,7 +45,7 @@ static void primitives(computable_node_t* node, node_list_t& result, node_list_t
     {
         passed.push_back(node);
 
-        if (node->eligible())
+        if (node->has_value() || node->eligible())
         {
             result.push_back(node);
         }
@@ -211,16 +211,16 @@ void pr::compute(computable_node_t* main_node, async_invoke_t scheduler)
 //=============================================================================
 std::deque<unsigned> pr::divvy_tasks(const node_list_t& nodes, std::deque<unsigned>& generation, unsigned num_groups)
 {
-    auto count_same = [] (const std::deque<unsigned>& items, std::size_t start_index)
+    auto count_same = [] (const std::deque<unsigned>& items, std::size_t i0)
     {
-        for (std::size_t i = start_index; i < items.size(); ++i)
+        for (std::size_t i = i0; i < items.size(); ++i)
         {
-            if (items[i] != items[start_index])
+            if (items[i] != items[i0])
             {
-                return i - start_index;
+                return i - i0;
             }
         }
-        return items.size() - start_index;
+        return items.size() - i0;
     };
 
     auto delegation = std::deque<unsigned>();
@@ -229,7 +229,7 @@ std::deque<unsigned> pr::divvy_tasks(const node_list_t& nodes, std::deque<unsign
     while (gen_start < nodes.size())
     {
         auto gen_size = count_same(generation, gen_start);
-        
+
         for (std::size_t r = 0; r < num_groups; ++r)
         {
             auto start = gen_start + (r + 0) * gen_size / num_groups;
