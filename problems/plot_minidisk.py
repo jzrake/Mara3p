@@ -139,8 +139,8 @@ def save_frames(fig, plot_fn, args):
             for frame in frames:
                 tar.add(frame, arcname=os.path.join('images', os.path.basename(frame)))
 
-    for frame in frames:
-        os.remove(frame)
+        for frame in frames:
+            os.remove(frame)
 
 
 

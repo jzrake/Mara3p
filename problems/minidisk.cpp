@@ -38,6 +38,9 @@
 #include "physics_two_body.hpp"
 #include "minidisk.hpp"
 #include "minidisk_io.hpp"
+#ifndef GIT_COMMIT
+#define GIT_COMMIT ""
+#endif
 
 
 
