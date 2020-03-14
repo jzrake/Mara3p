@@ -78,3 +78,6 @@ struct serial::type_descriptor_t<std::variant<T...>>
         std::visit([&s] (auto& v) { s(v); }, value);
     }
 };
+
+template<typename... T>
+struct serial::is_serializable_t<std::variant<T...>> : std::true_type {};

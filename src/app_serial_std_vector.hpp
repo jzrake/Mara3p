@@ -63,3 +63,7 @@ struct serial::type_descriptor_t<std::vector<T>>
         s(value.data(), value.size());
     }
 };
+
+
+template<typename T>
+struct serial::is_serializable_t<std::vector<T>> : std::true_type {};

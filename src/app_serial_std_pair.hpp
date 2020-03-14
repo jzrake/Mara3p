@@ -44,3 +44,5 @@ struct serial::type_descriptor_t<std::pair<T, U>>
         s(value.second);
     }
 };
+
+template<typename T, typename U> struct serial::is_serializable_t<std::pair<T, U>> : std::true_type {};

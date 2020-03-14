@@ -48,3 +48,6 @@ struct serial::conversion_from_serializable_t<std::string>
     using type = std::vector<char>;
     auto operator()(std::vector<char> value) const { return std::string(value.begin(), value.end()); }
 };
+
+template<>
+struct serial::is_serializable_t<std::string> : std::true_type {};

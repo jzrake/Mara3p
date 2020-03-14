@@ -53,3 +53,6 @@ struct serial::type_descriptor_t<numeric::tuple_t<Ts...>>
         std::apply([&s] (auto&... x) { (..., s(x)); }, value.impl);
     }
 };
+
+template<typename... Ts>
+struct serial::is_serializable_t<numeric::tuple_t<Ts...>> : std::true_type {};

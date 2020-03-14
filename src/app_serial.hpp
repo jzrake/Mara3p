@@ -40,7 +40,21 @@ namespace serial {
 
 
 /**
- * @brief      Unspecified type-descriptor class. For each non-POD data type you
+ * @brief      Unspecialized is-serializable class. In addition to specializing
+ *             the appropriate type descriptor or conversion classes below, you
+ *             must also specialize this class to inherit from std::true_type
+ *             for the type you are serializing.
+ *
+ * @tparam     T     The type to serialize
+ */
+template<typename T>
+struct is_serializable_t : std::false_type {};
+
+
+
+
+/**
+ * @brief      Unspecialized type-descriptor class. For each non-POD data type you
  *             want to serialize (types not in std::is_trivially_copyable) you
  *             must provide a template specializaton of this struct, which
  *             overloads the call operator as a template member function:
@@ -65,7 +79,7 @@ struct type_descriptor_t
 
 
 /**
- * @brief      Unspecified conversion-to-serializable class. You should
+ * @brief      Unspecialized conversion-to-serializable class. You should
  *             specialize this struct for a type T if T must be converted to
  *             another type to be serialized. You must create a typedef called
  *             'type' to represent the converted-to type U in your
@@ -86,7 +100,7 @@ struct conversion_to_serializable_t
 
 
 /**
- * @brief      Unspecified conversion-from-serializable class. You should
+ * @brief      Unspecialized conversion-from-serializable class. You should
  *             specialize this struct for a type T if T is fetched from the
  *             deserializer as a type U other than T. You must create a typedef
  *             'type' to represent U, and overload the call operator to take a U
@@ -105,14 +119,14 @@ struct conversion_from_serializable_t
 
 
 /**
- * @brief      Unspecified struct to write the size of a dynamically sized
+ * @brief      Unspecialized struct to write the size of a dynamically sized
  *             container type T. The call operator must be overloaded with the
  *             same signature as below, but where a description of the item size
  *             (or shape) is described to the Serializer instance using the same
  *             types of calls as in the type_descriptor_t's call operator. If
  *             this struct is specialized then you also need to specialize
- *             container_shape_setter_t to vend out the size or shape information
- *             that was described here.
+ *             container_shape_setter_t to vend out the size or shape
+ *             information that was described here.
  *
  * @tparam     T     The container type
  */
@@ -127,7 +141,7 @@ struct container_shape_descriptor_t
 
 
 /**
- * @brief      Unspecified struct to create an instance of a dynamically sized
+ * @brief      Unspecialized struct to create an instance of a dynamically sized
  *             container type T. The call operator must be overloaded to vend
  *             from the Serializer instance the size or shape described in the
  *             specialization of container_shape_descriptor_t<T>, and then
@@ -141,6 +155,23 @@ struct container_shape_setter_t
     template<typename Serializer>
     void operator()(Serializer&, T&) const {}
 };
+
+
+
+
+//=============================================================================
+template<typename T>
+constexpr bool is_serializable()
+{
+    if constexpr (std::is_trivially_copyable_v<T>)
+    {
+        return true;
+    }
+    else
+    {
+        return is_serializable_t<T>::value;        
+    }
+}
 
 
 
@@ -335,7 +366,7 @@ private:
  *
  * @return     The buffer of serialized data
  */
-template<typename T>
+template<typename T, typename = typename std::enable_if_t<is_serializable<T>()>>
 auto dumps(T value)
 {
     serializer_t ser;
@@ -355,7 +386,7 @@ auto dumps(T value)
  *
  * @return     The de-serialized instance
  */
-template<typename T>
+template<typename T, typename = typename std::enable_if_t<is_serializable<T>()>>
 T loads(const std::vector<char>& buffer)
 {
     return deserializer_t(buffer).vend<T>();
@@ -402,6 +433,9 @@ struct serial::container_shape_descriptor_t<std::vector<T>>
 };
 
 template<typename T>
+struct serial::is_serializable_t<std::vector<T>> : std::true_type {};
+
+template<typename T>
 struct serial::type_descriptor_t<std::vector<T>>
 {
     template<typename Serializer>
@@ -419,6 +453,9 @@ struct serial::type_descriptor_t<std::vector<T>>
  *             to / from vector<char>
  */
 template<>
+struct serial::is_serializable_t<std::string> : std::true_type {};
+
+template<>
 struct serial::conversion_to_serializable_t<std::string>
 {
     using type = std::vector<char>;
@@ -431,6 +468,19 @@ struct serial::conversion_from_serializable_t<std::string>
     using type = std::vector<char>;
     auto operator()(std::vector<char> value) const { return std::string(value.begin(), value.end()); }
 };
+
+
+
+
+/**
+ * @brief      An example non-POD data structure that does not have
+ *             serialization info
+ */
+struct not_serializable
+{
+    std::vector<int> values;
+};
+
 
 
 
@@ -471,6 +521,9 @@ inline bool operator==(non_pod_struct_t a, non_pod_struct_t b)
 }
 
 template<>
+struct serial::is_serializable_t<non_pod_struct_t> : std::true_type {};
+
+template<>
 struct serial::type_descriptor_t<non_pod_struct_t>
 {
     template<typename Serializer>
@@ -499,6 +552,11 @@ inline void test_serial()
     require_serializes(std::string("hey there!"));
     require_serializes(pod_struct_t{32, 3.14159});
     require_serializes(non_pod_struct_t{32, 3.14159, {3.4, 0.0, 3.10101}, "does it work?"});
+
+    require(  serial::is_serializable<int>());
+    require(! serial::is_serializable<not_serializable>());
+    require(  serial::is_serializable<non_pod_struct_t>());
+    require(  serial::is_serializable<std::string>());
 }
 
 #endif // DO_UNIT_TESTS

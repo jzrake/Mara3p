@@ -100,6 +100,14 @@ struct serial::type_descriptor_t<std::array<nd::shared_array<ValueType, 3>, 3>>
 
 
 //=============================================================================
+template<typename ValueType, std::size_t Rank> struct serial::is_serializable_t<nd::shared_array<ValueType, Rank>> : std::true_type {};
+template<typename ValueType, std::size_t Rank> struct serial::is_serializable_t<nd::unique_array<ValueType, Rank>> : std::true_type {};
+template<typename ValueType> struct serial::is_serializable_t<std::array<nd::shared_array<ValueType, 3>, 3>> : std::true_type {};
+
+
+
+
+//=============================================================================
 #ifdef DO_UNIT_TESTS
 #include "app_serial_numeric_tuple.hpp"
 #include "core_dimensional.hpp"
