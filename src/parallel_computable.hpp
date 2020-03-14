@@ -33,6 +33,7 @@
 #include <set>
 #include <deque>
 #include <vector>
+#include "app_serial.hpp"
 
 
 
@@ -186,6 +187,17 @@ public:
     {
         deque.clear();
         set.clear();
+    }
+
+    const auto& item_set() const &
+    {
+        return set;
+    }
+
+    auto item_set() &&
+    {
+        deque.clear();
+        return std::move(set);
     }
 
 private:
@@ -502,19 +514,28 @@ public:
 
 private:
 
+    std::shared_ptr<computable_node_t> g;
+
+    //=========================================================================
     struct serializer_t : computable_serializer_t
     {
         std::vector<char> serialize(std::any value) const override
         {
-            return {};
+            if constexpr (serial::is_serializable<ValueType>())
+            {
+                return serial::dumps(std::any_cast<ValueType>(value));
+            }
+            throw std::runtime_error("mpr::computable (tried to serialize type lacking serialization traits)");
         }
         std::any deserialize(const std::vector<char> &bytes) const override
         {
-            return {};
+            if constexpr (serial::is_serializable<ValueType>())
+            {
+                return serial::loads<ValueType>(bytes);
+            }
+            throw std::runtime_error("mpr::computable (tried to deserialize type lacking serialization traits)");
         }
     };
-
-    std::shared_ptr<computable_node_t> g;
 };
 
 template <typename T>

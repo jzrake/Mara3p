@@ -278,7 +278,8 @@ void mpr::compute_mpi(computable_node_t* main_node)
     auto this_group    = mpi::comm_world().rank();
     auto message_queue = mara::MessageQueue();
     auto eligible      = collect(main_node, [this_group] (auto n) { return n->group() == this_group && n->eligible(); });
-    auto completed     = collect(main_node, [] (auto n) { return n->has_value(); });
+    auto delegated     = collect(main_node, [this_group] (auto n) { return n->group() == this_group; }).item_set();
+    auto completed     = collect(main_node, [] (auto n) { return n->has_value(); }).item_set();
 
 
 
@@ -333,7 +334,7 @@ void mpr::compute_mpi(computable_node_t* main_node)
 
 
 
-    while (! eligible.empty())
+    while (! eligible.empty() && ! delegated.empty())
     {
 
 
@@ -341,15 +342,15 @@ void mpr::compute_mpi(computable_node_t* main_node)
 
         //----------------------------------------------------------------------
         // Evaluate each eligible node, if it is delegated to this MPI rank.
-        // Enqueue each of the nodes downstream of
-        //
+        // Enqueue each of the eligible nodes downstream of that node.
         // --------------------------------------------------------------------
         for (auto node : eligible)
         {
             node->submit(synchronous_execution);
             node->complete();
             enqueue_eligible_downstream(node);
-            completed.push_back(node);
+            completed.insert(node);
+            delegated.erase(node);
         }
 
 
