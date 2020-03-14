@@ -39,13 +39,14 @@ using namespace pr;
 
 
 //=============================================================================
-static void primitives(computable_node_t* node, node_list_t& result, node_list_t& passed)
+template<typename Predicate>
+static void collect(computable_node_t* node, Predicate pred, node_list_t& result, node_list_t& passed)
 {
     if (! passed.count(node))
     {
         passed.push_back(node);
 
-        if (node->has_value() || node->eligible())
+        if (pred(node))
         {
             result.push_back(node);
         }
@@ -53,17 +54,18 @@ static void primitives(computable_node_t* node, node_list_t& result, node_list_t
         {
             for (auto i : node->incoming_nodes())
             {
-                primitives(i, result, passed);
+                collect(i, pred, result, passed);
             }
         }
     }
 }
 
-static auto primitives(computable_node_t* node)
+template<typename Predicate>
+static auto collect(computable_node_t* node, Predicate pred)
 {
     auto result = node_list_t();
     auto passed = node_list_t();
-    primitives(node, result, passed);
+    collect(node, pred, result, passed);
     return result;
 }
 
@@ -90,7 +92,7 @@ static bool is_or_precedes(computable_node_t* node, computable_node_t* other)
 std::pair<unique_deque_t<computable_node_t*>, std::deque<unsigned>>
 pr::topological_sort(computable_node_t* node)
 {
-    auto N0 = primitives(node);
+    auto N0 = collect(node, [] (auto n) { return n->has_value() || n->eligible(); });
     auto N1 = unique_deque_t<computable_node_t*>();
 
     auto G0 = std::deque<unsigned>(N0.size(), 0);
@@ -165,7 +167,7 @@ void pr::print_graph(computable_node_t* node, FILE* outfile)
 //=============================================================================
 void pr::compute(computable_node_t* main_node, async_invoke_t scheduler)
 {
-    auto eligible  = primitives(main_node);
+    auto eligible  = collect(main_node, [] (auto n) { return n->eligible(); });
     auto pending   = node_list_t();
     auto completed = node_list_t();
 
@@ -243,4 +245,162 @@ std::deque<unsigned> pr::divvy_tasks(const node_list_t& nodes, std::deque<unsign
         gen_start += gen_size;
     }
     return delegation;
+}
+
+
+
+
+#include "parallel_message_queue.hpp"
+
+
+
+
+/**
+ * @brief      Compute a node on an MPI communicator.
+ *
+ * @param      main_node  The node to compute
+ *
+ * @note       First, assign MPI ranks to the tasks. Some tasks will already be
+ *             assigned to an MPI rank. These tasks may or may not have a value.
+ *             If they don't have a value, that's because they were delegated to
+ *             a different MPI rank. If the task already has a rank assignment,
+ *             do not reassign it. Next, begin the main loop, evaluating
+ *             eligible nodes as in the single-rank algorithm. When a node is
+ *             encountered that has been delegated to a different rank, set its
+ *             value to std::any() and move on.
+ */
+void pr::compute_mpi(computable_node_t* main_node)
+{
+
+
+
+
+    auto this_group    = mpi::comm_world().rank();
+    auto message_queue = mara::MessageQueue();
+    auto eligible      = collect(main_node, [this_group] (auto n) { return n->group() == this_group && n->eligible(); });
+    auto completed     = collect(main_node, [] (auto n) { return n->has_value(); });
+    auto serialize = [] (unsigned, std::any) { return mpi::buffer_t(); };
+
+
+
+
+    //--------------------------------------------------------------------------
+    // Collect and sort all upstream nodes, including those already evaluated.
+    // Assign the unevaluated tasks to an MPI rank based on divvying the tasks
+    // in each generation.
+    // ------------------------------------------------------------------------
+    auto [sorted_nodes, generation] = topological_sort(main_node);
+    auto delegation = divvy_tasks(sorted_nodes, generation, 4);
+    auto order = std::map<computable_node_t*, unsigned>();
+
+    for (std::size_t i = 0; i < sorted_nodes.size(); ++i)
+    {
+        if (! sorted_nodes[i]->has_group_number())
+        {
+            sorted_nodes[i]->assign_to_group(delegation[i]);            
+        }
+        order[sorted_nodes[i]] = i;
+    }
+
+
+
+
+    //--------------------------------------------------------------------------
+    // Put each node that is immediately downstream of a node A into the
+    // eligible container.
+    // ------------------------------------------------------------------------
+    auto enqueue_eligible_downstream = [main_node, this_group, &eligible] (computable_node_t* node)
+    {
+        for (auto next : node->outgoing_nodes())
+        {
+            if (next->group() == this_group && next->eligible() && is_or_precedes(next, main_node))
+            {
+                eligible.push_back(next);
+            }
+        }
+    };
+
+    auto unique_recipients = [] (computable_node_t* node)
+    {
+        auto result = std::set<int>();
+
+        for (auto next : node->outgoing_nodes())
+        {
+            result.insert(next->group());
+        }
+        return result;
+    };
+
+
+
+
+    while (! eligible.empty())
+    {
+
+
+
+
+        //----------------------------------------------------------------------
+        // Evaluate each eligible node, if it is delegated to this MPI rank.
+        // Enqueue each of the nodes downstream of
+        //
+        // --------------------------------------------------------------------
+        for (auto node : eligible)
+        {
+            node->submit(synchronous_execution);
+            node->complete();
+            enqueue_eligible_downstream(node);
+            completed.push_back(node);
+        }
+
+
+
+
+        //---------------------------------------------------------------------
+        // Send the serialized result of each completed node A to each MPI rank
+        // that is responsible for any of A's downstream nodes.
+        // --------------------------------------------------------------------
+        for (auto node : completed)
+        {
+            auto index = order[node];
+            auto value = node->value();
+            message_queue.push(serialize(index, value), unique_recipients(node));
+        }
+
+
+
+
+        //---------------------------------------------------------------------
+        // Receive the serialized result of each node A, that was completed on
+        // another MPI rank, and which has a downstream node delegated to this
+        // MPI rank.
+        // --------------------------------------------------------------------
+        for (auto message : message_queue.poll())
+        {
+            auto index = unsigned(0); // unpack these from the message
+            auto value = std::any();
+            sorted_nodes[index]->set(value);
+            enqueue_eligible_downstream(sorted_nodes[index]);
+        }
+
+        completed.clear();
+    }
+
+
+
+
+    //-------------------------------------------------------------------------
+    // Assign an empty value to any nodes that do not have one.
+    // ------------------------------------------------------------------------
+    for (auto node : sorted_nodes)
+    {
+        if (! node->has_value())
+        {
+            if (node->group() == this_group)
+            {
+                throw std::logic_error("pr::compute_mpi (node delegated to this MPI rank was not evaluated)");
+            }
+            node->set(std::any());
+        }
+    }
 }

@@ -222,7 +222,7 @@ public:
 
     //=========================================================================
     computable_node_t(const computable_node_t& other) = delete;
-    computable_node_t(const std::any& value) : value(value) {}
+    computable_node_t(const std::any& any_value) : any_value(any_value) {}
     computable_node_t(node_list_t incoming) : incoming(incoming)
     {
         for (auto i : incoming)
@@ -241,7 +241,12 @@ public:
 
     bool has_value() const
     {
-        return value.has_value();
+        return any_value.has_value();
+    }
+
+    const auto& value() const
+    {
+        return any_value;
     }
 
     bool ready() const
@@ -263,7 +268,7 @@ public:
 
     bool eligible() const
     {
-        if (! computation)
+        if (has_value())
         {
             return false;
         }
@@ -299,7 +304,7 @@ public:
             }
             incoming.clear();
             computation = nullptr;
-            value = std::move(new_value);
+            any_value = std::move(new_value);
         }
         else
         {
@@ -381,7 +386,7 @@ private:
     //=========================================================================
     std::function<std::any()> computation;
     std::future<std::any> future_value;
-    std::any value;
+    std::any any_value;
     node_list_t incoming;
     node_list_t outgoing;
     int task_group = -1;
@@ -416,11 +421,11 @@ public:
 
     const auto& value() const
     {
-        if (! g->value.has_value())
+        if (! g->has_value())
         {
             throw std::logic_error("computable_t::value (no value)");
         }
-        return std::any_cast<const ValueType&>(g->value);
+        return std::any_cast<const ValueType&>(g->value());
     }
 
     bool has_value() const
@@ -487,17 +492,17 @@ auto operator|(computable<ValueType> c, Function f)
     return f(c);
 }
 
+template<typename ValueType>
+auto just(ValueType value)
+{
+    return computable<ValueType>(value).immediate(true);
+}
+
 template<typename Function>
 auto from(Function f)
 {
     using value_type = std::invoke_result_t<Function>;
     return computable<value_type>(f, {});
-}
-
-template<typename ValueType>
-auto just(ValueType value)
-{
-    return from([value] () { return value; }).immediate(true);
 }
 
 template<typename... ValueType>
@@ -588,6 +593,26 @@ std::pair<node_list_t, std::deque<unsigned>> topological_sort(computable<ValueTy
 
 
 
+/**
+ * @brief      Assign an execution group to a list of nodes. These nodes and
+ *             their corresponding generation number must be the result of a
+ *             call to topological_sort.
+ *
+ * @param[in]  nodes       The list of nodes (topologically sorted)
+ * @param      generation  The list of node generations
+ * @param[in]  num_groups  The number of execution groups
+ *
+ * @return     A list of execution group indexes corresponding to the list of
+ *             nodes
+ *
+ * @note       The algorithm tries to maximize concurrency by assigning each
+ *             execution group an equal number of tasks from each generation.
+ */
+std::deque<unsigned> divvy_tasks(const node_list_t& nodes, std::deque<unsigned>& generation, unsigned num_groups);
+
+
+
+
 //=============================================================================
 void compute(computable_node_t* node, async_invoke_t scheduler);
 
@@ -612,20 +637,11 @@ void compute(computable<ValueType> c, async_invoke_t scheduler=synchronous_execu
 
 
 /**
- * @brief      Assign an execution group to a list of nodes. These nodes and
- *             their corresponding generation number must be the result of a
- *             call to topological_sort.
- *
- * @param[in]  nodes       The list of nodes (topologically sorted)
- * @param      generation  The list of node generations
- * @param[in]  num_groups  The number of execution groups
- *
- * @return     A list of execution group indexes corresponding to the list of
- *             nodes
- *
- * @note       The algorithm tries to maximize concurrency by assigning each
- *             execution group an equal number of tasks from each generation.
+ * @brief      In-progress implementation of a distributed execution strategy.
  */
-std::deque<unsigned> divvy_tasks(const node_list_t& nodes, std::deque<unsigned>& generation, unsigned num_groups);
+void compute_mpi(computable_node_t* main_node);
+
+
+
 
 } // namespace computable
