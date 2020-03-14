@@ -369,9 +369,9 @@ public:
         return incoming;
     }
 
-    auto& name(const char* name)
+    auto& name(const char* new_name)
     {
-        node_name = name;
+        node_name = new_name;
         return *this;
     }
 
@@ -490,9 +490,9 @@ public:
         return g.get();
     }
 
-    auto& name(const char* name)
+    auto& name(const char* new_name)
     {
-        g->name(name);
+        g->name(new_name);
         return *this;
     }
 
@@ -572,20 +572,20 @@ auto zip(computable<ValueType>... c)
 }
 
 template<typename ValueType, typename Function>
-auto map(computable<ValueType> c, Function f, const char* name=nullptr)
+auto map(computable<ValueType> c, Function f, const char* name="")
 {
     using value_type = std::invoke_result_t<Function, ValueType>;
     return computable<value_type>([c, f] () { return f(c.value()); }, {c.node()}).name(name);
 }
 
 template<typename Function>
-auto map(Function f, const char* name=nullptr)
+auto map(Function f, const char* name="")
 {
     return [f, name] (auto c) { return map(c, f, name); };
 }
 
 template<typename Function>
-auto mapv(Function f, const char* name=nullptr)
+auto mapv(Function f, const char* name="")
 {
     return [f, name] (auto c) { return map(c, [f] (auto t) { return std::apply(f, t); }, name); };
 }
