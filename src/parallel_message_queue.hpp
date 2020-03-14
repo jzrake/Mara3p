@@ -64,9 +64,9 @@ public:
      * @param[in]  message         The message to send
      * @param[in]  recipient_rank  The message recipient rank
      */
-    void push(buffer_t message, int recipient_rank)
+    void push(buffer_t message, int recipient_rank, int tag=mpi::any_tag)
     {
-        send_requests.push_back(mpi::comm_world().isend(std::move(message), recipient_rank));
+        send_requests.push_back(mpi::comm_world().isend(std::move(message), recipient_rank, tag));
     }
 
 
@@ -79,11 +79,11 @@ public:
      * @param[in]  message          The message to push
      * @param[in]  recipient_ranks  The ranks of the recipient processes
      */
-    void push(buffer_t message, std::set<int> recipient_ranks)
+    void push(buffer_t message, std::set<int> recipient_ranks, int tag=mpi::any_tag)
     {
         for (auto recipient : recipient_ranks)
         {
-            push(message, recipient);
+            push(message, recipient, tag);
         }
     }
 
@@ -100,11 +100,31 @@ public:
      */
     std::vector<buffer_t> poll()
     {
+        auto result = std::vector<buffer_t>();
+
+        for (auto&& [tag, buffer] : poll_tags())
+        {
+            result.push_back(std::move(buffer));
+        }
+        return result;
+    }
+
+
+
+
+    /**
+     * @brief      Same as poll, but returns a vector of pair of tag-buffer
+     *             pairs.
+     *
+     * @return     A std::vector of tags and messages that were received
+     */
+    std::vector<std::pair<int, buffer_t>> poll_tags()
+    {
         send_requests.erase(std::remove_if(
             send_requests.begin(),
             send_requests.end(), std::mem_fn(&mpi::Request::is_ready)), send_requests.end());
 
-        auto result = std::vector<buffer_t>();
+        auto result = std::vector<std::pair<int, buffer_t>>();
 
         while (true)
         {
@@ -115,7 +135,7 @@ public:
             {
                 break;
             }
-            result.push_back(comm.recv(status.source(), status.tag()));
+            result.emplace_back(status.tag(), comm.recv(status.source(), status.tag()));
         }
         return result;
     }
