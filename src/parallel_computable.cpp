@@ -33,7 +33,7 @@
 
 
 
-using namespace pr;
+using namespace mpr;
 
 
 
@@ -90,7 +90,7 @@ static bool is_or_precedes(computable_node_t* node, computable_node_t* other)
 
 //=============================================================================
 std::pair<unique_deque_t<computable_node_t*>, std::deque<unsigned>>
-pr::topological_sort(computable_node_t* node)
+mpr::topological_sort(computable_node_t* node)
 {
     auto N0 = collect(node, [] (auto n) { return n->has_value() || n->eligible(); });
     auto N1 = unique_deque_t<computable_node_t*>();
@@ -130,7 +130,7 @@ pr::topological_sort(computable_node_t* node)
 
 
 //=============================================================================
-void pr::print_graph(computable_node_t* node, FILE* outfile)
+void mpr::print_graph(computable_node_t* node, FILE* outfile)
 {
     auto [nodes, generation] = topological_sort(node);
     auto order = std::map<computable_node_t*, unsigned>();
@@ -165,7 +165,7 @@ void pr::print_graph(computable_node_t* node, FILE* outfile)
 
 
 //=============================================================================
-void pr::compute(computable_node_t* main_node, async_invoke_t scheduler)
+void mpr::compute(computable_node_t* main_node, async_invoke_t scheduler)
 {
     auto eligible  = collect(main_node, [] (auto n) { return n->eligible(); });
     auto pending   = node_list_t();
@@ -211,7 +211,7 @@ void pr::compute(computable_node_t* main_node, async_invoke_t scheduler)
 
 
 //=============================================================================
-std::deque<unsigned> pr::divvy_tasks(const node_list_t& nodes, std::deque<unsigned>& generation, unsigned num_groups)
+std::deque<unsigned> mpr::divvy_tasks(const node_list_t& nodes, std::deque<unsigned>& generation, unsigned num_groups)
 {
     auto count_same = [] (const std::deque<unsigned>& items, std::size_t i0)
     {
@@ -269,7 +269,7 @@ std::deque<unsigned> pr::divvy_tasks(const node_list_t& nodes, std::deque<unsign
  *             encountered that has been delegated to a different rank, set its
  *             value to std::any() and move on.
  */
-void pr::compute_mpi(computable_node_t* main_node)
+void mpr::compute_mpi(computable_node_t* main_node)
 {
 
 
@@ -279,7 +279,6 @@ void pr::compute_mpi(computable_node_t* main_node)
     auto message_queue = mara::MessageQueue();
     auto eligible      = collect(main_node, [this_group] (auto n) { return n->group() == this_group && n->eligible(); });
     auto completed     = collect(main_node, [] (auto n) { return n->has_value(); });
-    auto serialize = [] (unsigned, std::any) { return mpi::buffer_t(); };
 
 
 
@@ -362,24 +361,20 @@ void pr::compute_mpi(computable_node_t* main_node)
         // --------------------------------------------------------------------
         for (auto node : completed)
         {
-            auto index = order[node];
-            auto value = node->value();
-            message_queue.push(serialize(index, value), unique_recipients(node));
+            message_queue.push(node->serialize(), unique_recipients(node), order[node]);
         }
 
 
 
 
-        //---------------------------------------------------------------------
-        // Receive the serialized result of each node A, that was completed on
+        //----------------------------------------------------------------------
+        // Receive the serialized result of each node that was completed on
         // another MPI rank, and which has a downstream node delegated to this
         // MPI rank.
         // --------------------------------------------------------------------
-        for (auto message : message_queue.poll())
+        for (const auto& [index, bytes] : message_queue.poll_tags())
         {
-            auto index = unsigned(0); // unpack these from the message
-            auto value = std::any();
-            sorted_nodes[index]->set(value);
+            sorted_nodes[index]->load_from(bytes);
             enqueue_eligible_downstream(sorted_nodes[index]);
         }
 
@@ -398,7 +393,7 @@ void pr::compute_mpi(computable_node_t* main_node)
         {
             if (node->group() == this_group)
             {
-                throw std::logic_error("pr::compute_mpi (node delegated to this MPI rank was not evaluated)");
+                throw std::logic_error("mpr::compute_mpi (node delegated to this MPI rank was not evaluated)");
             }
             node->set(std::any());
         }

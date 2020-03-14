@@ -80,7 +80,7 @@ static const auto binary_period = unit_time(2 * M_PI);
 
 //=============================================================================
 template<typename ArrayType>
-auto extend_x(bsp::shared_tree<pr::computable<ArrayType>, 4> __pc__, bsp::tree_index_t<2> block, bool dummy=false)
+auto extend_x(bsp::shared_tree<mpr::computable<ArrayType>, 4> __pc__, bsp::tree_index_t<2> block, bool dummy=false)
 {
     if (dummy)
     {
@@ -91,7 +91,7 @@ auto extend_x(bsp::shared_tree<pr::computable<ArrayType>, 4> __pc__, bsp::tree_i
     auto _pc_ = value_at(__pc__, block);
     auto _pr_ = value_at(__pc__, next_on(block, 0));
 
-    return pr::zip(_pl_, _pc_, _pr_) | pr::mapv([] (auto pl, auto pc, auto pr)
+    return mpr::zip(_pl_, _pc_, _pr_) | mpr::mapv([] (auto pl, auto pc, auto pr)
     {
         auto nx = shape(pc, 0);
         auto ny = shape(pc, 1);
@@ -106,7 +106,7 @@ auto extend_x(bsp::shared_tree<pr::computable<ArrayType>, 4> __pc__, bsp::tree_i
 }
 
 template<typename ArrayType>
-auto extend_y(bsp::shared_tree<pr::computable<ArrayType>, 4> __pc__, bsp::tree_index_t<2> block, bool dummy=false)
+auto extend_y(bsp::shared_tree<mpr::computable<ArrayType>, 4> __pc__, bsp::tree_index_t<2> block, bool dummy=false)
 {
     if (dummy)
     {
@@ -117,7 +117,7 @@ auto extend_y(bsp::shared_tree<pr::computable<ArrayType>, 4> __pc__, bsp::tree_i
     auto _pc_ = value_at(__pc__, block);
     auto _pr_ = value_at(__pc__, next_on(block, 1));
 
-    return pr::zip(_pl_, _pc_, _pr_) | pr::mapv([] (auto pl, auto pc, auto pr)
+    return mpr::zip(_pl_, _pc_, _pr_) | mpr::mapv([] (auto pl, auto pc, auto pr)
     {
         auto nx = shape(pc, 0);
         auto ny = shape(pc, 1);
@@ -208,18 +208,18 @@ static auto smallest_cell_crossing_time(conserved_tree_t uc, solver_data_t solve
 static auto encode_step(
     rational::number_t iteration,
     unit_time time,
-    bsp::shared_tree<pr::computable<conserved_array_t>, 4> conserved,
+    bsp::shared_tree<mpr::computable<conserved_array_t>, 4> conserved,
     unit_time dt,
     solver_data_t solver_data)
 {
     auto skip_trans = solver_data.kinematic_viscosity == unit_viscosity(0.0);
     auto mesh   = indexes(conserved);
     auto _uc_   = conserved;
-    auto _pc_   = _uc_ | bsp::maps(pr::map(minidisk::recover_primitive_array, "P"));
+    auto _pc_   = _uc_ | bsp::maps(mpr::map(minidisk::recover_primitive_array, "P"));
     auto _p_ext_x_ = mesh | bsp::maps([_pc_] (auto index) { return extend_x(_pc_, index).name("P-x"); });
     auto _p_ext_y_ = mesh | bsp::maps([_pc_] (auto index) { return extend_y(_pc_, index).name("P-y"); });
-    auto _gradient_x_ = _p_ext_x_ | bsp::maps(pr::map(std::bind(estimate_gradient, _1, 0, 2.0), "Gx"));
-    auto _gradient_y_ = _p_ext_y_ | bsp::maps(pr::map(std::bind(estimate_gradient, _1, 1, 2.0), "Gy"));
+    auto _gradient_x_ = _p_ext_x_ | bsp::maps(mpr::map(std::bind(estimate_gradient, _1, 0, 2.0), "Gx"));
+    auto _gradient_y_ = _p_ext_y_ | bsp::maps(mpr::map(std::bind(estimate_gradient, _1, 1, 2.0), "Gy"));
 
     auto _gradient_x_ext_x_ = mesh | bsp::map([g=_gradient_x_            ] (auto index) { return extend_x(g, index).name("Gx-x"); });
     auto _gradient_x_ext_y_ = mesh | bsp::map([g=_gradient_x_, skip_trans] (auto index) { return extend_y(g, index, skip_trans).name("Gx-y"); });
@@ -229,22 +229,22 @@ static auto encode_step(
     auto _godunov_fluxes_x_ = zip(_p_ext_x_, _gradient_x_ext_x_, _gradient_y_ext_x_, mesh)
     | bsp::mapvs([solver_data] (auto pc, auto gl, auto gt, auto block)
     {
-        return pr::zip(pc, gl, gt)
-        | pr::mapv(std::bind(godunov_and_viscous_fluxes, _1, _2, _3, solver_data, block, 0), "Fx");
+        return zip(pc, gl, gt)
+        | mpr::mapv(std::bind(godunov_and_viscous_fluxes, _1, _2, _3, solver_data, block, 0), "Fx");
     });
 
     auto _godunov_fluxes_y_ = zip(_p_ext_y_, _gradient_y_ext_y_, _gradient_x_ext_y_, mesh)
     | bsp::mapvs([solver_data] (auto pc, auto gl, auto gt, auto block)
     {
-        return pr::zip(pc, gl, gt)
-        | pr::mapv(std::bind(godunov_and_viscous_fluxes, _1, _2, _3, solver_data, block, 1), "Fy");
+        return zip(pc, gl, gt)
+        | mpr::mapv(std::bind(godunov_and_viscous_fluxes, _1, _2, _3, solver_data, block, 1), "Fy");
     });
 
     auto u1 = zip(_uc_, _pc_, _godunov_fluxes_x_, _godunov_fluxes_y_, mesh)
     | bsp::mapvs([t=time, dt, solver_data] (auto uc, auto pc, auto fx, auto fy, auto block)
     {
-        return pr::zip(uc, pc, fx, fy)
-        | pr::mapv(std::bind(updated_conserved, _1, _2, _3, _4, t, dt, block, solver_data), "U");
+        return zip(uc, pc, fx, fy)
+        | mpr::mapv(std::bind(updated_conserved, _1, _2, _3, _4, t, dt, block, solver_data), "U");
     });
 
     return std::tuple(iteration + 1, time + dt, u1);
@@ -259,7 +259,7 @@ static auto step(solution_t solution, solver_data_t solver_data, int nfold, mara
     auto [iter, time, uc] = std::tuple(
         solution.iteration,
         solution.time,
-        solution.conserved | bsp::maps([] (auto u) { return pr::just(u); }));
+        solution.conserved | bsp::maps([] (auto u) { return mpr::just(u); }));
 
     auto cfl = solver_data.cfl * std::min(1.0, 0.01 + solution.time / unit_time(0.05));
     auto dt  = smallest_cell_crossing_time(solution.conserved, solver_data) * cfl;

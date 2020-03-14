@@ -37,15 +37,15 @@
 namespace bsp {
 
 template<typename ValueType, uint Ratio>
-auto computable(shared_tree<pr::computable<ValueType>, Ratio> tree)
+auto computable(shared_tree<mpr::computable<ValueType>, Ratio> tree)
 {
-    auto nodes = pr::unique_deque_t<pr::computable_node_t*>();
+    auto nodes = mpr::unique_deque_t<mpr::computable_node_t*>();
     sink(tree, [&nodes] (auto& b) { nodes.push_back(b.node()); });
 
-    return pr::computable_t<shared_tree<ValueType, Ratio>>([tree] ()
+    return mpr::computable_t<shared_tree<ValueType, Ratio>>([tree] ()
     {
         return tree | bsp::maps([] (auto v) { return v.value(); });
     }, nodes);
 }
 
-}
+} // namespace bsp

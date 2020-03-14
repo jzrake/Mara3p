@@ -32,6 +32,7 @@
 #include <future>
 #include <set>
 #include <deque>
+#include <vector>
 
 
 
@@ -69,7 +70,7 @@
 
 
 //=============================================================================
-namespace pr // parallel runtime
+namespace mpr // massively parallel runtime
 {
 
 
@@ -210,6 +211,17 @@ inline auto synchronous_execution(std::function<std::any()> computation)
     task();
     return task.get_future();
 }
+
+
+
+
+//=============================================================================
+struct computable_serializer_t
+{
+    virtual ~computable_serializer_t() {}
+    virtual std::vector<char> serialize(std::any value) const = 0;
+    virtual std::any deserialize(const std::vector<char>& bytes) const = 0;
+};
 
 
 
@@ -382,8 +394,19 @@ public:
         return task_group;
     }
 
+    auto serialize() const
+    {
+        return serializer->serialize(value());
+    }
+
+    void load_from(const std::vector<char>& bytes)
+    {
+        set(serializer->deserialize(bytes));
+    }
+
 private:
     //=========================================================================
+    std::shared_ptr<computable_serializer_t> serializer;
     std::function<std::any()> computation;
     std::future<std::any> future_value;
     std::any any_value;
@@ -411,12 +434,14 @@ public:
     computable_t(const ValueType& value)
     : g(std::make_shared<computable_node_t>(value))
     {
+        g->serializer = std::make_shared<serializer_t>();
     }
 
     computable_t(std::function<ValueType()> computation, node_list_t incoming)
     : g(std::make_shared<computable_node_t>(incoming))
     {
         g->computation = computation;
+        g->serializer = std::make_shared<serializer_t>();
     }
 
     const auto& value() const
@@ -476,6 +501,19 @@ public:
     }
 
 private:
+
+    struct serializer_t : computable_serializer_t
+    {
+        std::vector<char> serialize(std::any value) const override
+        {
+            return {};
+        }
+        std::any deserialize(const std::vector<char> &bytes) const override
+        {
+            return {};
+        }
+    };
+
     std::shared_ptr<computable_node_t> g;
 };
 
@@ -555,7 +593,7 @@ void print_graph(computable_node_t* node, FILE* outfile);
  *             dot -Tpdf -o graph.pdf graph.dot
  */
 template<typename ValueType>
-void print_graph(pr::computable<ValueType> c, FILE* outfile)
+void print_graph(computable<ValueType> c, FILE* outfile)
 {
     print_graph(c.node(), outfile);
 }
@@ -644,4 +682,4 @@ void compute_mpi(computable_node_t* main_node);
 
 
 
-} // namespace computable
+} // namespace mpr
