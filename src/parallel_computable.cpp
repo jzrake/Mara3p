@@ -50,12 +50,10 @@ static void collect(computable_node_t* node, Predicate pred, node_list_t& result
         {
             result.push_back(node);
         }
-        else
+
+        for (auto i : node->incoming_nodes())
         {
-            for (auto i : node->incoming_nodes())
-            {
-                collect(i, pred, result, passed);
-            }
+            collect(i, pred, result, passed);
         }
     }
 }
@@ -92,7 +90,7 @@ static bool is_or_precedes(computable_node_t* node, computable_node_t* other)
 std::pair<unique_deque_t<computable_node_t*>, std::deque<unsigned>>
 mpr::topological_sort(computable_node_t* node)
 {
-    auto N0 = collect(node, [] (auto n) { return n->has_value() || n->eligible(); });
+    auto N0 = collect(node, [] (auto n) { return n->incoming_nodes().empty(); });
     auto N1 = unique_deque_t<computable_node_t*>();
 
     auto G0 = std::deque<unsigned>(N0.size(), 0);
@@ -130,6 +128,46 @@ mpr::topological_sort(computable_node_t* node)
 
 
 //=============================================================================
+std::deque<unsigned> mpr::divvy_tasks(const node_list_t& nodes, std::deque<unsigned>& generation, unsigned num_groups)
+{
+    auto count_same = [] (const std::deque<unsigned>& items, std::size_t i0)
+    {
+        for (std::size_t i = i0; i < items.size(); ++i)
+        {
+            if (items[i] != items[i0])
+            {
+                return i - i0;
+            }
+        }
+        return items.size() - i0;
+    };
+
+    auto delegation = std::deque<unsigned>();
+    auto gen_start = std::size_t(0);
+
+    while (gen_start < nodes.size())
+    {
+        auto gen_size = count_same(generation, gen_start);
+
+        for (std::size_t r = 0; r < num_groups; ++r)
+        {
+            auto start = gen_start + (r + 0) * gen_size / num_groups;
+            auto final = gen_start + (r + 1) * gen_size / num_groups;
+
+            for (std::size_t i = start; i < final; ++i)
+            {
+                delegation.push_back(r);
+            }
+        }
+        gen_start += gen_size;
+    }
+    return delegation;
+}
+
+
+
+
+//=============================================================================
 void mpr::print_graph(computable_node_t* node, FILE* outfile)
 {
     auto [nodes, generation] = topological_sort(node);
@@ -160,6 +198,12 @@ void mpr::print_graph(computable_node_t* node, FILE* outfile)
     }
     std::fprintf(outfile, "}\n");
 }
+
+
+
+
+#include <iostream>
+#include "parallel_message_queue.hpp"
 
 
 
@@ -210,50 +254,6 @@ void mpr::compute(computable_node_t* main_node, async_invoke_t scheduler)
 
 
 
-//=============================================================================
-std::deque<unsigned> mpr::divvy_tasks(const node_list_t& nodes, std::deque<unsigned>& generation, unsigned num_groups)
-{
-    auto count_same = [] (const std::deque<unsigned>& items, std::size_t i0)
-    {
-        for (std::size_t i = i0; i < items.size(); ++i)
-        {
-            if (items[i] != items[i0])
-            {
-                return i - i0;
-            }
-        }
-        return items.size() - i0;
-    };
-
-    auto delegation = std::deque<unsigned>();
-    auto gen_start = std::size_t(0);
-
-    while (gen_start < nodes.size())
-    {
-        auto gen_size = count_same(generation, gen_start);
-
-        for (std::size_t r = 0; r < num_groups; ++r)
-        {
-            auto start = gen_start + (r + 0) * gen_size / num_groups;
-            auto final = gen_start + (r + 1) * gen_size / num_groups;
-
-            for (std::size_t i = start; i < final; ++i)
-            {
-                delegation.push_back(r);
-            }
-        }
-        gen_start += gen_size;
-    }
-    return delegation;
-}
-
-
-
-
-#include "parallel_message_queue.hpp"
-
-
-
 
 /**
  * @brief      Compute a node on an MPI communicator.
@@ -275,23 +275,15 @@ void mpr::compute_mpi(computable_node_t* main_node)
 
 
 
-    auto this_group    = mpi::comm_world().rank();
-    auto message_queue = mara::MessageQueue();
-    auto eligible      = collect(main_node, [this_group] (auto n) { return n->group() == this_group && n->eligible(); });
-    auto delegated     = collect(main_node, [this_group] (auto n) { return n->group() == this_group; }).item_set();
-    auto completed     = collect(main_node, [] (auto n) { return n->has_value(); }).item_set();
-
-
-
-
     //--------------------------------------------------------------------------
     // Collect and sort all upstream nodes, including those already evaluated.
     // Assign the unevaluated tasks to an MPI rank based on divvying the tasks
     // in each generation.
     // ------------------------------------------------------------------------
     auto [sorted_nodes, generation] = topological_sort(main_node);
-    auto delegation = divvy_tasks(sorted_nodes, generation, 4);
+    auto delegation = divvy_tasks(sorted_nodes, generation, mpi::comm_world().size());
     auto order = std::map<computable_node_t*, unsigned>();
+
 
     for (std::size_t i = 0; i < sorted_nodes.size(); ++i)
     {
@@ -301,6 +293,41 @@ void mpr::compute_mpi(computable_node_t* main_node)
         }
         order[sorted_nodes[i]] = i;
     }
+
+
+
+
+    auto this_group    = mpi::comm_world().rank();
+    auto message_queue = mara::MessageQueue();
+    auto eligible      = collect(main_node, [this_group] (auto n) { return n->group() == this_group && n->eligible(); });
+    auto delegated     = collect(main_node, [this_group] (auto n) { return n->group() == this_group; }).item_set();
+    auto completed     = collect(main_node, [          ] (auto n) { return n->has_value(); }).item_set();
+
+
+
+
+    //--------------------------------------------------------------------------
+    // Assign an empty value to any nodes that we are not responsible for, and
+    // for which we will not be receiving a value from another MPI rank.
+    //
+    // This procedure results in memory errors, because it breaks the graph
+    // connectivity triggering node deallocation. However something like this is
+    // necessary so that the graph doesn't grow indefinitely along unevaluated
+    // branches.
+    //
+    // ------------------------------------------------------------------------
+    // for (auto node : sorted_nodes)
+    // {
+    //     const auto& o = node->outgoing_nodes();
+    //     const auto& g = this_group;
+
+    //     if (   ! node->has_value()
+    //         &&   node->group() != g
+    //         && ! std::any_of(o.begin(), o.end(), [g] (auto n) { return n->group() == g; }))
+    //     {
+    //         node->set(std::any());                
+    //     }
+    // }
 
 
 
@@ -320,13 +347,16 @@ void mpr::compute_mpi(computable_node_t* main_node)
         }
     };
 
-    auto unique_recipients = [] (computable_node_t* node)
+    auto unique_recipients = [this_group] (computable_node_t* node)
     {
         auto result = std::set<int>();
 
         for (auto next : node->outgoing_nodes())
         {
-            result.insert(next->group());
+            if (next->group() != this_group)
+            {
+                result.insert(next->group());
+            }
         }
         return result;
     };
@@ -334,7 +364,7 @@ void mpr::compute_mpi(computable_node_t* main_node)
 
 
 
-    while (! eligible.empty() && ! delegated.empty())
+    while (! delegated.empty())
     {
 
 
@@ -350,7 +380,6 @@ void mpr::compute_mpi(computable_node_t* main_node)
             node->complete();
             enqueue_eligible_downstream(node);
             completed.insert(node);
-            delegated.erase(node);
         }
 
 
@@ -362,7 +391,12 @@ void mpr::compute_mpi(computable_node_t* main_node)
         // --------------------------------------------------------------------
         for (auto node : completed)
         {
-            message_queue.push(node->serialize(), unique_recipients(node), order[node]);
+            if (auto recipients = unique_recipients(node); ! recipients.empty())
+            {
+                message_queue.push(node->serialize(), recipients, order[node]);
+            }
+            eligible.erase(node);
+            delegated.erase(node);
         }
 
 
@@ -380,23 +414,5 @@ void mpr::compute_mpi(computable_node_t* main_node)
         }
 
         completed.clear();
-    }
-
-
-
-
-    //-------------------------------------------------------------------------
-    // Assign an empty value to any nodes that do not have one.
-    // ------------------------------------------------------------------------
-    for (auto node : sorted_nodes)
-    {
-        if (! node->has_value())
-        {
-            if (node->group() == this_group)
-            {
-                throw std::logic_error("mpr::compute_mpi (node delegated to this MPI rank was not evaluated)");
-            }
-            node->set(std::any());
-        }
     }
 }

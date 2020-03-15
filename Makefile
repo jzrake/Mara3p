@@ -77,6 +77,9 @@ examples/mhd3d_tbp: examples/mhd3d_tbp.o src/scheme_mhd_v2.o src/scheme_mhd_rule
 examples/task_parallel: examples/task_parallel.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
+examples/computable: examples/computable.o src/parallel_computable.o
+	$(CXX) -o $@ $^ $(LDFLAGS)
+
 problems/sedov: problems/sedov.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
