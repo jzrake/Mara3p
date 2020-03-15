@@ -29,6 +29,7 @@
 #include <vector>
 #include <map>
 #include "parallel_computable.hpp"
+#include "parallel_message_queue.hpp"
 
 
 
@@ -202,12 +203,6 @@ void mpr::print_graph(computable_node_t* node, FILE* outfile)
 
 
 
-#include <iostream>
-#include "parallel_message_queue.hpp"
-
-
-
-
 //=============================================================================
 void mpr::compute(computable_node_t* main_node, async_invoke_t scheduler)
 {
@@ -275,7 +270,7 @@ void mpr::compute_mpi(computable_node_t* main_node)
 
 
 
-    //--------------------------------------------------------------------------
+    // ------------------------------------------------------------------------
     // Collect and sort all upstream nodes, including those already evaluated.
     // Assign the unevaluated tasks to an MPI rank based on divvying the tasks
     // in each generation.
@@ -302,37 +297,12 @@ void mpr::compute_mpi(computable_node_t* main_node)
     auto eligible      = collect(main_node, [this_group] (auto n) { return n->group() == this_group && n->eligible(); });
     auto delegated     = collect(main_node, [this_group] (auto n) { return n->group() == this_group; }).item_set();
     auto completed     = collect(main_node, [          ] (auto n) { return n->has_value(); }).item_set();
+    auto num_evaluated = 0;
 
 
 
 
-    //--------------------------------------------------------------------------
-    // Assign an empty value to any nodes that we are not responsible for, and
-    // for which we will not be receiving a value from another MPI rank.
-    //
-    // This procedure results in memory errors, because it breaks the graph
-    // connectivity triggering node deallocation. However something like this is
-    // necessary so that the graph doesn't grow indefinitely along unevaluated
-    // branches.
-    //
     // ------------------------------------------------------------------------
-    // for (auto node : sorted_nodes)
-    // {
-    //     const auto& o = node->outgoing_nodes();
-    //     const auto& g = this_group;
-
-    //     if (   ! node->has_value()
-    //         &&   node->group() != g
-    //         && ! std::any_of(o.begin(), o.end(), [g] (auto n) { return n->group() == g; }))
-    //     {
-    //         node->set(std::any());                
-    //     }
-    // }
-
-
-
-
-    //--------------------------------------------------------------------------
     // Put each node that is immediately downstream of a node A into the
     // eligible container.
     // ------------------------------------------------------------------------
@@ -370,7 +340,7 @@ void mpr::compute_mpi(computable_node_t* main_node)
 
 
 
-        //----------------------------------------------------------------------
+        // --------------------------------------------------------------------
         // Evaluate each eligible node, if it is delegated to this MPI rank.
         // Enqueue each of the eligible nodes downstream of that node.
         // --------------------------------------------------------------------
@@ -378,6 +348,7 @@ void mpr::compute_mpi(computable_node_t* main_node)
         {
             node->submit(synchronous_execution);
             node->complete();
+            num_evaluated += 1;
             enqueue_eligible_downstream(node);
             completed.insert(node);
         }
@@ -385,7 +356,7 @@ void mpr::compute_mpi(computable_node_t* main_node)
 
 
 
-        //---------------------------------------------------------------------
+        // --------------------------------------------------------------------
         // Send the serialized result of each completed node A to each MPI rank
         // that is responsible for any of A's downstream nodes.
         // --------------------------------------------------------------------
@@ -402,7 +373,7 @@ void mpr::compute_mpi(computable_node_t* main_node)
 
 
 
-        //----------------------------------------------------------------------
+        // --------------------------------------------------------------------
         // Receive the serialized result of each node that was completed on
         // another MPI rank, and which has a downstream node delegated to this
         // MPI rank.
@@ -414,5 +385,17 @@ void mpr::compute_mpi(computable_node_t* main_node)
         }
 
         completed.clear();
+    }
+
+
+
+
+    // ------------------------------------------------------------------------
+    // Assign an empty value to the master node to disconnect it from the nodes
+    // upstream.
+    // ------------------------------------------------------------------------
+    if (! main_node->has_value())
+    {
+        main_node->set(std::any());
     }
 }

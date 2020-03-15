@@ -51,14 +51,9 @@ int main()
     auto master = concat(aaaa, aaab, aaba, aabb, abaa, abab, abbb, baaa, baab, baba, babb, bbaa, bbab, bbbb).name("master");
     compute_mpi(master.node());
 
-    if (mpi::comm_world().rank() == 0)
-    {
-        std::cout << master.node()->group() << " " << master.has_value() << std::endl;
-    }
-
     if (master.has_value())
     {
-        std::cout << master.value() << std::endl;
+        std::cout << "master.value = " << master.value() << std::endl;
     }
 
     MPI_Finalize();
