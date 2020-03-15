@@ -27,8 +27,26 @@
 
 
 #pragma once
+#include <array>
+#include <tuple>
 #include <utility>
 #include "app_serial.hpp"
+
+
+
+
+//=============================================================================
+template<typename... T>
+struct serial::type_descriptor_t<std::tuple<T...>>
+{
+    template<typename Serializer>
+    void operator()(Serializer& s, std::tuple<T...>& value) const
+    {
+        std::apply([&s] (auto&&... vs) { (..., s(vs)); }, value);
+    }
+};
+
+template<typename... T> struct serial::is_serializable_t<std::tuple<T...>> : std::true_type {};
 
 
 
@@ -40,9 +58,24 @@ struct serial::type_descriptor_t<std::pair<T, U>>
     template<typename Serializer>
     void operator()(Serializer& s, std::pair<T, U>& value) const
     {
-        s(value.first);
-        s(value.second);
+        std::apply([&s] (auto&&... vs) { (..., s(vs)); }, value);
     }
 };
 
 template<typename T, typename U> struct serial::is_serializable_t<std::pair<T, U>> : std::true_type {};
+
+
+
+
+//=============================================================================
+template<typename T, std::size_t S>
+struct serial::type_descriptor_t<std::array<T, S>>
+{
+    template<typename Serializer>
+    void operator()(Serializer& s, std::array<T, S>& value) const
+    {
+        std::apply([&s] (auto&&... vs) { (..., s(vs)); }, value);
+    }
+};
+
+template<typename T, std::size_t S> struct serial::is_serializable_t<std::array<T, S>> : std::true_type {};
