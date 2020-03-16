@@ -525,7 +525,7 @@ private:
             {
                 return serial::dumps(std::any_cast<ValueType>(value));
             }
-            throw std::runtime_error("mpr::computable (tried to serialize type lacking serialization traits)");
+            throw std::runtime_error("mpr::computable (attempt to serialize type lacking serialization traits)");
         }
         std::any deserialize(const std::vector<char> &bytes) const override
         {
@@ -533,7 +533,7 @@ private:
             {
                 return serial::loads<ValueType>(bytes);
             }
-            throw std::runtime_error("mpr::computable (tried to deserialize type lacking serialization traits)");
+            throw std::runtime_error("mpr::computable (attempt to deserialize type lacking serialization traits)");
         }
     };
 };
@@ -593,12 +593,6 @@ auto mapv(Function f, const char* name="")
 
 
 
-//=============================================================================
-void print_graph(computable_node_t* node, FILE* outfile);
-
-
-
-
 /**
  * @brief      Prints the execution graph for a computable in a format readable
  *             by the graphviz dot utility.
@@ -618,23 +612,16 @@ void print_graph(computable<ValueType> c, FILE* outfile)
 {
     print_graph(c.node(), outfile);
 }
-
-
-
-
-//=============================================================================
-std::pair<node_list_t, std::deque<unsigned>> topological_sort(computable_node_t* node);
+void print_graph(computable_node_t* node, FILE* outfile);
 
 
 
 
 /**
- * @brief      Sort the nodes upstream of and including some computable
- *             according to a stable evaluation order.
+ * @brief      Sort the nodes upstream of and including a list of computable
+ *             nodes, according to a stable evaluation order.
  *
- * @param[in]  c          The computable
- *
- * @tparam     ValueType  The computable value type
+ * @param[in]  nodes  The nodes representing the graph to be sorted
  *
  * @return     Two sequences of the same length: the first containing the sorted
  *             nodes, and the second containing the generation of each node.
@@ -643,11 +630,7 @@ std::pair<node_list_t, std::deque<unsigned>> topological_sort(computable_node_t*
  *             performed in parallel. In graphviz, these generations are the
  *             rows along which the nodes are arranged.
  */
-template<typename ValueType>
-std::pair<node_list_t, std::deque<unsigned>> topological_sort(computable<ValueType> c)
-{
-    return topological_sort(c.node());
-}
+std::pair<node_list_t, std::deque<unsigned>> topological_sort(const node_list_t& nodes);
 
 
 
@@ -696,9 +679,42 @@ void compute(computable<ValueType> c, async_invoke_t scheduler=synchronous_execu
 
 
 /**
- * @brief      In-progress implementation of a distributed execution strategy.
+ * @brief      Compute a list of nodes, delegating the work to all ranks
+ *             participating in mpi::comm_world. This function only guarantees
+ *             that the computed value is available on at least one of the MPI
+ *             ranks. It is the responsibility of the calling code to maintain
+ *             ownership of all the computable_node_t pointers in the node_list
+ *             argument. This is done automatically if the corresponding
+ *             computable instances exist in some type of container where this
+ *             function is invoked.
+ *
+ * @param[in]  node_list  The list of nodes to be computed
+ *
+ * @note       The MPI rank to which a node was delegated can be queried by
+ *             calling its group() method. Even if a node A was not delegated to
+ *             this MPI rank, it may still have a value. This occurs if any
+ *             nodes just downstream A are delegated to this MPI rank. In that
+ *             case, A will have received the computed value from its delegated
+ *             rank.
  */
-void compute_mpi(computable_node_t* main_node);
+void compute_mpi(const node_list_t& node_list);
+
+
+
+
+/**
+ * @brief      Compute a single computable, delegating the work to all ranks
+ *             participating in mpi::comm_world.
+ *
+ * @param[in]  c          The computable to compute
+ *
+ * @tparam     ValueType  The computable value type
+ */
+template<typename ValueType>
+void compute_mpi(computable<ValueType> c)
+{
+    compute_mpi({c.node()});
+}
 
 
 

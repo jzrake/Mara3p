@@ -68,6 +68,19 @@ static auto collect(computable_node_t* node, Predicate pred)
     return result;
 }
 
+template<typename Predicate>
+static auto collect(const node_list_t& nodes, Predicate pred)
+{
+    auto result = node_list_t();
+    auto passed = node_list_t();
+
+    for (auto node : nodes)
+    {
+        collect(node, pred, result, passed);
+    }
+    return result;
+}
+
 static bool is_or_precedes(computable_node_t* node, computable_node_t* other)
 {
     if (other == node || node->outgoing_nodes().count(other))
@@ -88,10 +101,9 @@ static bool is_or_precedes(computable_node_t* node, computable_node_t* other)
 
 
 //=============================================================================
-std::pair<unique_deque_t<computable_node_t*>, std::deque<unsigned>>
-mpr::topological_sort(computable_node_t* node)
+std::pair<node_list_t, std::deque<unsigned>> mpr::topological_sort(const node_list_t& nodes)
 {
-    auto N0 = collect(node, [] (auto n) { return n->incoming_nodes().empty(); });
+    auto N0 = collect(nodes, [] (auto n) { return n->incoming_nodes().empty(); });
     auto N1 = unique_deque_t<computable_node_t*>();
 
     auto G0 = std::deque<unsigned>(N0.size(), 0);
@@ -110,15 +122,12 @@ mpr::topological_sort(computable_node_t* node)
 
         for (auto o : n->outgoing_nodes())
         {
-            if (is_or_precedes(o, node))
-            {
-                const auto& i = o->incoming_nodes();
+            const auto& i = o->incoming_nodes();
 
-                if (! std::any_of(i.begin(), i.end(), [&N1] (auto i) { return ! N1.count(i); }))
-                {
-                    N0.push_back(o);
-                    G0.push_back(g + 1);
-                }
+            if (! std::any_of(i.begin(), i.end(), [&N1] (auto i) { return ! N1.count(i); }))
+            {
+                N0.push_back(o);
+                G0.push_back(g + 1);
             }
         }
     }
@@ -171,7 +180,7 @@ std::deque<unsigned> mpr::divvy_tasks(const node_list_t& nodes, std::deque<unsig
 //=============================================================================
 void mpr::print_graph(computable_node_t* node, FILE* outfile)
 {
-    auto [nodes, generation] = topological_sort(node);
+    auto [nodes, generation] = topological_sort({node});
     auto order = std::map<computable_node_t*, unsigned>();
 
     for (std::size_t i = 0; i < nodes.size(); ++i)
@@ -249,22 +258,8 @@ void mpr::compute(computable_node_t* main_node, async_invoke_t scheduler)
 
 
 
-
-/**
- * @brief      Compute a node on an MPI communicator.
- *
- * @param      main_node  The node to compute
- *
- * @note       First, assign MPI ranks to the tasks. Some tasks will already be
- *             assigned to an MPI rank. These tasks may or may not have a value.
- *             If they don't have a value, that's because they were delegated to
- *             a different MPI rank. If the task already has a rank assignment,
- *             do not reassign it. Next, begin the main loop, evaluating
- *             eligible nodes as in the single-rank algorithm. When a node is
- *             encountered that has been delegated to a different rank, set its
- *             value to std::any() and move on.
- */
-void mpr::compute_mpi(computable_node_t* main_node)
+//=============================================================================
+void mpr::compute_mpi(const node_list_t& node_list)
 {
 
 
@@ -275,10 +270,9 @@ void mpr::compute_mpi(computable_node_t* main_node)
     // Assign the unevaluated tasks to an MPI rank based on divvying the tasks
     // in each generation.
     // ------------------------------------------------------------------------
-    auto [sorted_nodes, generation] = topological_sort(main_node);
+    auto [sorted_nodes, generation] = topological_sort(node_list);
     auto delegation = divvy_tasks(sorted_nodes, generation, mpi::comm_world().size());
     auto order = std::map<computable_node_t*, unsigned>();
-
 
     for (std::size_t i = 0; i < sorted_nodes.size(); ++i)
     {
@@ -294,9 +288,9 @@ void mpr::compute_mpi(computable_node_t* main_node)
 
     auto this_group    = mpi::comm_world().rank();
     auto message_queue = mara::MessageQueue();
-    auto eligible      = collect(main_node, [this_group] (auto n) { return n->group() == this_group && n->eligible(); });
-    auto delegated     = collect(main_node, [this_group] (auto n) { return n->group() == this_group; }).item_set();
-    auto completed     = collect(main_node, [          ] (auto n) { return n->has_value(); }).item_set();
+    auto eligible      = collect(node_list, [this_group] (auto n) { return n->group() == this_group && n->eligible(); });
+    auto delegated     = collect(node_list, [this_group] (auto n) { return n->group() == this_group; }).item_set();
+    auto completed     = collect(node_list, [          ] (auto n) { return n->has_value(); }).item_set();
     auto num_evaluated = 0;
 
 
@@ -306,11 +300,11 @@ void mpr::compute_mpi(computable_node_t* main_node)
     // Put each node that is immediately downstream of a node A into the
     // eligible container.
     // ------------------------------------------------------------------------
-    auto enqueue_eligible_downstream = [main_node, this_group, &eligible] (computable_node_t* node)
+    auto enqueue_eligible_downstream = [this_group, &eligible] (computable_node_t* node)
     {
         for (auto next : node->outgoing_nodes())
         {
-            if (next->group() == this_group && next->eligible() && is_or_precedes(next, main_node))
+            if (next->group() == this_group && next->eligible())
             {
                 eligible.push_back(next);
             }
@@ -391,11 +385,14 @@ void mpr::compute_mpi(computable_node_t* main_node)
 
 
     // ------------------------------------------------------------------------
-    // Assign an empty value to the master node to disconnect it from the nodes
-    // upstream.
+    // Assign an empty value to the target nodes to disconnect them from their
+    // upstream graph.
     // ------------------------------------------------------------------------
-    if (! main_node->has_value())
+    for (auto node : node_list)
     {
-        main_node->set(std::any());
+        if (! node->has_value())
+        {
+            node->set(std::any());
+        }
     }
 }

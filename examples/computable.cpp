@@ -7,6 +7,7 @@
 
 
 
+//=============================================================================
 auto concat(mpr::computable<std::string> a, mpr::computable<std::string> b)
 {
     return zip(a, b).name("zip") | mpr::mapv([] (auto a, auto b) { return a + b; });
@@ -21,6 +22,7 @@ auto concat(mpr::computable<T> t, mpr::computable<U> u, mpr::computable<Vs>... v
 
 
 
+//=============================================================================
 int main()
 {
     MPI_Init(nullptr, nullptr);
@@ -49,7 +51,7 @@ int main()
 
 
     auto master = concat(aaaa, aaab, aaba, aabb, abaa, abab, abbb, baaa, baab, baba, babb, bbaa, bbab, bbbb).name("master");
-    compute_mpi(master.node());
+    mpr::compute_mpi(master);
 
     if (master.has_value())
     {
