@@ -27,11 +27,11 @@
 
 
 #pragma once
-#include <cstdio>
 #include <any>
+#include <cstdio>
+#include <deque>
 #include <future>
 #include <set>
-#include <deque>
 #include <vector>
 #include "app_serial.hpp"
 
@@ -703,17 +703,16 @@ void compute_mpi(const node_list_t& node_list);
 
 
 /**
- * @brief      Compute a single computable, delegating the work to all ranks
- *             participating in mpi::comm_world.
+ * @brief      Convenience function to invoke the compute_mpi above.
  *
- * @param[in]  c          The computable to compute
+ * @param[in]  cs         The computables to compute
  *
  * @tparam     ValueType  The computable value type
  */
-template<typename ValueType>
-void compute_mpi(computable<ValueType> c)
+template<typename... ValueType>
+void compute_mpi(computable<ValueType>... cs)
 {
-    compute_mpi({c.node()});
+    compute_mpi({cs.node()...});
 }
 
 

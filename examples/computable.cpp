@@ -40,6 +40,7 @@ int main()
     auto aabb = concat(aa, bb).name("aabb");
     auto abaa = concat(ab, aa).name("abaa");
     auto abab = concat(ab, ab).name("abab");
+    auto abba = concat(ab, ba).name("abaa");
     auto abbb = concat(ab, bb).name("abbb");
     auto baaa = concat(ba, aa).name("baaa");
     auto baab = concat(ba, ab).name("baab");
@@ -47,16 +48,30 @@ int main()
     auto babb = concat(ba, bb).name("babb");
     auto bbaa = concat(bb, aa).name("bbaa");
     auto bbab = concat(bb, ab).name("bbab");
+    auto bbba = concat(bb, ba).name("bbba");
     auto bbbb = concat(bb, bb).name("bbbb");
 
+    mpr::compute_mpi(aaaa, aaab, aaba, aabb, abaa, abab, abba, abbb, baaa, baab, baba, babb, bbaa, bbab, bbba, bbbb);
 
-    auto master = concat(aaaa, aaab, aaba, aabb, abaa, abab, abbb, baaa, baab, baba, babb, bbaa, bbab, bbbb).name("master");
-    mpr::compute_mpi(master);
-
-    if (master.has_value())
+    mpi::comm_world().invoke([&] ()
     {
-        std::cout << "master.value = " << master.value() << std::endl;
-    }
+        if (aaaa.has_value()) { printf("%s compued on rank %d: %s\n", "aaaa", mpi::comm_world().rank(), aaaa.value().data()); }
+        if (aaab.has_value()) { printf("%s compued on rank %d: %s\n", "aaab", mpi::comm_world().rank(), aaab.value().data()); }
+        if (aaba.has_value()) { printf("%s compued on rank %d: %s\n", "aaba", mpi::comm_world().rank(), aaba.value().data()); }
+        if (aabb.has_value()) { printf("%s compued on rank %d: %s\n", "aabb", mpi::comm_world().rank(), aabb.value().data()); }
+        if (abaa.has_value()) { printf("%s compued on rank %d: %s\n", "abaa", mpi::comm_world().rank(), abaa.value().data()); }
+        if (abab.has_value()) { printf("%s compued on rank %d: %s\n", "abab", mpi::comm_world().rank(), abab.value().data()); }
+        if (abba.has_value()) { printf("%s compued on rank %d: %s\n", "abba", mpi::comm_world().rank(), abba.value().data()); }
+        if (abbb.has_value()) { printf("%s compued on rank %d: %s\n", "abbb", mpi::comm_world().rank(), abbb.value().data()); }
+        if (baaa.has_value()) { printf("%s compued on rank %d: %s\n", "baaa", mpi::comm_world().rank(), baaa.value().data()); }
+        if (baab.has_value()) { printf("%s compued on rank %d: %s\n", "baab", mpi::comm_world().rank(), baab.value().data()); }
+        if (baba.has_value()) { printf("%s compued on rank %d: %s\n", "baba", mpi::comm_world().rank(), baba.value().data()); }
+        if (babb.has_value()) { printf("%s compued on rank %d: %s\n", "babb", mpi::comm_world().rank(), babb.value().data()); }
+        if (bbaa.has_value()) { printf("%s compued on rank %d: %s\n", "bbaa", mpi::comm_world().rank(), bbaa.value().data()); }
+        if (bbab.has_value()) { printf("%s compued on rank %d: %s\n", "bbab", mpi::comm_world().rank(), bbab.value().data()); }
+        if (bbba.has_value()) { printf("%s compued on rank %d: %s\n", "bbba", mpi::comm_world().rank(), bbba.value().data()); }
+        if (bbbb.has_value()) { printf("%s compued on rank %d: %s\n", "bbbb", mpi::comm_world().rank(), bbbb.value().data()); }
+    });
 
     MPI_Finalize();
     return 0;
