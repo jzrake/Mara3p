@@ -32,6 +32,7 @@
 #include "core_bqo_tree.hpp"
 #include "core_ndarray.hpp"
 #include "physics_iso2d.hpp"
+#include "parallel_computable.hpp"
 
 
 
@@ -68,9 +69,9 @@ struct schedule_t
 
 struct solution_t
 {
-    rational::number_t      iteration;
-    dimensional::unit_time  time;
-    conserved_tree_t        conserved;
+    rational::number_t                                      iteration;
+    dimensional::unit_time                                  time;
+    bsp::shared_tree<mpr::computable<conserved_array_t>, 4> conserved;
 };
 
 struct solver_data_t

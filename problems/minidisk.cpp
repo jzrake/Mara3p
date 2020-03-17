@@ -34,6 +34,7 @@
 #include "core_util.hpp"
 #include "parallel_computable.hpp"
 #include "parallel_computable_tree.hpp"
+#include "parallel_mpi.hpp"
 #include "parallel_thread_pool.hpp"
 #include "physics_two_body.hpp"
 #include "minidisk.hpp"
@@ -57,13 +58,14 @@
  *     ( ) generalize extend method with prolongation
  *     ( ) flux correction
  *     ( ) upsampling in plotting script
+ * [ ] RK time stepping
  * [x] proper stepping of side effects
  * [x] checkpoint read / restart
  * [x] break up code into separate source files
  * [ ] VTK output option
  * [ ] time series of forces, work, orbital element evolution, etc.
  * [ ] computable: execution statistics to discover bottlenecks
- * [ ] computable: MPI execution strategy
+ * [/] computable: MPI execution strategy
  */
 
 
@@ -137,22 +139,20 @@ auto extend_y(bsp::shared_tree<mpr::computable<ArrayType>, 4> __pc__, bsp::tree_
 //=============================================================================
 static auto initial_solution(const mara::config_t& cfg)
 {
-    auto solver_data = make_solver_data(cfg);
-    auto restart = cfg.get_string("restart");
-
-    if (! restart.empty())
+    if (auto restart = cfg.get_string("restart"); ! restart.empty())
     {
         auto result = solution_t{};
         auto h5f = h5::File(restart, "r");
         read(h5f, "solution", result);
         return result;
     }
+    auto sd = make_solver_data(cfg);
+    auto mesh = bsp::uniform_quadtree(sd.depth);
 
     return solution_t{
         0,
         0.0,
-        bsp::uniform_quadtree(solver_data.depth) | bsp::maps(std::bind(initial_conserved_array, solver_data, _1)),
-    };
+        mesh | bsp::maps([sd] (auto b) { return mpr::from(std::bind(initial_conserved_array, sd, b)); })};
 }
 
 static auto initial_schedule(const mara::config_t& cfg)
@@ -183,38 +183,33 @@ static auto restart_run_config(const mara::config_string_map_t& args)
 
 
 //=============================================================================
-static auto smallest_cell_crossing_time(conserved_array_t uc, bsp::tree_index_t<2> block, solver_data_t solver_data)
-{
-    auto vm = nd::max(uc | nd::map(iso2d::recover_primitive) | nd::map(std::bind(iso2d::fastest_wavespeed, _1, unit_specific_energy(0.0))));
-    auto dl = cell_size(block, solver_data);
-    return dl / vm;
-}
+// static auto smallest_cell_crossing_time(conserved_array_t uc, bsp::tree_index_t<2> block, solver_data_t solver_data)
+// {
+//     auto vm = nd::max(uc | nd::map(iso2d::recover_primitive) | nd::map(std::bind(iso2d::fastest_wavespeed, _1, unit_specific_energy(0.0))));
+//     auto dl = cell_size(block, solver_data);
+//     return dl / vm;
+// }
 
-static auto smallest_cell_crossing_time(conserved_tree_t uc, solver_data_t solver_data)
-{
-    auto dt = unit_time(std::numeric_limits<double>::max());
+// static auto smallest_cell_crossing_time(conserved_tree_t uc, solver_data_t solver_data)
+// {
+//     auto dt = unit_time(std::numeric_limits<double>::max());
 
-    sink(indexify(uc), util::apply_to([&dt, solver_data] (auto block, auto uc)
-    {
-        dt = std::min(dt, smallest_cell_crossing_time(uc, block, solver_data));
-    }));
-    return dt;
-}
+//     sink(indexify(uc), util::apply_to([&dt, solver_data] (auto block, auto uc)
+//     {
+//         dt = std::min(dt, smallest_cell_crossing_time(uc, block, solver_data));
+//     }));
+//     return dt;
+// }
 
 
 
 
 //=============================================================================
-static auto encode_step(
-    rational::number_t iteration,
-    unit_time time,
-    bsp::shared_tree<mpr::computable<conserved_array_t>, 4> conserved,
-    unit_time dt,
-    solver_data_t solver_data)
+static auto encode_step(solution_t solution, unit_time dt, solver_data_t solver_data)
 {
     auto skip_trans = solver_data.kinematic_viscosity == unit_viscosity(0.0);
-    auto mesh   = indexes(conserved);
-    auto _uc_   = conserved;
+    auto mesh   = indexes(solution.conserved);
+    auto _uc_   = solution.conserved;
     auto _pc_   = _uc_ | bsp::maps(mpr::map(minidisk::recover_primitive_array, "P"));
     auto _p_ext_x_ = mesh | bsp::maps([_pc_] (auto index) { return extend_x(_pc_, index).name("P-x"); });
     auto _p_ext_y_ = mesh | bsp::maps([_pc_] (auto index) { return extend_y(_pc_, index).name("P-y"); });
@@ -241,49 +236,35 @@ static auto encode_step(
     });
 
     auto u1 = zip(_uc_, _pc_, _godunov_fluxes_x_, _godunov_fluxes_y_, mesh)
-    | bsp::mapvs([t=time, dt, solver_data] (auto uc, auto pc, auto fx, auto fy, auto block)
+    | bsp::mapvs([t=solution.time, dt, solver_data] (auto uc, auto pc, auto fx, auto fy, auto block)
     {
         return zip(uc, pc, fx, fy)
         | mpr::mapv(std::bind(updated_conserved, _1, _2, _3, _4, t, dt, block, solver_data), "U");
     });
 
-    return std::tuple(iteration + 1, time + dt, u1);
+    return solution_t{solution.iteration + 1, solution.time + dt, u1};
 }
 
 
 
 
 //=============================================================================
-static auto step(solution_t solution, solver_data_t solver_data, int nfold, mara::ThreadPool& pool, bool print_only)
+static auto step(solution_t solution, solver_data_t solver_data, int nfold)
 {
-    auto [iter, time, uc] = std::tuple(
-        solution.iteration,
-        solution.time,
-        solution.conserved | bsp::maps([] (auto u) { return mpr::just(u); }));
-
-    auto cfl = solver_data.cfl * std::min(1.0, 0.01 + solution.time / unit_time(0.05));
-    auto dt  = smallest_cell_crossing_time(solution.conserved, solver_data) * cfl;
-    auto dt_est = cfl * smallest_cell_size(solver_data) / sqrt(two_body::G * unit_mass(0.5) / solver_data.softening_length);
+    auto vmax = sqrt(two_body::G * unit_mass(0.5) / solver_data.softening_length);
+    auto cfl  = solver_data.cfl * std::min(1.0, 0.01 + solution.time / unit_time(0.05));
+    auto dt   = smallest_cell_size(solver_data) / vmax * cfl;
 
     for (int i = 0; i < nfold; ++i)
     {
-        std::tie(iter, time, uc) = encode_step(iter, time, uc, dt, solver_data);
+        solution = encode_step(solution, dt, solver_data);
     }
 
-    auto master = bsp::computable(uc).name("_U_");
+    auto nodes = mpr::node_list_t();
+    sink(solution.conserved, [&nodes] (auto c) { nodes.push_back(c.node()); });
+    mpr::compute_mpi(nodes);
 
-    if (print_only)
-    {
-        auto outfile = std::fopen("minidisk.dot", "w");
-        print_graph(master, outfile);
-        std::fclose(outfile);
-        return std::pair(solution, unit_scalar(0.0));
-    }
-    else
-    {
-        compute(master, pool.scheduler());
-        return std::pair(solution_t{iter, time, master.value()}, dt / dt_est);
-    }
+    return solution;
 }
 
 
@@ -317,31 +298,27 @@ static void side_effects(const mara::config_t& cfg, solution_t solution, schedul
 //=============================================================================
 int main(int argc, const char* argv[])
 {
-    auto args = mara::argv_to_string_map(argc, argv);
+    auto session     = mpi::Session();
+    auto args        = mara::argv_to_string_map(argc, argv);
     auto cfg         = minidisk::config_template().create().update(restart_run_config(args)).update(args);
     auto solver_data = minidisk::make_solver_data(cfg);
     auto schedule    = initial_schedule(cfg);
     auto solution    = initial_solution(cfg);
     auto orbits      = cfg.get_double("orbits");
     auto fold        = cfg.get_int("fold");
-    auto pool        = mara::ThreadPool(cfg.get_int("threads"));
-    auto relative_dt = 0.0;
+    auto ticks       = decltype(std::chrono::high_resolution_clock::now() - std::chrono::high_resolution_clock::now())();
 
-    step(solution, solver_data, fold, pool, true);
     mara::pretty_print(std::cout, "config", cfg);
 
     while (solution.time < orbits * binary_period)
     {
         side_effects(cfg, solution, schedule);
-
-        auto [result, ticks] = control::invoke_timed(step, solution, solver_data, fold, pool, false);
-
-        std::tie(solution, relative_dt) = result;
+        std::tie(solution, ticks) = control::invoke_timed(step, solution, solver_data, fold);
 
         auto ncells = std::pow(solver_data.block_size * (1 << solver_data.depth), 2);
         auto kzps = 1e6 * fold * ncells / std::chrono::duration_cast<std::chrono::nanoseconds>(ticks).count();
 
-        std::printf("[%06ld] orbit=%lf dt(rel)=%0.2lf kzps=%lf\n", long(solution.iteration), solution.time.value / 2 / M_PI, relative_dt, kzps);
+        std::printf("[%06ld] orbit=%lf kzps=%lf\n", long(solution.iteration), solution.time.value / 2 / M_PI, kzps);
         std::fflush(stdout);
     }
 

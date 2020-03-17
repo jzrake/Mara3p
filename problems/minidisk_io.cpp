@@ -61,12 +61,21 @@ void h5::read(const Group& group, std::string name, minidisk::solution_t& soluti
     read(sgroup, "iteration", solution.iteration);
     read(sgroup, "time", solution.time);
 
+    auto mesh = bsp::just<4>(bsp::tree_index_t<2>());
+
     for (auto block_name : ugroup)
     {
         auto block = bsp::read_tree_index<2>(block_name);
-        auto value = read<minidisk::conserved_array_t>(ugroup, block_name);
-        solution.conserved = insert(solution.conserved, block, value);
+        mesh = insert(mesh, block, block);
     }
+
+    solution.conserved = mesh | bsp::maps([&ugroup] (auto block)
+    {
+        return mpr::from([block, &ugroup] ()
+        {
+            return read<minidisk::conserved_array_t>(ugroup, bsp::format_tree_index(block));
+        });
+    });
 }
 
 
@@ -97,6 +106,9 @@ void h5::write(const Group& group, std::string name, const minidisk::solution_t&
 
     sink(indexify(solution.conserved), util::apply_to([&ugroup] (auto index, auto value)
     {
-        write(ugroup, bsp::format_tree_index(index), value);
+        if (value.has_value())
+        {
+            write(ugroup, bsp::format_tree_index(index), value.value());
+        }
     }));
 }
