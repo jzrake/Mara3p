@@ -30,6 +30,7 @@
 #include <map>
 #include "parallel_computable.hpp"
 #include "parallel_message_queue.hpp"
+#include "parallel_thread_pool.hpp"
 
 
 
@@ -288,10 +289,11 @@ void mpr::compute_mpi(const node_list_t& node_list)
 
     auto this_group    = mpi::comm_world().rank();
     auto message_queue = mara::MessageQueue();
+    auto thread_pool   = mara::ThreadPool(1);
     auto eligible      = collect(node_list, [this_group] (auto n) { return n->group() == this_group && n->eligible(); });
     auto delegated     = collect(node_list, [this_group] (auto n) { return n->group() == this_group; }).item_set();
     auto completed     = collect(node_list, [          ] (auto n) { return n->has_value(); }).item_set();
-    auto num_evaluated = 0;
+    auto pending       = std::set<computable_node_t*>();
 
 
 
@@ -340,28 +342,47 @@ void mpr::compute_mpi(const node_list_t& node_list)
         // --------------------------------------------------------------------
         for (auto node : eligible)
         {
-            node->submit(synchronous_execution);
-            node->complete();
-            num_evaluated += 1;
-            enqueue_eligible_downstream(node);
-            completed.insert(node);
+            node->submit(thread_pool.scheduler());
+            pending.insert(node);
         }
 
 
 
 
         // --------------------------------------------------------------------
-        // Send the serialized result of each completed node A to each MPI rank
-        // that is responsible for any of A's downstream nodes.
+        // Poll the pending tasks. For each one that is ready, call its complete
+        // method and place it in the list of completed nodes. Ensure pending
+        // tasks have been removed from the list of eligible nodes.
+        // --------------------------------------------------------------------
+        for (auto node : pending)
+        {
+            if (node->ready())
+            {
+                node->complete();
+                completed.insert(node);
+            }
+            eligible.erase(node);
+        }
+
+
+
+
+        // --------------------------------------------------------------------
+        // Remove completed nodes from the list of pending nodes, and the list
+        // of nodes delegated to this MPI rank. Send the serialized result of
+        // each completed node A to each MPI rank that is responsible for any of
+        // A's downstream nodes.
         // --------------------------------------------------------------------
         for (auto node : completed)
         {
+            pending.erase(node);
+            delegated.erase(node);
+
             if (auto recipients = unique_recipients(node); ! recipients.empty())
             {
                 message_queue.push(node->serialize(), recipients, order[node]);
             }
-            eligible.erase(node);
-            delegated.erase(node);
+            enqueue_eligible_downstream(node);
         }
 
 
@@ -395,4 +416,5 @@ void mpr::compute_mpi(const node_list_t& node_list)
             node->set(std::any());
         }
     }
+    mpi::comm_world().barrier();
 }
