@@ -30,15 +30,17 @@
 #include "app_control.hpp"
 #include "app_filesystem.hpp"
 #include "app_hdf5_config.hpp"
+#include "app_serial_ndarray.hpp"
+#include "app_serial_numeric_tuple.hpp"
 #include "core_ndarray_ops.hpp"
 #include "core_util.hpp"
+#include "minidisk.hpp"
+#include "minidisk_io.hpp"
 #include "parallel_computable.hpp"
 #include "parallel_computable_tree.hpp"
 #include "parallel_mpi.hpp"
 #include "parallel_thread_pool.hpp"
 #include "physics_two_body.hpp"
-#include "minidisk.hpp"
-#include "minidisk_io.hpp"
 #ifndef GIT_COMMIT
 #define GIT_COMMIT ""
 #endif
@@ -283,12 +285,20 @@ static void side_effects(const mara::config_t& cfg, solution_t solution, schedul
         schedule.checkpoint.next_due += cfg.get_double("cpi") * binary_period;
         schedule.checkpoint.count += 1;
 
-        auto h5f = h5::File(fname, "w");
-        h5::write(h5f, "git_commit", std::string(GIT_COMMIT));
-        h5::write(h5f, "run_config", cfg);
-        h5::write(h5f, "solution", solution);
-        h5::write(h5f, "schedule", schedule);
-        std::printf("write %s\n", fname.data());
+        mpi::comm_world().invoke([&] ()
+        {
+            if (mpi::comm_world().rank() == 0)
+            {
+                auto h5f = h5::File(fname, "w");
+                h5::write(h5f, "git_commit", std::string(GIT_COMMIT));
+                h5::write(h5f, "run_config", cfg);
+                h5::write(h5f, "schedule", schedule);
+                std::printf("write %s\n", fname.data());
+            }
+
+            auto h5f = h5::File(fname, "r+");
+            h5::write(h5f, "solution", solution);
+        });
     }
 }
 
@@ -306,9 +316,12 @@ int main(int argc, const char* argv[])
     auto solution    = initial_solution(cfg);
     auto orbits      = cfg.get_double("orbits");
     auto fold        = cfg.get_int("fold");
-    auto ticks       = decltype(std::chrono::high_resolution_clock::now() - std::chrono::high_resolution_clock::now())();
+    auto ticks       = std::chrono::high_resolution_clock::now() - std::chrono::high_resolution_clock::now();
 
-    mara::pretty_print(std::cout, "config", cfg);
+    if (mpi::comm_world().rank() == 0)
+    {
+        mara::pretty_print(std::cout, "config", cfg);        
+    }
 
     while (solution.time < orbits * binary_period)
     {
@@ -318,8 +331,11 @@ int main(int argc, const char* argv[])
         auto ncells = std::pow(solver_data.block_size * (1 << solver_data.depth), 2);
         auto kzps = 1e6 * fold * ncells / std::chrono::duration_cast<std::chrono::nanoseconds>(ticks).count();
 
-        std::printf("[%06ld] orbit=%lf kzps=%lf\n", long(solution.iteration), solution.time.value / 2 / M_PI, kzps);
-        std::fflush(stdout);
+        if (mpi::comm_world().rank() == 0)
+        {
+            std::printf("[%06ld] orbit=%lf kzps=%lf\n", long(solution.iteration), solution.time.value / 2 / M_PI, kzps);
+            std::fflush(stdout);
+        }
     }
 
     side_effects(cfg, solution, schedule);

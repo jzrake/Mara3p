@@ -28,6 +28,7 @@ ALL_TARGETS = mara \
 	examples/euler1d \
 	examples/euler1d_moving_mesh \
 	examples/euler1d_moving_mesh_plm \
+	examples/computable \
 	examples/mhd3d \
 	examples/mhd3d_tbp \
 	examples/task_parallel \

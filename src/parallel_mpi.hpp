@@ -373,6 +373,7 @@ public:
     Communicator(Communicator&& other)
     {
         comm = other.comm;
+        owned = other.owned;
         other.comm = MPI_COMM_NULL;
     }
 
@@ -396,6 +397,7 @@ public:
 
         comm = other.comm;
         other.comm = MPI_COMM_NULL;
+        other.owned = true;
         return *this;
     }
 

@@ -1,7 +1,6 @@
 #include <iostream>
-#include "parallel_mpi.hpp"
-#include "app_serial_std_tuple.hpp"
 #include "app_serial_std_string.hpp"
+#include "parallel_mpi.hpp"
 #include "parallel_computable.hpp"
 
 
