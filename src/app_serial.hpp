@@ -207,7 +207,7 @@ public:
 
 
     //=========================================================================
-    template <typename T>
+    template<typename T>
     void operator()(T& value)
     {
         if constexpr (std::is_trivially_copyable_v<T>)
@@ -301,9 +301,17 @@ public:
     template<typename T>
     void operator()(const T* data, std::size_t count)
     {
-        for (std::size_t i = 0; i < count; ++i)
+        if constexpr (std::is_trivially_copyable_v<T>)
         {
-            operator()(data[i]);
+            buffer.resize(buffer.size() + count * sizeof(T));
+            std::memcpy(buffer.data() + buffer.size() - count * sizeof(T), data, count * sizeof(T));
+        }
+        else
+        {
+            for (std::size_t i = 0; i < count; ++i)
+            {
+                operator()(data[i]);
+            }
         }
     }
 

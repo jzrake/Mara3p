@@ -589,7 +589,7 @@ public:
      * idea. In practice you'll probably store the request somewhere and check
      * on it after a while.
      */
-    Request isend(buffer_t&& buf, int rank, int tag=0) const
+    Request isend(buffer_t buf, int rank, int tag=0) const
     {
         throw_unless_valid_tag(tag);
         MPI_Request request;
