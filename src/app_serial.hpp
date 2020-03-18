@@ -50,6 +50,10 @@ namespace serial {
 template<typename T>
 struct is_serializable_t : std::false_type {};
 
+template<typename T>
+struct allow_unsafe_memcpy : std::false_type {};
+
+
 
 
 
@@ -163,7 +167,7 @@ struct container_shape_setter_t
 template<typename T>
 constexpr bool is_serializable()
 {
-    if constexpr (std::is_trivially_copyable_v<T>)
+    if constexpr (std::is_trivially_copyable_v<T> || allow_unsafe_memcpy<T>::value)
     {
         return true;
     }
@@ -210,7 +214,7 @@ public:
     template<typename T>
     void operator()(T& value)
     {
-        if constexpr (std::is_trivially_copyable_v<T>)
+        if constexpr (std::is_trivially_copyable_v<T> || allow_unsafe_memcpy<T>::value)
         {
             std::memcpy(&value, buffer.data() + position, sizeof(T));
             position += sizeof(T);
@@ -282,7 +286,7 @@ public:
     template<typename T>
     void operator()(T& value)
     {
-        if constexpr (std::is_trivially_copyable_v<T>)
+        if constexpr (std::is_trivially_copyable_v<T> || allow_unsafe_memcpy<T>::value)
         {
             buffer.resize(buffer.size() + sizeof(T));
             std::memcpy(buffer.data() + buffer.size() - sizeof(T), &value, sizeof(T));
@@ -301,7 +305,7 @@ public:
     template<typename T>
     void operator()(const T* data, std::size_t count)
     {
-        if constexpr (std::is_trivially_copyable_v<T>)
+        if constexpr (std::is_trivially_copyable_v<T> || allow_unsafe_memcpy<T>::value)
         {
             buffer.resize(buffer.size() + count * sizeof(T));
             std::memcpy(buffer.data() + buffer.size() - count * sizeof(T), data, count * sizeof(T));

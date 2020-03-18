@@ -272,6 +272,17 @@ void mpr::compute_mpi(const node_list_t& node_list)
 
 
 
+    // char fname[256];
+    // std::snprintf(fname, 256, "%02d.dat", mpi::comm_world().rank());
+    // auto outf = std::fopen(fname, "w");
+
+
+    // std::fprintf(outf, "%lld %ld %ld\n", std::chrono::high_resolution_clock::now().time_since_epoch().count(), long(0), long(0));
+
+
+
+
+
     // ------------------------------------------------------------------------
     // Collect and sort all upstream nodes, including those already evaluated.
     // Assign the unevaluated tasks to an MPI rank based on divvying the tasks
@@ -291,6 +302,8 @@ void mpr::compute_mpi(const node_list_t& node_list)
     }
 
 
+    // std::fprintf(outf, "%lld %ld %ld\n", std::chrono::high_resolution_clock::now().time_since_epoch().count(), long(0), long(0));
+
 
 
     auto this_group    = mpi::comm_world().rank();
@@ -301,10 +314,11 @@ void mpr::compute_mpi(const node_list_t& node_list)
     auto completed     = collect(node_list, [          ] (auto n) { return n->has_value(); }).item_set();
     auto pending       = std::set<computable_node_t*>();
     auto iteration     = 0;
-    auto serialize_ticks   = std::chrono::high_resolution_clock::duration::zero();
-    auto deserialize_ticks = std::chrono::high_resolution_clock::duration::zero();
+    // auto serialize_ticks   = std::chrono::high_resolution_clock::duration::zero();
+    // auto deserialize_ticks = std::chrono::high_resolution_clock::duration::zero();
 
 
+    // std::fprintf(outf, "%lld %ld %ld\n", std::chrono::high_resolution_clock::now().time_since_epoch().count(), pending.size(), delegated.size());
 
 
     // ------------------------------------------------------------------------
@@ -337,17 +351,9 @@ void mpr::compute_mpi(const node_list_t& node_list)
     };
 
 
-
-    // char fname[256];
-    // std::snprintf(fname, 256, "%02d.dat", mpi::comm_world().rank());
-    // auto outf = std::fopen(fname, "w");
-
-
-
-
     while (! delegated.empty())
     {
-        // auto start = std::chrono::high_resolution_clock::now();
+        // std::fprintf(outf, "%lld %ld %ld\n", std::chrono::high_resolution_clock::now().time_since_epoch().count(), pending.size(), delegated.size());
 
 
 
@@ -396,8 +402,10 @@ void mpr::compute_mpi(const node_list_t& node_list)
 
             if (auto recipients = unique_recipients(node); ! recipients.empty())
             {
-                auto [bytes, ticks] = control::invoke_timed(std::mem_fn(&computable_node_t::serialize), *node);
-                serialize_ticks += ticks;
+                // auto [bytes, ticks] = control::invoke_timed(std::mem_fn(&computable_node_t::serialize), *node);
+                // serialize_ticks += ticks;
+
+                auto bytes = node->serialize();
                 message_queue.push(bytes, recipients, order[node]);
             }
             enqueue_eligible_downstream(node);
@@ -413,27 +421,21 @@ void mpr::compute_mpi(const node_list_t& node_list)
         // --------------------------------------------------------------------
         for (const auto& [index, bytes] : message_queue.poll_tags())
         {
-            // sorted_nodes[index]->load_from(bytes);
-            auto ticks = control::invoke_timed(std::mem_fn(&computable_node_t::load_from), *sorted_nodes[index], bytes);
-            deserialize_ticks += ticks;
+            // auto ticks = control::invoke_timed(std::mem_fn(&computable_node_t::load_from), *sorted_nodes[index], bytes);
+            // deserialize_ticks += ticks;
+
+            sorted_nodes[index]->load_from(bytes);
             enqueue_eligible_downstream(sorted_nodes[index]);
         }
 
         iteration++;
         completed.clear();
-
-
-
-
-        // auto now = std::chrono::high_resolution_clock::now();
-        // auto dur = now - start;
-        // std::fprintf(outf, "%lld %ld %ld %lld\n", now.time_since_epoch().count(), pending.size(), delegated.size(), dur.count());
     }
 
     // std::fclose(outf);
 
+    // std::printf("serialize: %lf load: %lf\n", serialize_ticks.count() * 1e-9, deserialize_ticks.count() * 1e-9);
 
-    std::printf("serialize: %lf load: %lf\n", serialize_ticks.count() * 1e-9, deserialize_ticks.count() * 1e-9);
 
     // ------------------------------------------------------------------------
     // Assign an empty value to the target nodes to disconnect them from their

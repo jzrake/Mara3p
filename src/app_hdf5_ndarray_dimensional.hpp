@@ -49,8 +49,9 @@ struct h5::hdf5_conversion_to_hdf5_writable<nd::shared_array<numeric::tuple_t<di
         {
             return std::apply([] (auto... t)
             {
-                return numeric::array(t.value...); }, q.impl);
-            }) | nd::to_shared();
+                return numeric::array(t.value...);
+            }, q.impl);
+        }) | nd::to_shared();
     }
 };
 
