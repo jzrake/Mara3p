@@ -593,12 +593,18 @@ auto mapv(Function f, const char* name="")
 
 
 
+//=============================================================================
+void print_graph(FILE* outfile, const node_list_t& node_list);
+
+
+
+
 /**
  * @brief      Prints the execution graph for a computable in a format readable
  *             by the graphviz dot utility.
  *
- * @param[in]  c          The computable to print the graph for
  * @param      outfile    The file to write to
+ * @param[in]  cs         The computables to print the graph for
  *
  * @tparam     ValueType  The computable value type
  *
@@ -607,12 +613,12 @@ auto mapv(Function f, const char* name="")
  *
  *             dot -Tpdf -o graph.pdf graph.dot
  */
-template<typename ValueType>
-void print_graph(computable<ValueType> c, FILE* outfile)
+template<typename... ValueType>
+void print_graph(FILE* outfile, computable<ValueType>... cs)
 {
-    print_graph(c.node(), outfile);
+    print_graph(outfile, node_list_t{cs.node()...});
 }
-void print_graph(computable_node_t* node, FILE* outfile);
+
 
 
 
@@ -655,11 +661,6 @@ std::deque<unsigned> divvy_tasks(const node_list_t& nodes, std::deque<unsigned>&
 
 
 
-//=============================================================================
-void compute(computable_node_t* node, async_invoke_t scheduler);
-
-
-
 
 /**
  * @brief      Compute a computable on a (possibly asynchronous) scheduler.
@@ -674,6 +675,7 @@ void compute(computable<ValueType> c, async_invoke_t scheduler=synchronous_execu
 {
     compute(c.node(), scheduler);
 }
+void compute(computable_node_t* node, async_invoke_t scheduler);
 
 
 

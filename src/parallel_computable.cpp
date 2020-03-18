@@ -31,6 +31,7 @@
 #include "parallel_computable.hpp"
 #include "parallel_message_queue.hpp"
 #include "parallel_thread_pool.hpp"
+#include "app_control.hpp"
 
 
 
@@ -179,13 +180,18 @@ std::deque<unsigned> mpr::divvy_tasks(const node_list_t& nodes, std::deque<unsig
 
 
 //=============================================================================
-void mpr::print_graph(computable_node_t* node, FILE* outfile)
+void mpr::print_graph(FILE* outfile, const node_list_t& node_list)
 {
-    auto [nodes, generation] = topological_sort({node});
+    auto [nodes, generation] = topological_sort(node_list);
+    auto delegation = divvy_tasks(nodes, generation, mpi::comm_world().size());
     auto order = std::map<computable_node_t*, unsigned>();
 
     for (std::size_t i = 0; i < nodes.size(); ++i)
     {
+        if (! nodes[i]->has_group_number())
+        {
+            nodes[i]->assign_to_group(delegation[i]);            
+        }
         order[nodes[i]] = i;
     }
 
@@ -202,9 +208,9 @@ void mpr::print_graph(computable_node_t* node, FILE* outfile)
 
     for (std::size_t i = 0; i < nodes.size(); ++i)
     {
-        std::fprintf(outfile, "    %ld [shape=box,label=\"%s(%lu %u)\",style=%s];\n",
+        std::fprintf(outfile, "    %ld [shape=box,label=\"%s(%lu: %d)\",style=%s];\n",
             i, nodes[i]->name(),
-            i, generation[i],
+            i, nodes[i]->group(),// generation[i],
             nodes[i]->immediate() ? "dotted" : "filled");
     }
     std::fprintf(outfile, "}\n");
@@ -294,6 +300,9 @@ void mpr::compute_mpi(const node_list_t& node_list)
     auto delegated     = collect(node_list, [this_group] (auto n) { return n->group() == this_group; }).item_set();
     auto completed     = collect(node_list, [          ] (auto n) { return n->has_value(); }).item_set();
     auto pending       = std::set<computable_node_t*>();
+    auto iteration     = 0;
+    auto serialize_ticks   = std::chrono::high_resolution_clock::duration::zero();
+    auto deserialize_ticks = std::chrono::high_resolution_clock::duration::zero();
 
 
 
@@ -329,9 +338,16 @@ void mpr::compute_mpi(const node_list_t& node_list)
 
 
 
+    // char fname[256];
+    // std::snprintf(fname, 256, "%02d.dat", mpi::comm_world().rank());
+    // auto outf = std::fopen(fname, "w");
+
+
+
 
     while (! delegated.empty())
     {
+        // auto start = std::chrono::high_resolution_clock::now();
 
 
 
@@ -380,7 +396,9 @@ void mpr::compute_mpi(const node_list_t& node_list)
 
             if (auto recipients = unique_recipients(node); ! recipients.empty())
             {
-                message_queue.push(node->serialize(), recipients, order[node]);
+                auto [bytes, ticks] = control::invoke_timed(std::mem_fn(&computable_node_t::serialize), *node);
+                serialize_ticks += ticks;
+                message_queue.push(bytes, recipients, order[node]);
             }
             enqueue_eligible_downstream(node);
         }
@@ -395,15 +413,27 @@ void mpr::compute_mpi(const node_list_t& node_list)
         // --------------------------------------------------------------------
         for (const auto& [index, bytes] : message_queue.poll_tags())
         {
-            sorted_nodes[index]->load_from(bytes);
+            // sorted_nodes[index]->load_from(bytes);
+            auto ticks = control::invoke_timed(std::mem_fn(&computable_node_t::load_from), *sorted_nodes[index], bytes);
+            deserialize_ticks += ticks;
             enqueue_eligible_downstream(sorted_nodes[index]);
         }
 
+        iteration++;
         completed.clear();
+
+
+
+
+        // auto now = std::chrono::high_resolution_clock::now();
+        // auto dur = now - start;
+        // std::fprintf(outf, "%lld %ld %ld %lld\n", now.time_since_epoch().count(), pending.size(), delegated.size(), dur.count());
     }
 
+    // std::fclose(outf);
 
 
+    std::printf("serialize: %lf load: %lf\n", serialize_ticks.count() * 1e-9, deserialize_ticks.count() * 1e-9);
 
     // ------------------------------------------------------------------------
     // Assign an empty value to the target nodes to disconnect them from their
