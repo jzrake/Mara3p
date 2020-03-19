@@ -416,6 +416,11 @@ public:
         set(serializer->deserialize(bytes));
     }
 
+    const auto& get_serializer() const
+    {
+        return *serializer;
+    }
+
 private:
     //=========================================================================
     std::shared_ptr<computable_serializer_t> serializer;

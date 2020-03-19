@@ -292,7 +292,7 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
 
     auto time_delegate = std::chrono::high_resolution_clock::now();
 
-
+    using async_load_t = std::pair<computable_node_t*, std::future<std::any>>;
 
     auto this_group    = mpi::comm_world().rank();
     auto message_queue = mara::MessageQueue();
@@ -301,10 +301,11 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
     auto delegated     = collect(node_list, [this_group] (auto n) { return n->group() == this_group; }).item_set();
     auto completed     = collect(node_list, [          ] (auto n) { return n->has_value(); }).item_set();
     auto pending       = std::set<computable_node_t*>();
-
+    auto loading       = std::vector<async_load_t>();
 
 
     auto time_collect = std::chrono::high_resolution_clock::now();
+
 
 
 
@@ -341,8 +342,6 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
     auto iteration = 0;
     auto eval_tick = std::chrono::high_resolution_clock::duration::zero();
     auto eval_dead = std::chrono::high_resolution_clock::duration::zero();
-    auto eval_dump = std::chrono::high_resolution_clock::duration::zero();
-    auto eval_load = std::chrono::high_resolution_clock::duration::zero();
 
 
     while (! delegated.empty() || ! message_queue.empty())
@@ -385,9 +384,9 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
 
         // --------------------------------------------------------------------
         // Remove completed nodes from the list of pending nodes, and the list
-        // of nodes delegated to this MPI rank. Send the serialized result of
-        // each completed node A to each MPI rank that is responsible for any of
-        // A's downstream nodes.
+        // of nodes delegated to this MPI rank. Send a future representing the
+        // serialized result of each completed node A to each MPI rank that is
+        // responsible for any of A's downstream nodes.
         // --------------------------------------------------------------------
         for (auto node : completed)
         {
@@ -396,10 +395,6 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
 
             if (auto recipients = unique_recipients(node); ! recipients.empty())
             {
-                // auto [bytes, ticks] = control::invoke_timed(std::mem_fn(&computable_node_t::serialize), *node);
-                // eval_dump += ticks;
-                // message_queue.push(bytes, recipients, order[node]);
-
                 message_queue.push(thread_pool.enqueue([node] () { return node->serialize(); }), recipients, order[node]);
             }
             enqueue_eligible_downstream(node);
@@ -411,24 +406,47 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
         // --------------------------------------------------------------------
         // Receive the serialized result of each node that was completed on
         // another MPI rank, and which has a downstream node delegated to this
-        // MPI rank.
+        // MPI rank. Save a future deserialize the message, running on a
+        // background thread.
         // --------------------------------------------------------------------
-        for (const auto& [index, bytes] : message_queue.poll_tags())
+        for (auto&& [index, bytes] : message_queue.poll_tags())
         {
             auto node = sorted_nodes[index];
-            eval_load += control::invoke_timed(std::mem_fn(&computable_node_t::load_from), *node, bytes);
-            // node->load_from(bytes);
-            enqueue_eligible_downstream(node);
+            auto load = thread_pool.enqueue([node] (auto&& b) { return node->get_serializer().deserialize(b); }, std::move(bytes));
+            loading.emplace_back(node, std::move(load));
         }
+
+
+
+
+        // --------------------------------------------------------------------
+        // Get any values that have finished deserializing, set that value to
+        // the corresponding nodes, and enqueue any newly eligible nodes.
+        // --------------------------------------------------------------------
+        for (auto& [node, future_value] : loading)
+        {
+            if (future_value.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+            {
+                node->set(future_value.get());
+                enqueue_eligible_downstream(node);
+            }
+        }
+
+        loading.erase(std::remove_if(loading.begin(), loading.end(), [] (const auto& v)
+        {
+            return ! std::get<1>(v).valid();
+        }), loading.end());
+
+
 
 
         message_queue.check_outgoing();
         completed.clear();
 
 
+
+
         auto finish_loop = std::chrono::high_resolution_clock::now();
-
-
         eval_tick += (finish_loop - start_loop);
         eval_dead += (finish_loop - start_loop) * pending.empty();
         iteration++;
@@ -466,8 +484,6 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
         std::printf("eval iterations .... %d\n", iteration);
         std::printf("eval total time .... %lf\n", 1e-9 * eval_tick.count());
         std::printf("eval dead time ..... %lf (%.1lf%%)\n", 1e-9 * eval_dead.count(), 100.0 * eval_dead / eval_tick);
-        std::printf("eval dump time ..... %lf (%.1lf%%)\n", 1e-9 * eval_dump.count(), 100.0 * eval_dump / eval_tick);
-        std::printf("eval load time ..... %lf (%.1lf%%)\n", 1e-9 * eval_load.count(), 100.0 * eval_load / eval_tick);
         std::printf("\n");
     });
 }

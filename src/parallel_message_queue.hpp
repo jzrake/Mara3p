@@ -180,12 +180,11 @@ public:
      */
     void check_outgoing()
     {
-        for (auto& async_push : async_pushes)
+        for (auto& [future_message, recipients, tag] : async_pushes)
         {
-            if (std::get<0>(async_push).wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+            if (future_message.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
             {
-                auto&& [message, recipients, tag] = async_push;
-                push(message.get(), recipients, tag);
+                push(future_message.get(), recipients, tag);
             }
         }
 
