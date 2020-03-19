@@ -28,6 +28,7 @@
 
 #pragma once
 #include <algorithm>
+#include <future>
 #include <set>
 #include <vector>
 #include "parallel_mpi.hpp"
@@ -50,6 +51,20 @@ public:
 
     //=========================================================================
     using buffer_t = mpi::buffer_t;
+
+
+
+
+    /**
+     * @brief      Return true if there are no unsatisfied outgoing send
+     *             requests, and all async pushes are completed.
+     *
+     * @return     True or false
+     */
+    bool empty() const
+    {
+        return send_requests.empty() && async_pushes.empty();
+    }
 
 
 
@@ -78,6 +93,7 @@ public:
      *
      * @param[in]  message          The message to push
      * @param[in]  recipient_ranks  The ranks of the recipient processes
+     * @param[in]  tag              The message tag (optional)
      */
     void push(buffer_t message, std::set<int> recipient_ranks, int tag=mpi::any_tag)
     {
@@ -85,6 +101,23 @@ public:
         {
             push(message, recipient, tag);
         }
+    }
+
+
+
+
+    /**
+     * @brief      Push an asynchronous message to a set of recipients. Async
+     *             pushes are polled, and the completed ones sent, each time
+     *             check_outgoing is called.
+     *
+     * @param[in]  message          The message future
+     * @param[in]  recipient_ranks  The ranks of the recipient processes
+     * @param[in]  tag              The message tag (optional)
+     */
+    void push(std::future<buffer_t> message, std::set<int> recipient_ranks, int tag=mpi::any_tag)
+    {
+        async_pushes.emplace_back(std::move(message), std::move(recipient_ranks), tag);
     }
 
 
@@ -120,10 +153,6 @@ public:
      */
     std::vector<std::pair<int, buffer_t>> poll_tags()
     {
-        send_requests.erase(std::remove_if(
-            send_requests.begin(),
-            send_requests.end(), std::mem_fn(&mpi::Request::is_ready)), send_requests.end());
-
         auto result = std::vector<std::pair<int, buffer_t>>();
 
         while (true)
@@ -144,6 +173,33 @@ public:
 
 
     /**
+     * @brief      Poll the asynchronous pushes and MPI non-blocking send
+     *             requests. For each async push that is ready, the message
+     *             is extracted from the future (rendering it invalid) and
+     *             sent to the recipient ranks.
+     */
+    void check_outgoing()
+    {
+        for (auto& async_push : async_pushes)
+        {
+            if (std::get<0>(async_push).wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+            {
+                auto&& [message, recipients, tag] = async_push;
+                push(message.get(), recipients, tag);
+            }
+        }
+
+        auto ar = std::remove_if(async_pushes.begin(), async_pushes.end(), [] (const auto& p) { return ! std::get<0>(p).valid(); });
+        auto sr = std::remove_if(send_requests.begin(), send_requests.end(), std::mem_fn(&mpi::Request::is_ready));
+
+        async_pushes.erase(ar, async_pushes.end());
+        send_requests.erase(sr, send_requests.end());
+    }
+
+
+
+
+    /**
      * @brief      Return a const reference to the vector of open send requests.
      *
      * @return     The open send requests
@@ -157,5 +213,8 @@ public:
 
 
 private:
+    using async_push_t = std::tuple<std::future<buffer_t>, std::set<int>, int>;
+
     std::vector<mpi::Request> send_requests;
+    std::vector<async_push_t> async_pushes;
 };
