@@ -30,7 +30,6 @@
 #include "app_control.hpp"
 #include "app_filesystem.hpp"
 #include "app_hdf5_config.hpp"
-#include "app_serial_dimensional.hpp"
 #include "app_serial_ndarray.hpp"
 #include "app_serial_numeric_tuple.hpp"
 #include "app_serial_std_tuple.hpp"

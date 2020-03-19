@@ -42,11 +42,23 @@ struct serial::type_descriptor_t<const numeric::tuple_t<Ts...>>
     {
         std::apply([&s] (const auto&... x) { (..., s(x)); }, value.impl);
     }
+
+    template<typename Serializer>
+    void operator()(Serializer& s, numeric::tuple_t<Ts...>& value) const
+    {
+        std::apply([&s] (auto&... x) { (..., s(x)); }, value.impl);
+    }
 };
 
 template<typename... Ts>
 struct serial::type_descriptor_t<numeric::tuple_t<Ts...>>
 {
+    template<typename Serializer>
+    void operator()(Serializer& s, const numeric::tuple_t<Ts...>& value) const
+    {
+        std::apply([&s] (const auto&... x) { (..., s(x)); }, value.impl);
+    }
+
     template<typename Serializer>
     void operator()(Serializer& s, numeric::tuple_t<Ts...>& value) const
     {
