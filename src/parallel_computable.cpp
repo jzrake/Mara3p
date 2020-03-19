@@ -268,19 +268,7 @@ void mpr::compute(computable_node_t* main_node, async_invoke_t scheduler)
 //=============================================================================
 void mpr::compute_mpi(const node_list_t& node_list)
 {
-
-
-
-
-    // char fname[256];
-    // std::snprintf(fname, 256, "%02d.dat", mpi::comm_world().rank());
-    // auto outf = std::fopen(fname, "w");
-
-
-    // std::fprintf(outf, "%lld %ld %ld\n", std::chrono::high_resolution_clock::now().time_since_epoch().count(), long(0), long(0));
-
-
-
+    auto time_start = std::chrono::high_resolution_clock::now();
 
 
     // ------------------------------------------------------------------------
@@ -302,7 +290,7 @@ void mpr::compute_mpi(const node_list_t& node_list)
     }
 
 
-    // std::fprintf(outf, "%lld %ld %ld\n", std::chrono::high_resolution_clock::now().time_since_epoch().count(), long(0), long(0));
+    auto time_delegate = std::chrono::high_resolution_clock::now();
 
 
 
@@ -314,11 +302,11 @@ void mpr::compute_mpi(const node_list_t& node_list)
     auto completed     = collect(node_list, [          ] (auto n) { return n->has_value(); }).item_set();
     auto pending       = std::set<computable_node_t*>();
     auto iteration     = 0;
-    // auto serialize_ticks   = std::chrono::high_resolution_clock::duration::zero();
-    // auto deserialize_ticks = std::chrono::high_resolution_clock::duration::zero();
 
 
-    // std::fprintf(outf, "%lld %ld %ld\n", std::chrono::high_resolution_clock::now().time_since_epoch().count(), pending.size(), delegated.size());
+
+    auto time_collect = std::chrono::high_resolution_clock::now();
+
 
 
     // ------------------------------------------------------------------------
@@ -351,13 +339,10 @@ void mpr::compute_mpi(const node_list_t& node_list)
     };
 
 
+
+
     while (! delegated.empty())
     {
-        // std::fprintf(outf, "%lld %ld %ld\n", std::chrono::high_resolution_clock::now().time_since_epoch().count(), pending.size(), delegated.size());
-
-
-
-
         // --------------------------------------------------------------------
         // Evaluate each eligible node, if it is delegated to this MPI rank.
         // Enqueue each of the eligible nodes downstream of that node.
@@ -421,9 +406,6 @@ void mpr::compute_mpi(const node_list_t& node_list)
         // --------------------------------------------------------------------
         for (const auto& [index, bytes] : message_queue.poll_tags())
         {
-            // auto ticks = control::invoke_timed(std::mem_fn(&computable_node_t::load_from), *sorted_nodes[index], bytes);
-            // deserialize_ticks += ticks;
-
             sorted_nodes[index]->load_from(bytes);
             enqueue_eligible_downstream(sorted_nodes[index]);
         }
@@ -432,9 +414,10 @@ void mpr::compute_mpi(const node_list_t& node_list)
         completed.clear();
     }
 
-    // std::fclose(outf);
 
-    // std::printf("serialize: %lf load: %lf\n", serialize_ticks.count() * 1e-9, deserialize_ticks.count() * 1e-9);
+
+    auto time_evaluate = std::chrono::high_resolution_clock::now();
+
 
 
     // ------------------------------------------------------------------------
@@ -448,5 +431,26 @@ void mpr::compute_mpi(const node_list_t& node_list)
             node->set(std::any());
         }
     }
+
+
+    auto time_set_empty = std::chrono::high_resolution_clock::now();
+
+
     mpi::comm_world().barrier();
+
+
+    auto time_barrier = std::chrono::high_resolution_clock::now();
+
+
+    mpi::comm_world().invoke([&] () {
+        std::printf("\nRank: %d\n", mpi::comm_world().rank());
+        std::printf("start .............. %lf\n", 1e-9 * time_start.time_since_epoch().count());
+        std::printf("delegate ........... %lf\n", 1e-9 * (time_delegate  - time_start).count());
+        std::printf("collect ............ %lf\n", 1e-9 * (time_collect   - time_start).count());
+        std::printf("evaluate ........... %lf\n", 1e-9 * (time_evaluate  - time_start).count());
+        std::printf("set empty .......... %lf\n", 1e-9 * (time_set_empty - time_start).count());
+        std::printf("set barrier ........ %lf\n", 1e-9 * (time_barrier   - time_start).count());
+        std::printf("finish ............. %lf\n", 1e-9 * time_set_empty.time_since_epoch().count());
+        std::printf("\n");
+    });
 }
