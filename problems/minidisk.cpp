@@ -252,11 +252,11 @@ static auto encode_substep(solution_t solution, unit_time dt, solver_data_t solv
 
 
 //=============================================================================
-static auto compute(solution_t solution)
+static auto compute(solution_t solution, unsigned threads=0)
 {
     auto nodes = mpr::node_list_t();
     sink(solution.conserved, [&nodes] (auto c) { nodes.push_back(c.node()); });
-    mpr::compute_mpi(nodes);
+    mpr::compute_mpi(nodes, threads);
     return solution;
 }
 
@@ -273,9 +273,9 @@ static auto encode_step(solution_t solution, solver_data_t solver_data, int nfol
     return solution;
 }
 
-static auto step(solution_t solution, solver_data_t solver_data, int nfold)
+static auto step(solution_t solution, solver_data_t solver_data, int nfold, unsigned threads=0)
 {
-    return compute(encode_step(solution, solver_data, nfold));
+    return compute(encode_step(solution, solver_data, nfold), threads);
 }
 
 static void print_graph(solution_t solution, solver_data_t solver_data, int nfold)
@@ -332,9 +332,10 @@ int main(int argc, const char* argv[])
     auto cfg         = minidisk::config_template().create().update(restart_run_config(args)).update(args);
     auto solver_data = minidisk::make_solver_data(cfg);
     auto schedule    = initial_schedule(cfg);
-    auto solution    = compute(initial_solution(cfg));
+    auto solution    = compute(initial_solution(cfg), 1);
     auto orbits      = cfg.get_double("orbits");
     auto fold        = cfg.get_int("fold");
+    auto threads     = cfg.get_int("threads");
     auto ticks       = std::chrono::high_resolution_clock::now().time_since_epoch();
 
     if (mpi::comm_world().rank() == 0)
@@ -346,7 +347,7 @@ int main(int argc, const char* argv[])
     while (solution.time < orbits * binary_period)
     {
         side_effects(cfg, solution, schedule);
-        std::tie(solution, ticks) = control::invoke_timed(step, solution, solver_data, fold);
+        std::tie(solution, ticks) = control::invoke_timed(step, solution, solver_data, fold, threads);
 
         auto ncells = std::pow(solver_data.block_size * (1 << solver_data.depth), 2);
         auto kzps = 1e6 * fold * ncells / ticks.count();

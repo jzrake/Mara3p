@@ -266,7 +266,7 @@ void mpr::compute(computable_node_t* main_node, async_invoke_t scheduler)
 
 
 //=============================================================================
-void mpr::compute_mpi(const node_list_t& node_list)
+void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
 {
     auto time_start = std::chrono::high_resolution_clock::now();
 
@@ -296,7 +296,7 @@ void mpr::compute_mpi(const node_list_t& node_list)
 
     auto this_group    = mpi::comm_world().rank();
     auto message_queue = mara::MessageQueue();
-    auto thread_pool   = mara::ThreadPool(1);
+    auto thread_pool   = mara::ThreadPool(num_threads ? num_threads : std::thread::hardware_concurrency());
     auto eligible      = collect(node_list, [this_group] (auto n) { return n->group() == this_group && n->eligible(); });
     auto delegated     = collect(node_list, [this_group] (auto n) { return n->group() == this_group; }).item_set();
     auto completed     = collect(node_list, [          ] (auto n) { return n->has_value(); }).item_set();
@@ -341,6 +341,8 @@ void mpr::compute_mpi(const node_list_t& node_list)
     auto iteration = 0;
     auto eval_tick = std::chrono::high_resolution_clock::duration::zero();
     auto eval_dead = std::chrono::high_resolution_clock::duration::zero();
+    auto eval_dump = std::chrono::high_resolution_clock::duration::zero();
+    auto eval_load = std::chrono::high_resolution_clock::duration::zero();
 
 
     while (! delegated.empty())
@@ -393,10 +395,10 @@ void mpr::compute_mpi(const node_list_t& node_list)
 
             if (auto recipients = unique_recipients(node); ! recipients.empty())
             {
-                // auto [bytes, ticks] = control::invoke_timed(std::mem_fn(&computable_node_t::serialize), *node);
-                // serialize_ticks += ticks;
+                auto [bytes, ticks] = control::invoke_timed(std::mem_fn(&computable_node_t::serialize), *node);
+                eval_dump += ticks;
 
-                auto bytes = node->serialize();
+                // auto bytes = node->serialize();
                 message_queue.push(bytes, recipients, order[node]);
             }
             enqueue_eligible_downstream(node);
@@ -412,8 +414,10 @@ void mpr::compute_mpi(const node_list_t& node_list)
         // --------------------------------------------------------------------
         for (const auto& [index, bytes] : message_queue.poll_tags())
         {
-            sorted_nodes[index]->load_from(bytes);
-            enqueue_eligible_downstream(sorted_nodes[index]);
+            auto node = sorted_nodes[index];
+            eval_load += control::invoke_timed(std::mem_fn(&computable_node_t::load_from), *node, bytes);
+            // node->load_from(bytes);
+            enqueue_eligible_downstream(node);
         }
 
         completed.clear();
@@ -446,26 +450,21 @@ void mpr::compute_mpi(const node_list_t& node_list)
     }
 
 
-    auto time_set_empty = std::chrono::high_resolution_clock::now();
-
 
     mpi::comm_world().barrier();
 
 
-    auto time_barrier = std::chrono::high_resolution_clock::now();
-
 
     mpi::comm_world().invoke([&] () {
-        std::printf("\nRank: %d\n", mpi::comm_world().rank());
+        std::printf("\nRank: %d (using %lu threads)\n", mpi::comm_world().rank(), thread_pool.size());
         std::printf("delegate ........... %lf\n", 1e-9 * (time_delegate  - time_start).count());
         std::printf("collect ............ %lf\n", 1e-9 * (time_collect   - time_start).count());
         std::printf("evaluate ........... %lf\n", 1e-9 * (time_evaluate  - time_start).count());
-        std::printf("set empty .......... %lf\n", 1e-9 * (time_set_empty - time_start).count());
-        std::printf("set barrier ........ %lf\n", 1e-9 * (time_barrier   - time_start).count());
         std::printf("eval iterations .... %d\n", iteration);
         std::printf("eval total time .... %lf\n", 1e-9 * eval_tick.count());
         std::printf("eval dead time ..... %lf (%.1lf%%)\n", 1e-9 * eval_dead.count(), 100.0 * eval_dead / eval_tick);
-
+        std::printf("eval dump time ..... %lf (%.1lf%%)\n", 1e-9 * eval_tick.count(), 100.0 * eval_dump / eval_tick);
+        std::printf("eval load time ..... %lf (%.1lf%%)\n", 1e-9 * eval_dead.count(), 100.0 * eval_load / eval_tick);
         std::printf("\n");
     });
 }

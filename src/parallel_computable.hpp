@@ -699,7 +699,7 @@ void compute(computable_node_t* node, async_invoke_t scheduler);
  *             case, A will have received the computed value from its delegated
  *             rank.
  */
-void compute_mpi(const node_list_t& node_list);
+void compute_mpi(const node_list_t& node_list, unsigned num_threads=0);
 
 
 
