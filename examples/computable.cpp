@@ -1,7 +1,37 @@
 #include <iostream>
-#include "app_serial_std_string.hpp"
-#include "parallel_mpi.hpp"
+#include <string>
+#include "app_serial.hpp"
+#include "app_serial_std_vector.hpp"
 #include "parallel_computable.hpp"
+#include "parallel_mpi.hpp"
+
+#define DUMP_DELAY std::chrono::milliseconds(50)
+#define OPERATION_DELAY std::chrono::milliseconds(100)
+
+
+
+
+//=============================================================================
+template<>
+struct serial::conversion_to_serializable_t<std::string>
+{
+    using type = std::vector<char>;
+    auto operator()(std::string value) const
+    {
+        std::this_thread::sleep_for(DUMP_DELAY);
+        return std::vector<char>(value.begin(), value.end());
+    }
+};
+
+template<>
+struct serial::conversion_from_serializable_t<std::string>
+{
+    using type = std::vector<char>;
+    auto operator()(std::vector<char> value) const { return std::string(value.begin(), value.end()); }
+};
+
+template<>
+struct serial::is_serializable_t<std::string> : std::true_type {};
 
 
 
@@ -9,7 +39,11 @@
 //=============================================================================
 auto concat(mpr::computable<std::string> a, mpr::computable<std::string> b)
 {
-    return zip(a, b).name("zip") | mpr::mapv([] (auto a, auto b) { return a + b; });
+    return zip(a, b).name("zip") | mpr::mapv([] (auto a, auto b)
+    {
+        std::this_thread::sleep_for(OPERATION_DELAY);
+        return a + b;
+    });
 }
 
 template<typename T, typename U, typename... Vs>

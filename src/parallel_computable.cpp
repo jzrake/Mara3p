@@ -345,9 +345,10 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
     auto eval_load = std::chrono::high_resolution_clock::duration::zero();
 
 
-    while (! delegated.empty())
+    while (! delegated.empty() || ! message_queue.empty())
     {
         auto start_loop = std::chrono::high_resolution_clock::now();
+
 
 
 
@@ -395,11 +396,11 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
 
             if (auto recipients = unique_recipients(node); ! recipients.empty())
             {
-                auto [bytes, ticks] = control::invoke_timed(std::mem_fn(&computable_node_t::serialize), *node);
-                eval_dump += ticks;
+                // auto [bytes, ticks] = control::invoke_timed(std::mem_fn(&computable_node_t::serialize), *node);
+                // eval_dump += ticks;
+                // message_queue.push(bytes, recipients, order[node]);
 
-                // auto bytes = node->serialize();
-                message_queue.push(bytes, recipients, order[node]);
+                message_queue.push(thread_pool.enqueue([node] () { return node->serialize(); }), recipients, order[node]);
             }
             enqueue_eligible_downstream(node);
         }
@@ -420,6 +421,8 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
             enqueue_eligible_downstream(node);
         }
 
+
+        message_queue.check_outgoing();
         completed.clear();
 
 
@@ -463,8 +466,8 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
         std::printf("eval iterations .... %d\n", iteration);
         std::printf("eval total time .... %lf\n", 1e-9 * eval_tick.count());
         std::printf("eval dead time ..... %lf (%.1lf%%)\n", 1e-9 * eval_dead.count(), 100.0 * eval_dead / eval_tick);
-        std::printf("eval dump time ..... %lf (%.1lf%%)\n", 1e-9 * eval_tick.count(), 100.0 * eval_dump / eval_tick);
-        std::printf("eval load time ..... %lf (%.1lf%%)\n", 1e-9 * eval_dead.count(), 100.0 * eval_load / eval_tick);
+        std::printf("eval dump time ..... %lf (%.1lf%%)\n", 1e-9 * eval_dump.count(), 100.0 * eval_dump / eval_tick);
+        std::printf("eval load time ..... %lf (%.1lf%%)\n", 1e-9 * eval_load.count(), 100.0 * eval_load / eval_tick);
         std::printf("\n");
     });
 }

@@ -714,7 +714,7 @@ void compute_mpi(const node_list_t& node_list, unsigned num_threads=0);
 template<typename... ValueType>
 void compute_mpi(computable<ValueType>... cs)
 {
-    compute_mpi({cs.node()...});
+    compute_mpi({cs.node()...}, 1);
 }
 
 
