@@ -31,6 +31,7 @@ ALL_TARGETS = mara \
 	examples/computable \
 	examples/mhd3d \
 	examples/mhd3d_tbp \
+	examples/serial_perf \
 	examples/task_parallel \
 	problems/sedov \
 	problems/sedov2d
@@ -73,6 +74,9 @@ examples/mhd3d: examples/mhd3d.o src/scheme_mhd_v1.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 examples/mhd3d_tbp: examples/mhd3d_tbp.o src/scheme_mhd_v2.o src/scheme_mhd_rules.o src/app_ui.o
+	$(CXX) -o $@ $^ $(LDFLAGS)
+
+examples/serial_perf: examples/serial_perf.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 examples/task_parallel: examples/task_parallel.o
