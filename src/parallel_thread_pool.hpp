@@ -28,6 +28,7 @@
 
 #pragma once
 #include <algorithm>
+#include <deque>
 #include <future>
 #include <mutex>
 #include <thread>
@@ -55,6 +56,7 @@ public:
         operator bool() const { return run != nullptr; }
         std::function<void(void)> run; 
         std::shared_ptr<int> tag;
+        int priority = 0;
     };
 
 
@@ -98,11 +100,13 @@ public:
         }
     }
 
+
     std::size_t size()
     {
         std::lock_guard<std::mutex> lock(mutex);
         return threads.size();
     }
+
 
     std::size_t job_count()
     {
@@ -110,8 +114,9 @@ public:
         return pending_tasks.size() + running_tasks.size();
     }
 
+
     template<typename Function, typename... Args>
-    auto enqueue(Function&& fn, Args&&... args)
+    auto enqueue(int priority, Function&& fn, Args&&... args)
     {        
         using result_type = std::invoke_result_t<Function, Args...>;
         auto promised_result = std::make_shared<std::promise<result_type>>();
@@ -124,23 +129,31 @@ public:
             catch (...) {
                 promised_result->set_exception(std::current_exception());
             }
-        });
+        }, priority);
         return promised_result->get_future();
     }
 
-    auto scheduler()
+
+    template<typename Function, typename... Args>
+    auto enqueue(Function&& fn, Args&&... args)
     {
-        return [this] (auto f) { return enqueue(f); };
+        return enqueue(0, fn, args...);
+    }
+
+
+    auto scheduler(int priority=0)
+    {
+        return [this, priority] (auto f) { return enqueue(priority, f); };
     }
 
 
 private:
 
 
-    void enqueue_internal(std::function<void(void)> run)
+    void enqueue_internal(std::function<void(void)> run, int priority)
     {
         std::lock_guard<std::mutex> lock(mutex);
-        pending_tasks.push_back({run, std::make_shared<int>()});
+        pending_tasks.push_back({run, std::make_shared<int>(), priority});
         condition.notify_one();
     }
 
@@ -148,7 +161,7 @@ private:
     /**
      * Convenience method to find a task with the given tag.
      */
-    std::vector<task_t>::iterator tagged(int* tag, std::vector<task_t>& v)
+    std::deque<task_t>::iterator tagged(int* tag, std::deque<task_t>& v)
     {
         return std::find_if(v.begin(), v.end(), [tag] (const auto& t) { return t.tag.get() == tag; });
     }
@@ -170,8 +183,11 @@ private:
             return {};
         }
 
-        auto task = pending_tasks.front();
-        pending_tasks.erase(pending_tasks.begin());
+        auto less_priority = [] (const auto& a, const auto& b) { return a.priority < b.priority; };
+        auto task_iter = std::max_element(pending_tasks.begin(), pending_tasks.end(), less_priority);
+
+        auto task = *task_iter;
+        pending_tasks.erase(task_iter);
         running_tasks.push_back(task);
 
         return task;
@@ -207,8 +223,8 @@ private:
 
     //=========================================================================
     std::vector<std::thread> threads;
-    std::vector<task_t> pending_tasks;
-    std::vector<task_t> running_tasks;
+    std::deque<task_t> pending_tasks;
+    std::deque<task_t> running_tasks;
     std::condition_variable condition;
     std::atomic<bool> stop = {false};
     std::mutex mutex;

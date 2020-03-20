@@ -338,10 +338,30 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
         return result;
     };
 
+    auto priority = [this_group] (computable_node_t* node)
+    {
+        auto result = 0;
 
+        for (auto n : node->outgoing_nodes())
+        {
+            if (n->group() != this_group)
+            {
+                ++result;
+            }
+        }
+        return result;
+    };
+
+
+
+
+    auto async_serialize = true;
+    auto async_load      = true;
     auto iteration = 0;
     auto eval_tick = std::chrono::high_resolution_clock::duration::zero();
     auto eval_dead = std::chrono::high_resolution_clock::duration::zero();
+
+
 
 
     while (! delegated.empty() || ! message_queue.empty())
@@ -357,7 +377,7 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
         // --------------------------------------------------------------------
         for (auto node : eligible)
         {
-            node->submit(thread_pool.scheduler());
+            node->submit(thread_pool.scheduler(priority(node)));
             pending.insert(node);
         }
 
@@ -395,7 +415,14 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
 
             if (auto recipients = unique_recipients(node); ! recipients.empty())
             {
-                message_queue.push(thread_pool.enqueue([node] () { return node->serialize(); }), recipients, order[node]);
+                if (async_serialize)
+                {
+                    message_queue.push(thread_pool.enqueue(priority(node), [node] () { return node->serialize(); }), recipients, order[node]);
+                }
+                else
+                {
+                    message_queue.push(node->serialize(), recipients, order[node]);
+                }
             }
             enqueue_eligible_downstream(node);
         }
@@ -412,8 +439,17 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
         for (auto&& [index, bytes] : message_queue.poll_tags())
         {
             auto node = sorted_nodes[index];
-            auto load = thread_pool.enqueue([node] (auto&& b) { return node->get_serializer().deserialize(b); }, std::move(bytes));
-            loading.emplace_back(node, std::move(load));
+
+            if (async_load)
+            {
+                auto load = thread_pool.enqueue(priority(node), [node] (auto&& b) { return node->get_serializer().deserialize(b); }, std::move(bytes));
+                loading.emplace_back(node, std::move(load));
+            }
+            else
+            {
+                node->load_from(bytes);
+                enqueue_eligible_downstream(node);
+            }
         }
 
 
@@ -423,19 +459,22 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
         // Get any values that have finished deserializing, set that value to
         // the corresponding nodes, and enqueue any newly eligible nodes.
         // --------------------------------------------------------------------
-        for (auto& [node, future_value] : loading)
+        if (async_load)
         {
-            if (future_value.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+            for (auto& [node, future_value] : loading)
             {
-                node->set(future_value.get());
-                enqueue_eligible_downstream(node);
+                if (future_value.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+                {
+                    node->set(future_value.get());
+                    enqueue_eligible_downstream(node);
+                }
             }
-        }
 
-        loading.erase(std::remove_if(loading.begin(), loading.end(), [] (const auto& v)
-        {
-            return ! std::get<1>(v).valid();
-        }), loading.end());
+            loading.erase(std::remove_if(loading.begin(), loading.end(), [] (const auto& v)
+            {
+                return ! std::get<1>(v).valid();
+            }), loading.end());            
+        }
 
 
 
@@ -458,6 +497,7 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
 
 
 
+
     // ------------------------------------------------------------------------
     // Assign an empty value to the target nodes to disconnect them from their
     // upstream graph.
@@ -472,10 +512,8 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
 
 
 
+
     mpi::comm_world().barrier();
-
-
-
     mpi::comm_world().invoke([&] () {
         std::printf("\nRank: %d (using %lu threads)\n", mpi::comm_world().rank(), thread_pool.size());
         std::printf("delegate ........... %lf\n", 1e-9 * (time_delegate  - time_start).count());
