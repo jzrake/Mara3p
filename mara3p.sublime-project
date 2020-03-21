@@ -3,7 +3,6 @@
     [
         {
             "path": ".",
-            // "file_include_patterns": ["*.*"],
             "file_exclude_patterns": ["*.d"],
         },
     ],

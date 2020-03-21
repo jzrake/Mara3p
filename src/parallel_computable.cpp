@@ -206,7 +206,7 @@ void mpr::print_graph(std::ostream& stream, const node_list_t& node_list)
         }
     }
 
-    for (int group = 0; group < num_groups; ++group)
+    for (unsigned group = 0; group < num_groups; ++group)
     {
         stream << "    subgraph cluster_" << group << " {\n";
         stream << "        label = \"Rank " << group << "\";\n";
