@@ -79,6 +79,7 @@ namespace mpi
             case operation::maxloc: return MPI_MAXLOC;
             case operation::minloc: return MPI_MINLOC;
         }
+        throw std::invalid_argument("mpi::get_op (unknown MPI operation)");
     }
 
     inline void throw_unless_valid_tag(int tag)

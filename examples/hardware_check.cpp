@@ -70,8 +70,8 @@ int main(int argc, const char* argv[])
     {
         total += result.get();
     }
-    auto finish = std::chrono::high_resolution_clock::now();
     auto all_total = mpi::comm_world().reduce(0, total, mpi::operation::sum);
+    auto finish = std::chrono::high_resolution_clock::now();
 
 
 
@@ -79,9 +79,11 @@ int main(int argc, const char* argv[])
     //=========================================================================
     if (mpi::comm_world().rank() == 0)
     {
-        std::printf("samples * batches * mpiprocs ... %.1e * %d * %d\n", double(num_samples), num_batches, mpi::comm_world().size());
+        std::printf("threads / MPI process .......... %lu\n", thread_pool.size());
+        std::printf("MPI processes .................. %d\n", mpi::comm_world().size());
+        std::printf("total compute units ............ %lu\n", mpi::comm_world().size() * thread_pool.size());
         std::printf("pi estimate .................... %lf\n", all_total / num_batches / mpi::comm_world().size());
-        std::printf("compute-seconds ................ %lf\n", mpi::comm_world().size() * num_threads * (finish - start).count() * 1e-9);
+        std::printf("compute-seconds ................ %lf\n", mpi::comm_world().size() * thread_pool.size() * (finish - start).count() * 1e-9);
     }
     return 0;
 }
