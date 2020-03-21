@@ -27,8 +27,9 @@
 
 
 #pragma once
+#include <algorithm>
 #include <any>
-#include <cstdio>
+#include <ostream>
 #include <deque>
 #include <future>
 #include <set>
@@ -599,7 +600,7 @@ auto mapv(Function f, const char* name="")
 
 
 //=============================================================================
-void print_graph(FILE* outfile, const node_list_t& node_list);
+void print_graph(std::ostream& stream, const node_list_t& node_list);
 
 
 
@@ -619,9 +620,9 @@ void print_graph(FILE* outfile, const node_list_t& node_list);
  *             dot -Tpdf -o graph.pdf graph.dot
  */
 template<typename... ValueType>
-void print_graph(FILE* outfile, computable<ValueType>... cs)
+void print_graph(std::ostream& stream, computable<ValueType>... cs)
 {
-    print_graph(outfile, node_list_t{cs.node()...});
+    print_graph(stream, node_list_t{cs.node()...});
 }
 
 

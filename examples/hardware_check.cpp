@@ -79,11 +79,11 @@ int main(int argc, const char* argv[])
     //=========================================================================
     if (mpi::comm_world().rank() == 0)
     {
-        std::printf("threads / MPI process .......... %lu\n", thread_pool.size());
         std::printf("MPI processes .................. %d\n", mpi::comm_world().size());
+        std::printf("threads / MPI process .......... %lu\n", thread_pool.size());
         std::printf("total compute units ............ %lu\n", mpi::comm_world().size() * thread_pool.size());
-        std::printf("pi estimate .................... %lf\n", all_total / num_batches / mpi::comm_world().size());
         std::printf("compute-seconds ................ %lf\n", mpi::comm_world().size() * thread_pool.size() * (finish - start).count() * 1e-9);
+        std::printf("pi estimate .................... %lf\n", all_total / num_batches / mpi::comm_world().size());
     }
     return 0;
 }

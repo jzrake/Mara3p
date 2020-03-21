@@ -185,6 +185,7 @@ private:
 
         auto less_priority = [] (const auto& a, const auto& b) { return a.priority < b.priority; };
         auto task_iter = std::max_element(pending_tasks.begin(), pending_tasks.end(), less_priority);
+        // auto task_iter = pending_tasks.begin();
 
         auto task = *task_iter;
         pending_tasks.erase(task_iter);

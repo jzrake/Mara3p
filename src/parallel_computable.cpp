@@ -180,40 +180,65 @@ std::deque<unsigned> mpr::divvy_tasks(const node_list_t& nodes, std::deque<unsig
 
 
 //=============================================================================
-void mpr::print_graph(FILE* outfile, const node_list_t& node_list)
+void mpr::print_graph(std::ostream& stream, const node_list_t& node_list)
 {
     auto [nodes, generation] = topological_sort(node_list);
     auto delegation = divvy_tasks(nodes, generation, mpi::comm_world().size());
     auto order = std::map<computable_node_t*, unsigned>();
+    auto num_groups = (delegation.empty() ? 0 : *std::max_element(delegation.begin(), delegation.end())) + 1;
 
     for (std::size_t i = 0; i < nodes.size(); ++i)
     {
-        if (! nodes[i]->has_group_number())
-        {
-            nodes[i]->assign_to_group(delegation[i]);            
-        }
         order[nodes[i]] = i;
     }
 
-    std::fprintf(outfile, "digraph {\n");
-    std::fprintf(outfile, "    ranksep=1.0;\n");
+    stream << "digraph {\n";
+    stream << "    ranksep=4;\n";
 
-    for (auto n : nodes)
+    for (auto a : nodes)
     {
-        for (auto o : n->outgoing_nodes())
+        for (auto b : a->outgoing_nodes())
         {
-            std::fprintf(outfile, "    %u -> %u;\n", order[n], order[o]);
+            if (delegation[order[a]] != delegation[order[b]])
+            {
+                stream << "    " << order[a] << " -> " << order[b] << ";\n";
+            }
         }
     }
 
-    for (std::size_t i = 0; i < nodes.size(); ++i)
+    for (int group = 0; group < num_groups; ++group)
     {
-        std::fprintf(outfile, "    %ld [shape=box,label=\"%s(%lu: %d)\",style=%s];\n",
-            i, nodes[i]->name(),
-            i, nodes[i]->group(),// generation[i],
-            nodes[i]->immediate() ? "dotted" : "filled");
+        stream << "    subgraph cluster_" << group << " {\n";
+        stream << "        label = \"Rank " << group << "\";\n";
+        stream << "        style = filled;\n";
+        stream << "        color = " << group + 1 << ";\n";
+        stream << "        colorscheme = spectral9;\n";
+
+        for (auto a : nodes)
+        {
+            for (auto b : a->outgoing_nodes())
+            {
+                if (delegation[order[a]] == group && delegation[order[b]] == group)
+                {
+                     stream << "        " << order[a] << " -> " << order[b] <<  ";\n";
+                }
+            }
+        }
+        stream << "    }\n";
     }
-    std::fprintf(outfile, "}\n");
+
+    for (auto a : nodes)
+    {
+        stream
+        << "    "
+        << order[a]
+        << "[shape=" << (a->immediate() ? "ellipse" : "box")
+        << ",style=" << (a->immediate() ? "dotted" : "filled")
+        << ",label=" << '"' << (std::strlen(a->name()) == 0 ? std::to_string(order[a]) : std::string(a->name())) << '"'
+        << "]\n";
+    }
+
+    stream << "}\n";
 }
 
 

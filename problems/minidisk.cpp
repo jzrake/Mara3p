@@ -26,6 +26,7 @@
 
 
 
+#include <fstream>
 #include <iostream>
 #include "app_control.hpp"
 #include "app_filesystem.hpp"
@@ -278,14 +279,16 @@ static auto step(solution_t solution, solver_data_t solver_data, int nfold, unsi
     return compute(encode_step(solution, solver_data, nfold), threads);
 }
 
-static void print_graph(solution_t solution, solver_data_t solver_data, int nfold)
+static void print_graph(const mara::config_t& cfg, solution_t solution, solver_data_t solver_data, int nfold)
 {
+    auto outdir = cfg.get_string("outdir");
+    auto fname = util::format("%s/task_graph.dot", outdir.data());
+
     auto next = encode_step(solution, solver_data, nfold);
-    auto outf = std::fopen("minidisk.dot", "w");
+    auto outf = std::ofstream(fname);
     auto nodes = mpr::node_list_t();
     sink(solution.conserved, [&nodes] (auto c) { nodes.push_back(c.node()); });
     mpr::print_graph(outf, nodes);
-    std::fclose(outf);
 }
 
 
@@ -340,7 +343,7 @@ int main(int argc, const char* argv[])
 
     if (mpi::comm_world().rank() == 0)
     {
-        print_graph(solution, solver_data, fold);
+        print_graph(cfg, solution, solver_data, fold);
         mara::pretty_print(std::cout, "config", cfg);        
     }
 
