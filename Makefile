@@ -27,8 +27,9 @@ LDFLAGS  = -lhdf5
 ALL_TARGETS = mara \
 	examples/euler1d \
 	examples/euler1d_moving_mesh \
-	examples/euler1d_moving_mesh_plm \
 	examples/computable \
+	examples/euler1d_moving_mesh_plm \
+	examples/hardware_check \
 	examples/mhd3d \
 	examples/mhd3d_tbp \
 	examples/serial_perf \
@@ -68,6 +69,9 @@ examples/euler1d_moving_mesh: examples/euler1d_moving_mesh.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 examples/euler1d_moving_mesh_plm: examples/euler1d_moving_mesh_plm.o
+	$(CXX) -o $@ $^ $(LDFLAGS)
+
+examples/hardware_check: examples/hardware_check.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 examples/mhd3d: examples/mhd3d.o src/scheme_mhd_v1.o
