@@ -39,9 +39,7 @@
 #include "minidisk.hpp"
 #include "minidisk_io.hpp"
 #include "parallel_computable.hpp"
-#include "parallel_computable_tree.hpp"
 #include "parallel_mpi.hpp"
-#include "parallel_thread_pool.hpp"
 #include "physics_two_body.hpp"
 #ifndef GIT_COMMIT
 #define GIT_COMMIT ""
@@ -255,9 +253,9 @@ static auto encode_substep(solution_t solution, unit_time dt, solver_data_t solv
 //=============================================================================
 static auto compute(solution_t solution, unsigned threads=0)
 {
-    auto nodes = mpr::node_list_t();
-    sink(solution.conserved, [&nodes] (auto c) { nodes.push_back(c.node()); });
-    mpr::compute_mpi(nodes, threads);
+    auto nodes = mpr::node_set_t();
+    sink(solution.conserved, [&nodes] (auto c) { nodes.insert(c.node()); });
+    mpr::compute(nodes, threads);
     return solution;
 }
 
@@ -286,8 +284,8 @@ static void print_graph(const mara::config_t& cfg, solution_t solution, solver_d
 
     auto next = encode_step(solution, solver_data, nfold);
     auto outf = std::ofstream(fname);
-    auto nodes = mpr::node_list_t();
-    sink(solution.conserved, [&nodes] (auto c) { nodes.push_back(c.node()); });
+    auto nodes = mpr::node_set_t();
+    sink(solution.conserved, [&nodes] (auto c) { nodes.insert(c.node()); });
     mpr::print_graph(outf, nodes);
 }
 
@@ -343,7 +341,7 @@ int main(int argc, const char* argv[])
 
     if (mpi::comm_world().rank() == 0)
     {
-        print_graph(cfg, solution, solver_data, fold);
+        // print_graph(cfg, solution, solver_data, fold);
         mara::pretty_print(std::cout, "config", cfg);        
     }
 

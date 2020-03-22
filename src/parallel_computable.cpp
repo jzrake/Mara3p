@@ -26,7 +26,6 @@
 
 
 
-#include <vector>
 #include <map>
 #include "parallel_computable.hpp"
 #include "parallel_message_queue.hpp"
@@ -37,21 +36,22 @@
 
 
 using namespace mpr;
+unsigned long mpr::computable_node_t::last_node_id = 0;
 
 
 
 
 //=============================================================================
 template<typename Predicate>
-static void collect(computable_node_t* node, Predicate pred, node_list_t& result, node_list_t& passed)
+static void collect(computable_node_t* node, Predicate pred, node_set_t& result, node_set_t& passed)
 {
     if (! passed.count(node))
     {
-        passed.push_back(node);
+        passed.insert(node);
 
         if (pred(node))
         {
-            result.push_back(node);
+            result.insert(node);
         }
 
         for (auto i : node->incoming_nodes())
@@ -62,19 +62,10 @@ static void collect(computable_node_t* node, Predicate pred, node_list_t& result
 }
 
 template<typename Predicate>
-static auto collect(computable_node_t* node, Predicate pred)
+static auto collect(const node_set_t& nodes, Predicate pred)
 {
-    auto result = node_list_t();
-    auto passed = node_list_t();
-    collect(node, pred, result, passed);
-    return result;
-}
-
-template<typename Predicate>
-static auto collect(const node_list_t& nodes, Predicate pred)
-{
-    auto result = node_list_t();
-    auto passed = node_list_t();
+    auto result = node_set_t();
+    auto passed = node_set_t();
 
     for (auto node : nodes)
     {
@@ -83,52 +74,38 @@ static auto collect(const node_list_t& nodes, Predicate pred)
     return result;
 }
 
-static bool is_or_precedes(computable_node_t* node, computable_node_t* other)
-{
-    if (other == node || node->outgoing_nodes().count(other))
-    {
-        return true;
-    }
-    for (auto o : node->outgoing_nodes())
-    {
-        if (is_or_precedes(o, other))
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
 
 
 
 //=============================================================================
-std::pair<node_list_t, std::deque<unsigned>> mpr::topological_sort(const node_list_t& nodes)
+std::pair<std::vector<computable_node_t*>, std::vector<unsigned>> mpr::topological_sort(const node_set_t& nodes)
 {
-    auto N0 = collect(nodes, [] (auto n) { return n->incoming_nodes().empty(); });
-    auto N1 = unique_deque_t<computable_node_t*>();
+    throw;
 
-    auto G0 = std::deque<unsigned>(N0.size(), 0);
-    auto G1 = std::deque<unsigned>();
+    auto N0 = collect(nodes, [] (auto n) { return n->incoming_nodes().empty(); });
+    auto N1 = std::vector<computable_node_t*>();
+
+    auto G0 = std::vector<unsigned>(N0.size(), 0);
+    auto G1 = std::vector<unsigned>();
 
     while (! N0.empty())
     {
-        auto n = N0.front();
-        auto g = G0.front();
+        auto n = *N0.begin();
+        auto g = *G0.begin();
 
-        N0.pop_front();
-        G0.pop_front();
+        N0.erase(N0.begin());
+        G0.erase(G0.begin());
 
         N1.push_back(n);
         G1.push_back(g);
 
         for (auto o : n->outgoing_nodes())
         {
-            const auto& i = o->incoming_nodes();
+            // const auto& i = o->incoming_nodes();
 
-            if (! std::any_of(i.begin(), i.end(), [&N1] (auto i) { return ! N1.count(i); }))
+            if (false) //! std::any_of(i.begin(), i.end(), [&N1] (auto i) { return ! N1.count(i); }))
             {
-                N0.push_back(o);
+                N0.insert(o);
                 G0.push_back(g + 1);
             }
         }
@@ -140,9 +117,11 @@ std::pair<node_list_t, std::deque<unsigned>> mpr::topological_sort(const node_li
 
 
 //=============================================================================
-std::deque<unsigned> mpr::divvy_tasks(const node_list_t& nodes, std::deque<unsigned>& generation, unsigned num_groups)
+std::vector<unsigned> mpr::divvy_tasks(const std::vector<computable_node_t*>& nodes, std::vector<unsigned>& generation, unsigned num_groups)
 {
-    auto count_same = [] (const std::deque<unsigned>& items, std::size_t i0)
+    throw;
+
+    auto count_same = [] (const std::vector<unsigned>& items, std::size_t i0)
     {
         for (std::size_t i = i0; i < items.size(); ++i)
         {
@@ -154,7 +133,7 @@ std::deque<unsigned> mpr::divvy_tasks(const node_list_t& nodes, std::deque<unsig
         return items.size() - i0;
     };
 
-    auto delegation = std::deque<unsigned>();
+    auto delegation = std::vector<unsigned>();
     auto gen_start = std::size_t(0);
 
     while (gen_start < nodes.size())
@@ -180,90 +159,94 @@ std::deque<unsigned> mpr::divvy_tasks(const node_list_t& nodes, std::deque<unsig
 
 
 //=============================================================================
-void mpr::print_graph(std::ostream& stream, const node_list_t& node_list)
+void mpr::print_graph(std::ostream& stream, const node_set_t& node_set)
 {
-    auto [nodes, generation] = topological_sort(node_list);
-    auto delegation = divvy_tasks(nodes, generation, mpi::comm_world().size());
-    auto order = std::map<computable_node_t*, unsigned>();
-    auto num_groups = (delegation.empty() ? 0 : *std::max_element(delegation.begin(), delegation.end())) + 1;
+    throw;
 
-    for (std::size_t i = 0; i < nodes.size(); ++i)
-    {
-        order[nodes[i]] = i;
-    }
+    // auto [nodes, generation] = topological_sort(node_set);
+    // auto delegation = divvy_tasks(nodes, generation, mpi::comm_world().size());
+    // auto order = std::map<computable_node_t*, unsigned>();
+    // auto num_groups = (delegation.empty() ? 0 : *std::max_element(delegation.begin(), delegation.end())) + 1;
 
-    stream << "digraph {\n";
-    stream << "    ranksep=4;\n";
+    // for (std::size_t i = 0; i < nodes.size(); ++i)
+    // {
+    //     order[nodes[i]] = i;
+    // }
 
-    for (auto a : nodes)
-    {
-        for (auto b : a->outgoing_nodes())
-        {
-            if (delegation[order[a]] != delegation[order[b]])
-            {
-                stream << "    " << order[a] << " -> " << order[b] << ";\n";
-            }
-        }
-    }
+    // stream << "digraph {\n";
+    // stream << "    ranksep=4;\n";
 
-    for (unsigned group = 0; group < num_groups; ++group)
-    {
-        stream << "    subgraph cluster_" << group << " {\n";
-        stream << "        label = \"Rank " << group << "\";\n";
-        stream << "        style = filled;\n";
-        stream << "        color = " << group + 1 << ";\n";
-        stream << "        colorscheme = spectral9;\n";
+    // for (auto a : nodes)
+    // {
+    //     for (auto b : a->outgoing_nodes())
+    //     {
+    //         if (delegation[order[a]] != delegation[order[b]])
+    //         {
+    //             stream << "    " << order[a] << " -> " << order[b] << ";\n";
+    //         }
+    //     }
+    // }
 
-        for (auto a : nodes)
-        {
-            for (auto b : a->outgoing_nodes())
-            {
-                if (delegation[order[a]] == group && delegation[order[b]] == group)
-                {
-                     stream << "        " << order[a] << " -> " << order[b] <<  ";\n";
-                }
-            }
-        }
-        stream << "    }\n";
-    }
+    // for (unsigned group = 0; group < num_groups; ++group)
+    // {
+    //     stream << "    subgraph cluster_" << group << " {\n";
+    //     stream << "        label = \"Rank " << group << "\";\n";
+    //     stream << "        style = filled;\n";
+    //     stream << "        color = " << group + 1 << ";\n";
+    //     stream << "        colorscheme = spectral9;\n";
 
-    for (auto a : nodes)
-    {
-        stream
-        << "    "
-        << order[a]
-        << "[shape=" << (a->immediate() ? "ellipse" : "box")
-        << ",style=" << (a->immediate() ? "dotted" : "filled")
-        << ",label=" << '"' << (std::strlen(a->name()) == 0 ? std::to_string(order[a]) : std::string(a->name())) << '"'
-        << "]\n";
-    }
+    //     for (auto a : nodes)
+    //     {
+    //         for (auto b : a->outgoing_nodes())
+    //         {
+    //             if (delegation[order[a]] == group && delegation[order[b]] == group)
+    //             {
+    //                  stream << "        " << order[a] << " -> " << order[b] <<  ";\n";
+    //             }
+    //         }
+    //     }
+    //     stream << "    }\n";
+    // }
 
-    stream << "}\n";
+    // for (auto a : nodes)
+    // {
+    //     stream
+    //     << "    "
+    //     << order[a]
+    //     << "[shape=" << (a->immediate() ? "ellipse" : "box")
+    //     << ",style=" << (a->immediate() ? "dotted" : "filled")
+    //     << ",label=" << '"' << (std::strlen(a->name()) == 0 ? std::to_string(order[a]) : std::string(a->name())) << '"'
+    //     << "]\n";
+    // }
+
+    // stream << "}\n";
 }
 
 
 
 
 //=============================================================================
-void mpr::compute(computable_node_t* main_node, async_invoke_t scheduler)
+void mpr::compute(const node_set_t& node_set, unsigned num_threads)
 {
-    auto eligible  = collect(main_node, [] (auto n) { return n->eligible(); });
-    auto pending   = node_list_t();
-    auto completed = node_list_t();
+    auto thread_pool = mara::ThreadPool(num_threads ? num_threads : std::thread::hardware_concurrency());
+    auto scheduler   = async_invoke_t(thread_pool.scheduler());
+    auto eligible    = collect(node_set, [] (auto n) { return n->eligible(); });
+    auto pending     = node_set_t();
+    auto completed   = node_set_t();
 
     while (! eligible.empty() || ! pending.empty())
     {
         for (auto node : eligible)
         {
             node->submit(node->immediate() ? synchronous_execution : scheduler);
-            pending.push_back(node);
+            pending.insert(node);
         }
 
         for (auto node : pending)
         {
             if (node->ready())
             {
-                completed.push_back(node);
+                completed.insert(node);
             }
             eligible.erase(node);
         }
@@ -277,12 +260,13 @@ void mpr::compute(computable_node_t* main_node, async_invoke_t scheduler)
 
             for (auto next : outgoing)
             {
-                if (next->eligible() && is_or_precedes(next, main_node))
+                if (next->eligible())
                 {
-                    eligible.push_back(next);
+                    eligible.insert(next);
                 }
             }
         }
+
         completed.clear();
     }
 }
@@ -291,8 +275,10 @@ void mpr::compute(computable_node_t* main_node, async_invoke_t scheduler)
 
 
 //=============================================================================
-void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
+void mpr::compute_mpi(const node_set_t& node_set, unsigned num_threads)
 {
+    throw;
+
     auto time_start = std::chrono::high_resolution_clock::now();
 
 
@@ -301,7 +287,7 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
     // Assign the unevaluated tasks to an MPI rank based on divvying the tasks
     // in each generation.
     // ------------------------------------------------------------------------
-    auto [sorted_nodes, generation] = topological_sort(node_list);
+    auto [sorted_nodes, generation] = topological_sort(node_set);
     auto delegation = divvy_tasks(sorted_nodes, generation, mpi::comm_world().size());
     auto order = std::map<computable_node_t*, unsigned>();
 
@@ -322,9 +308,9 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
     auto this_group    = mpi::comm_world().rank();
     auto message_queue = mara::MessageQueue();
     auto thread_pool   = mara::ThreadPool(num_threads ? num_threads : std::thread::hardware_concurrency());
-    auto eligible      = collect(node_list, [this_group] (auto n) { return n->group() == this_group && n->eligible(); });
-    auto delegated     = collect(node_list, [this_group] (auto n) { return n->group() == this_group; }).item_set();
-    auto completed     = collect(node_list, [          ] (auto n) { return n->has_value(); }).item_set();
+    auto eligible      = collect(node_set, [this_group] (auto n) { return n->group() == this_group && n->eligible(); });
+    auto delegated     = collect(node_set, [this_group] (auto n) { return n->group() == this_group; });
+    auto completed     = collect(node_set, [          ] (auto n) { return n->has_value(); });
     auto pending       = std::set<computable_node_t*>();
     auto loading       = std::vector<async_load_t>();
 
@@ -344,7 +330,7 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
         {
             if (next->group() == this_group && next->eligible())
             {
-                eligible.push_back(next);
+                eligible.insert(next);
             }
         }
     };
@@ -527,7 +513,7 @@ void mpr::compute_mpi(const node_list_t& node_list, unsigned num_threads)
     // Assign an empty value to the target nodes to disconnect them from their
     // upstream graph.
     // ------------------------------------------------------------------------
-    for (auto node : node_list)
+    for (auto node : node_set)
     {
         if (! node->has_value())
         {

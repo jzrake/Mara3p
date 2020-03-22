@@ -27,11 +27,9 @@
 
 
 #pragma once
-#include <algorithm>
 #include <any>
-#include <ostream>
-#include <deque>
 #include <future>
+#include <ostream>
 #include <set>
 #include <vector>
 #include "app_serial.hpp"
@@ -79,139 +77,6 @@ namespace mpr // massively parallel runtime
 
 
 //=============================================================================
-template<typename T>
-class unique_deque_t
-{
-public:
-
-    unique_deque_t() {}
-    unique_deque_t(std::initializer_list<T> items) { for (auto item : items) push_back(item); }
-
-    decltype(auto) operator[](std::size_t i) const
-    {
-        return deque.operator[](i);
-    }
-
-    decltype(auto) begin() const
-    {
-        return deque.begin();
-    }
-
-    decltype(auto) end() const
-    {
-        return deque.end();
-    }
-
-    decltype(auto) front() const
-    {
-        return deque.front();
-    }
-
-    decltype(auto) back() const
-    {
-        return deque.back();
-    }
-
-    bool empty() const
-    {
-        return set.empty();
-    }
-
-    auto size() const
-    {
-        return deque.size();
-    }
-
-    auto count(const T& value) const
-    {
-        return set.count(value);
-    }
-
-    void push_back(T&& value)
-    {
-        if (! count(value))
-        {
-            deque.push_back(value);
-            set.insert(value);
-        }
-    }
-
-    void push_back(const T& value)
-    {
-        if (! count(value))
-        {
-            deque.push_back(value);
-            set.insert(value);
-        }
-    }
-
-    void push_front(T&& value)
-    {
-        if (! count(value))
-        {
-            deque.push_front(value);
-            set.insert(value);
-        }
-    }
-
-    void push_front(const T& value)
-    {
-        if (! count(value))
-        {
-            deque.push_front(value);
-            set.insert(value);
-        }
-    }
-
-    void pop_front()
-    {
-        set.erase(deque.front());
-        deque.pop_front();
-    }
-
-    void pop_back()
-    {
-        set.erase(deque.back());
-        deque.pop_back();
-    }
-
-    void erase(const T& value)
-    {
-        if (count(value))
-        {
-            set.erase(value);
-            deque.erase(std::find(deque.begin(), deque.end(), value));
-        }
-    }
-
-    void clear()
-    {
-        deque.clear();
-        set.clear();
-    }
-
-    const auto& item_set() const &
-    {
-        return set;
-    }
-
-    auto item_set() &&
-    {
-        deque.clear();
-        return std::move(set);
-    }
-
-private:
-    std::deque<T> deque;
-    std::set<T> set;
-};
-
-
-
-
-//=============================================================================
-class computable_node_t;
-using node_list_t = unique_deque_t<computable_node_t*>;
 using async_invoke_t = std::function<std::future<std::any>(std::function<std::any()>)>;
 
 
@@ -245,14 +110,30 @@ class computable_node_t
 public:
 
 
+
+
+    //=========================================================================
+    struct comparator_t
+    {
+        bool operator()(computable_node_t* a, computable_node_t* b) const
+        {
+            return a->node_id < b->node_id;
+        }
+    };
+
+    using node_set_t = std::set<computable_node_t*, comparator_t>;
+
+
+
+
     //=========================================================================
     computable_node_t(const computable_node_t& other) = delete;
-    computable_node_t(const std::any& any_value) : any_value(any_value) {}
-    computable_node_t(node_list_t incoming) : incoming(incoming)
+    computable_node_t(const std::any& any_value) : any_value(any_value), node_id(++last_node_id) {}
+    computable_node_t(node_set_t incoming) : incoming(incoming), node_id(++last_node_id)
     {
         for (auto i : incoming)
         {
-            i->outgoing.push_back(this);
+            i->outgoing.insert(this);
         }
     }
 
@@ -422,19 +303,28 @@ public:
         return *serializer;
     }
 
+    auto id() const
+    {
+        return node_id;
+    }
+
 private:
     //=========================================================================
     std::shared_ptr<computable_serializer_t> serializer;
     std::function<std::any()> computation;
     std::future<std::any> future_value;
     std::any any_value;
-    node_list_t incoming;
-    node_list_t outgoing;
+    node_set_t incoming;
+    node_set_t outgoing;
+    unsigned long node_id = 0;
     int task_group = -1;
     bool is_immediate = false;
     const char* node_name = "";
     template<typename T> friend class computable_t;
+    static unsigned long last_node_id;
 };
+
+using node_set_t = computable_node_t::node_set_t;
 
 
 
@@ -455,7 +345,7 @@ public:
         g->serializer = std::make_shared<serializer_t>();
     }
 
-    computable_t(std::function<ValueType()> computation, node_list_t incoming)
+    computable_t(std::function<ValueType()> computation, node_set_t incoming)
     : g(std::make_shared<computable_node_t>(incoming))
     {
         g->computation = computation;
@@ -600,7 +490,7 @@ auto mapv(Function f, const char* name="")
 
 
 //=============================================================================
-void print_graph(std::ostream& stream, const node_list_t& node_list);
+void print_graph(std::ostream& stream, const node_set_t& node_list);
 
 
 
@@ -622,7 +512,7 @@ void print_graph(std::ostream& stream, const node_list_t& node_list);
 template<typename... ValueType>
 void print_graph(std::ostream& stream, computable<ValueType>... cs)
 {
-    print_graph(stream, node_list_t{cs.node()...});
+    print_graph(stream, node_set_t{cs.node()...});
 }
 
 
@@ -642,7 +532,7 @@ void print_graph(std::ostream& stream, computable<ValueType>... cs)
  *             performed in parallel. In graphviz, these generations are the
  *             rows along which the nodes are arranged.
  */
-std::pair<node_list_t, std::deque<unsigned>> topological_sort(const node_list_t& nodes);
+std::pair<std::vector<computable_node_t*>, std::vector<unsigned>> topological_sort(const node_set_t& nodes);
 
 
 
@@ -662,8 +552,13 @@ std::pair<node_list_t, std::deque<unsigned>> topological_sort(const node_list_t&
  * @note       The algorithm tries to maximize concurrency by assigning each
  *             execution group an equal number of tasks from each generation.
  */
-std::deque<unsigned> divvy_tasks(const node_list_t& nodes, std::deque<unsigned>& generation, unsigned num_groups);
+std::vector<unsigned> divvy_tasks(const std::vector<computable_node_t*>& nodes, std::vector<unsigned>& generation, unsigned num_groups);
 
+
+
+
+//=============================================================================
+void compute(const node_set_t& node_set, unsigned num_threads=0);
 
 
 
@@ -671,17 +566,15 @@ std::deque<unsigned> divvy_tasks(const node_list_t& nodes, std::deque<unsigned>&
 /**
  * @brief      Compute a computable on a (possibly asynchronous) scheduler.
  *
- * @param[in]  c          The computable to compute
- * @param[in]  scheduler  The scheduling function
+ * @param[in]  cs         The computables to compute
  *
- * @tparam     ValueType  The computable value type
+ * @tparam     ValueType    The computable value type
  */
-template<typename ValueType>
-void compute(computable<ValueType> c, async_invoke_t scheduler=synchronous_execution)
+template<typename... ValueType>
+void compute(computable<ValueType>... cs)
 {
-    compute(c.node(), scheduler);
+    compute({cs.node()...});
 }
-void compute(computable_node_t* node, async_invoke_t scheduler);
 
 
 
@@ -705,7 +598,7 @@ void compute(computable_node_t* node, async_invoke_t scheduler);
  *             case, A will have received the computed value from its delegated
  *             rank.
  */
-void compute_mpi(const node_list_t& node_list, unsigned num_threads=0);
+void compute_mpi(const node_set_t& node_list, unsigned num_threads=0);
 
 
 

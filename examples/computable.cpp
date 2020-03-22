@@ -6,7 +6,7 @@
 #include "parallel_mpi.hpp"
 
 #define DUMP_DELAY std::chrono::milliseconds(50)
-#define OPERATION_DELAY std::chrono::milliseconds(100)
+#define OPERATION_DELAY std::chrono::milliseconds(1)
 
 
 
@@ -84,7 +84,7 @@ int main()
     auto bbba = concat(bb, ba).name("bbba");
     auto bbbb = concat(bb, bb).name("bbbb");
 
-    mpr::compute_mpi(aaaa, aaab, aaba, aabb, abaa, abab, abba, abbb, baaa, baab, baba, babb, bbaa, bbab, bbba, bbbb);
+    mpr::compute(aaaa, aaab, aaba, aabb, abaa, abab, abba, abbb, baaa, baab, baba, babb, bbaa, bbab, bbba, bbbb);
 
     mpi::comm_world().invoke([&] ()
     {
