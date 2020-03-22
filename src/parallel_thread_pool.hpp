@@ -90,7 +90,10 @@ public:
     {
         if (! stop)
         {
-            stop = true;
+            {
+                std::unique_lock<std::mutex> lock(mutex);
+                stop = true;
+            }
             condition.notify_all();
 
             for (auto& thread : threads)
@@ -111,7 +114,7 @@ public:
     std::size_t job_count()
     {
         std::lock_guard<std::mutex> lock(mutex);
-        return pending_tasks.size() + running_tasks.size();
+        return waiting_tasks.size() + running_tasks.size();
     }
 
 
@@ -153,7 +156,7 @@ private:
     void enqueue_internal(std::function<void(void)> run, int priority)
     {
         std::lock_guard<std::mutex> lock(mutex);
-        pending_tasks.push_back({run, std::make_shared<int>(), priority});
+        waiting_tasks.push_back({run, std::make_shared<int>(), priority});
         condition.notify_one();
     }
 
@@ -176,19 +179,20 @@ private:
     task_t next()
     {
         std::unique_lock<std::mutex> lock(mutex);
-        condition.wait(lock, [this] { return stop || ! pending_tasks.empty(); });
+        condition.wait(lock, [this] { return stop || ! waiting_tasks.empty(); });
 
-        if (pending_tasks.empty())
+        if (waiting_tasks.empty())
         {
             return {};
         }
 
         auto less_priority = [] (const auto& a, const auto& b) { return a.priority < b.priority; };
-        auto task_iter = std::max_element(pending_tasks.begin(), pending_tasks.end(), less_priority);
-        // auto task_iter = pending_tasks.begin();
+        auto task_iter = std::max_element(waiting_tasks.begin(), waiting_tasks.end(), less_priority);
+
+        // auto task_iter = waiting_tasks.begin();
 
         auto task = *task_iter;
-        pending_tasks.erase(task_iter);
+        waiting_tasks.erase(task_iter);
         running_tasks.push_back(task);
 
         return task;
@@ -224,7 +228,7 @@ private:
 
     //=========================================================================
     std::vector<std::thread> threads;
-    std::deque<task_t> pending_tasks;
+    std::deque<task_t> waiting_tasks;
     std::deque<task_t> running_tasks;
     std::condition_variable condition;
     std::atomic<bool> stop = {false};
