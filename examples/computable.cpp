@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <string>
 #include "app_serial.hpp"
 #include "app_serial_std_vector.hpp"
@@ -84,8 +85,10 @@ int main()
     auto bbba = concat(bb, ba).name("bbba");
     auto bbbb = concat(bb, bb).name("bbbb");
 
-    mpr::compute(aaaa, aaab, aaba, aabb, abaa, abab, abba, abbb, baaa, baab, baba, babb, bbaa, bbab, bbba, bbbb);
+    auto stream = std::ofstream("computable.dot");
 
+    mpr::print_graph(stream, aaaa, aaab, aaba, aabb, abaa, abab, abba, abbb, baaa, baab, baba, babb, bbaa, bbab, bbba, bbbb);
+    mpr::compute(aaaa, aaab, aaba, aabb, abaa, abab, abba, abbb, baaa, baab, baba, babb, bbaa, bbab, bbba, bbbb);
     mpi::comm_world().invoke([&] ()
     {
         if (aaaa.has_value()) { printf("%s compued on rank %d: %s\n", "aaaa", mpi::comm_world().rank(), aaaa.value().data()); }

@@ -128,8 +128,8 @@ public:
 
     //=========================================================================
     computable_node_t(const computable_node_t& other) = delete;
-    computable_node_t(const std::any& any_value) : any_value(any_value), node_id(++last_node_id) {}
-    computable_node_t(node_set_t incoming) : incoming(incoming), node_id(++last_node_id)
+    computable_node_t(const std::any& any_value) : any_value(any_value), node_id(last_node_id++) {}
+    computable_node_t(node_set_t incoming) : incoming(incoming), node_id(last_node_id++)
     {
         for (auto i : incoming)
         {
@@ -340,14 +340,14 @@ public:
     }
 
     computable_t(const ValueType& value)
-    : g(std::make_shared<computable_node_t>(value))
     {
+        g = std::make_shared<computable_node_t>(value);
         g->serializer = std::make_shared<serializer_t>();
     }
 
     computable_t(std::function<ValueType()> computation, node_set_t incoming)
-    : g(std::make_shared<computable_node_t>(incoming))
     {
+        g = std::make_shared<computable_node_t>(incoming);
         g->computation = computation;
         g->serializer = std::make_shared<serializer_t>();
     }
@@ -489,6 +489,22 @@ auto mapv(Function f, const char* name="")
 
 
 
+/**
+ * @brief      Return the generation of nodes that will be eligible following
+ *             the completion of the eligible nodes given. This operation is
+ *             read-only, it does not change the nodes themselves.
+ *
+ * @param[in]  eligible   The eligible nodes
+ * @param[in]  completed  Nodes already completed
+ *
+ * @return     A pair of the eligible nodes in the next generation, and the
+ *             updated set of completed nodes.
+ */
+std::pair<node_set_t, node_set_t> next_generation(const node_set_t& eligible, node_set_t completed);
+
+
+
+
 //=============================================================================
 void print_graph(std::ostream& stream, const node_set_t& node_list);
 
@@ -518,21 +534,19 @@ void print_graph(std::ostream& stream, computable<ValueType>... cs)
 
 
 
-
 /**
- * @brief      Sort the nodes upstream of and including a list of computable
- *             nodes, according to a stable evaluation order.
+ * @brief      Sort the graph culminating in the given list of computable nodes
+ *             into generations.
  *
  * @param[in]  nodes  The nodes representing the graph to be sorted
  *
- * @return     Two sequences of the same length: the first containing the sorted
- *             nodes, and the second containing the generation of each node.
+ * @return     A vector of the sets, starting with the generation that must be
+ *             evaluated first
  *
- * @note       The generation index labels batches of tasks that can be
- *             performed in parallel. In graphviz, these generations are the
- *             rows along which the nodes are arranged.
+ * @note       In graphviz, the generations are the rows along which the nodes
+ *             are arranged.
  */
-std::pair<std::vector<computable_node_t*>, std::vector<unsigned>> topological_sort(const node_set_t& nodes);
+std::vector<node_set_t> topological_sort(const node_set_t& nodes);
 
 
 
@@ -552,7 +566,7 @@ std::pair<std::vector<computable_node_t*>, std::vector<unsigned>> topological_so
  * @note       The algorithm tries to maximize concurrency by assigning each
  *             execution group an equal number of tasks from each generation.
  */
-std::vector<unsigned> divvy_tasks(const std::vector<computable_node_t*>& nodes, std::vector<unsigned>& generation, unsigned num_groups);
+// std::vector<unsigned> divvy_tasks(const std::vector<computable_node_t*>& nodes, std::vector<unsigned>& generation, unsigned num_groups);
 
 
 
@@ -610,11 +624,11 @@ void compute_mpi(const node_set_t& node_list, unsigned num_threads=0);
  *
  * @tparam     ValueType  The computable value type
  */
-template<typename... ValueType>
-void compute_mpi(computable<ValueType>... cs)
-{
-    compute_mpi({cs.node()...}, 1);
-}
+// template<typename... ValueType>
+// void compute_mpi(computable<ValueType>... cs)
+// {
+//     compute_mpi({cs.node()...}, 1);
+// }
 
 
 

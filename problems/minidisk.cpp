@@ -54,7 +54,7 @@
  * [x] eccentric orbits and non-equal mass binaries
  * [x] configurable frame rotation rate
  * [x] configurable Mach number
- * [x] compute (rather than estimate) allowed time step
+ * [ ] compute (rather than estimate) allowed time step
  * [x] inclusion of viscous stress
  * [ ] variable size blocks in FMR mesh
  *     ( ) generalize extend method with prolongation
@@ -84,54 +84,37 @@ static const auto binary_period = unit_time(2 * M_PI);
 
 //=============================================================================
 template<typename ArrayType>
-auto extend_x(bsp::shared_tree<mpr::computable<ArrayType>, 4> __pc__, bsp::tree_index_t<2> block, bool dummy=false)
+auto extend(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, bsp::tree_index_t<2> block)
 {
-    if (dummy)
+    auto c11 = value_at(tree, block);
+    auto c00 = value_at(tree, prev_on(prev_on(block, 0), 1));
+    auto c02 = value_at(tree, prev_on(next_on(block, 0), 1));
+    auto c20 = value_at(tree, next_on(prev_on(block, 0), 1));
+    auto c22 = value_at(tree, next_on(next_on(block, 0), 1));
+    auto c01 = value_at(tree, prev_on(block, 0));
+    auto c21 = value_at(tree, next_on(block, 0));
+    auto c10 = value_at(tree, prev_on(block, 1));
+    auto c12 = value_at(tree, next_on(block, 1));
+
+    return mpr::zip(c00, c01, c02, c10, c11, c12, c20, c21, c22)
+    | mpr::mapv([] (auto c00, auto c01, auto c02, auto c10, auto c11, auto c12, auto c20, auto c21, auto c22)
     {
-        return map(value_at(__pc__, block), [] (auto x) { return x; }).immediate(true);
-    }
+        auto nx = shape(c11, 0);
+        auto ny = shape(c11, 1);
+        auto cs = std::array{
+            std::array{c00, c01, c02},
+            std::array{c10, c11, c12},
+            std::array{c20, c21, c22},
+        };
 
-    auto _pl_ = value_at(__pc__, prev_on(block, 0));
-    auto _pc_ = value_at(__pc__, block);
-    auto _pr_ = value_at(__pc__, next_on(block, 0));
-
-    return mpr::zip(_pl_, _pc_, _pr_) | mpr::mapv([] (auto pl, auto pc, auto pr)
-    {
-        auto nx = shape(pc, 0);
-        auto ny = shape(pc, 1);
-
-        return nd::make_array(nd::indexing([pl, pc, pr, nx] (auto i, auto j)
+        return nd::make_array(nd::indexing([cs, nx, ny] (auto i, auto j)
         {
-            if (i == 0)      return pl(nx - 1, j);
-            if (i == nx + 1) return pr(0, j);
-            return                  pc(i - 1, j);
-        }), nd::uivec(nx + 2, ny)) | nd::to_shared();
-    });
-}
-
-template<typename ArrayType>
-auto extend_y(bsp::shared_tree<mpr::computable<ArrayType>, 4> __pc__, bsp::tree_index_t<2> block, bool dummy=false)
-{
-    if (dummy)
-    {
-        return map(value_at(__pc__, block), [] (auto x) { return x; }).immediate(true);
-    }
-
-    auto _pl_ = value_at(__pc__, prev_on(block, 1));
-    auto _pc_ = value_at(__pc__, block);
-    auto _pr_ = value_at(__pc__, next_on(block, 1));
-
-    return mpr::zip(_pl_, _pc_, _pr_) | mpr::mapv([] (auto pl, auto pc, auto pr)
-    {
-        auto nx = shape(pc, 0);
-        auto ny = shape(pc, 1);
-
-        return nd::make_array(nd::indexing([pl, pc, pr, ny] (auto i, auto j)
-        {
-            if (j == 0)      return pl(i, ny - 1);
-            if (j == ny + 1) return pr(i, 0);
-            return                  pc(i, j - 1);
-        }), nd::uivec(nx, ny + 2)) | nd::to_shared();
+            auto bi = i < 2 ? 0 : (i >= nx + 2 ? 2 : 1);
+            auto bj = j < 2 ? 0 : (j >= ny + 2 ? 2 : 1);
+            auto ii = i < 2 ? i - 2 + nx  : (i >= nx + 2 ? i - 2 - nx : i - 2);
+            auto jj = j < 2 ? j - 2 + ny  : (j >= ny + 2 ? j - 2 - ny : j - 2);
+            return cs[bi][bj](ii, jj);
+        }), nd::uivec(nx + 4, ny + 4)) | nd::to_shared();
     });
 }
 
@@ -185,64 +168,21 @@ static auto restart_run_config(const mara::config_string_map_t& args)
 
 
 //=============================================================================
-// static auto smallest_cell_crossing_time(conserved_array_t uc, bsp::tree_index_t<2> block, solver_data_t solver_data)
-// {
-//     auto vm = nd::max(uc | nd::map(iso2d::recover_primitive) | nd::map(std::bind(iso2d::fastest_wavespeed, _1, unit_specific_energy(0.0))));
-//     auto dl = cell_size(block, solver_data);
-//     return dl / vm;
-// }
-
-// static auto smallest_cell_crossing_time(conserved_tree_t uc, solver_data_t solver_data)
-// {
-//     auto dt = unit_time(std::numeric_limits<double>::max());
-
-//     sink(indexify(uc), util::apply_to([&dt, solver_data] (auto block, auto uc)
-//     {
-//         dt = std::min(dt, smallest_cell_crossing_time(uc, block, solver_data));
-//     }));
-//     return dt;
-// }
-
-
-
-
-//=============================================================================
 static auto encode_substep(solution_t solution, unit_time dt, solver_data_t solver_data)
 {
-    auto skip_trans = solver_data.kinematic_viscosity == unit_viscosity(0.0);
-    auto mesh   = indexes(solution.conserved);
-    auto _uc_   = solution.conserved;
-    auto _pc_   = _uc_ | bsp::maps(mpr::map(minidisk::recover_primitive_array, "P"));
-    auto _p_ext_x_ = mesh | bsp::maps([_pc_] (auto index) { return extend_x(_pc_, index).name("P-x"); });
-    auto _p_ext_y_ = mesh | bsp::maps([_pc_] (auto index) { return extend_y(_pc_, index).name("P-y"); });
-    auto _gradient_x_ = _p_ext_x_ | bsp::maps(mpr::map(std::bind(estimate_gradient, _1, 0, 2.0), "Gx"));
-    auto _gradient_y_ = _p_ext_y_ | bsp::maps(mpr::map(std::bind(estimate_gradient, _1, 1, 2.0), "Gy"));
-
-    auto _gradient_x_ext_x_ = mesh | bsp::map([g=_gradient_x_            ] (auto index) { return extend_x(g, index).name("Gx-x"); });
-    auto _gradient_x_ext_y_ = mesh | bsp::map([g=_gradient_x_, skip_trans] (auto index) { return extend_y(g, index, skip_trans).name("Gx-y"); });
-    auto _gradient_y_ext_x_ = mesh | bsp::map([g=_gradient_y_, skip_trans] (auto index) { return extend_x(g, index, skip_trans).name("Gy-x"); });
-    auto _gradient_y_ext_y_ = mesh | bsp::map([g=_gradient_y_            ] (auto index) { return extend_y(g, index).name("Gy-y"); });
-
-    auto _godunov_fluxes_x_ = zip(_p_ext_x_, _gradient_x_ext_x_, _gradient_y_ext_x_, mesh)
-    | bsp::mapvs([solver_data] (auto pc, auto gl, auto gt, auto block)
+    auto updated_u = [solution, dt, solver_data] (auto b)
     {
-        return zip(pc, gl, gt)
-        | mpr::mapv(std::bind(godunov_and_viscous_fluxes, _1, _2, _3, solver_data, block, 0), "Fx");
-    });
+        return [b, t=solution.time, dt, solver_data] (auto uc, auto pe)
+        {
+            return minidisk::updated_conserved(uc, pe, t, dt, b, solver_data);
+        };
+    };
 
-    auto _godunov_fluxes_y_ = zip(_p_ext_y_, _gradient_y_ext_y_, _gradient_x_ext_y_, mesh)
-    | bsp::mapvs([solver_data] (auto pc, auto gl, auto gt, auto block)
-    {
-        return zip(pc, gl, gt)
-        | mpr::mapv(std::bind(godunov_and_viscous_fluxes, _1, _2, _3, solver_data, block, 1), "Fy");
-    });
-
-    auto u1 = zip(_uc_, _pc_, _godunov_fluxes_x_, _godunov_fluxes_y_, mesh)
-    | bsp::mapvs([t=solution.time, dt, solver_data] (auto uc, auto pc, auto fx, auto fy, auto block)
-    {
-        return zip(uc, pc, fx, fy)
-        | mpr::mapv(std::bind(updated_conserved, _1, _2, _3, _4, t, dt, block, solver_data), "U");
-    });
+    auto mesh  = indexes(solution.conserved);
+    auto uc    = solution.conserved;
+    auto pc    = uc   | bsp::maps(mpr::map(minidisk::recover_primitive_array, "P"));
+    auto pe    = mesh | bsp::maps([pc] (auto b) { return extend(pc, b); });
+    auto u1    = mesh | bsp::maps([uc, pe, updated_u] (auto b) { return zip(value_at(uc, b), value_at(pe, b)) | mpr::mapv(updated_u(b)); });
 
     return solution_t{solution.iteration + 1, solution.time + dt, u1};
 }
@@ -280,12 +220,12 @@ static auto step(solution_t solution, solver_data_t solver_data, int nfold, unsi
 static void print_graph(const mara::config_t& cfg, solution_t solution, solver_data_t solver_data, int nfold)
 {
     auto outdir = cfg.get_string("outdir");
-    auto fname = util::format("%s/task_graph.dot", outdir.data());
+    auto fname  = util::format("%s/task_graph.dot", outdir.data());
+    auto next   = encode_step(solution, solver_data, nfold);
+    auto outf   = std::ofstream(fname);
+    auto nodes  = mpr::node_set_t();
 
-    auto next = encode_step(solution, solver_data, nfold);
-    auto outf = std::ofstream(fname);
-    auto nodes = mpr::node_set_t();
-    sink(solution.conserved, [&nodes] (auto c) { nodes.insert(c.node()); });
+    sink(next.conserved, [&nodes] (auto c) { nodes.insert(c.node()); });
     mpr::print_graph(outf, nodes);
 }
 
@@ -341,7 +281,7 @@ int main(int argc, const char* argv[])
 
     if (mpi::comm_world().rank() == 0)
     {
-        // print_graph(cfg, solution, solver_data, fold);
+        print_graph(cfg, solution, solver_data, fold);
         mara::pretty_print(std::cout, "config", cfg);        
     }
 

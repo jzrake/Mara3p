@@ -237,37 +237,15 @@ primitive_array_t minidisk::estimate_gradient(primitive_array_t pc, bsp::uint ax
     return pc | nd::adjacent_zip3(axis) | nd::map(mara::plm_gradient(theta)) | nd::to_shared();
 }
 
-godunov_f_array_t minidisk::godunov_fluxes(
-    primitive_array_t pc,
-    primitive_array_t gc,
-    solver_data_t solver_data,
-    bsp::tree_index_t<2> block,
-    bsp::uint axis)
-{
-    auto riemann = [axis, rs=solver_data.softening_length, mach=solver_data.mach_number] (auto pl, auto pr, auto xf)
-    {
-        auto cs2 = sound_speed_squared(xf, rs, mach);
-        return iso2d::riemann_hlle(pl, pr, cs2, geometric::unit_vector_on(axis + 1));
-    };
 
-    auto xf = minidisk::face_coordinates(solver_data.block_size, solver_data.domain_radius, block, axis);
-    auto pl = pc - 0.5 * gc;
-    auto pr = pc + 0.5 * gc;
 
-    auto fx = nd::zip(
-        pr | nd::select(axis, 0, -1),
-        pl | nd::select(axis, 1),
-        xf)
-    | nd::map(util::apply_to(riemann))
-    | nd::to_shared();
 
-    return fx;
-}
-
-godunov_f_array_t minidisk::godunov_and_viscous_fluxes(
-    primitive_array_t pc,
-    primitive_array_t gc_long,
-    primitive_array_t gc_tran,
+//=============================================================================
+template<typename PrimitiveArray, typename GradientArrayL, typename GradientArrayT>
+godunov_f_array_t godunov_and_viscous_fluxes(
+    PrimitiveArray pc,
+    GradientArrayL gc_long,
+    GradientArrayT gc_tran,
     solver_data_t solver_data,
     bsp::tree_index_t<2> block,
     bsp::uint axis)
@@ -331,11 +309,13 @@ godunov_f_array_t minidisk::godunov_and_viscous_fluxes(
     return (fx + viscous_flux()) | nd::to_shared();
 }
 
+
+
+
+//=============================================================================
 conserved_array_t minidisk::updated_conserved(
     conserved_array_t uc,
-    primitive_array_t pc,
-    godunov_f_array_t fx,
-    godunov_f_array_t fy,
+    primitive_array_t pe,
     unit_time time,
     unit_time dt,
     bsp::tree_index_t<2> block,
@@ -352,6 +332,19 @@ conserved_array_t minidisk::updated_conserved(
     auto xc = cell_coordinates(solver_data.block_size, solver_data.domain_radius, block);
     auto dl = cell_size(block, solver_data);
 
+    auto gx = estimate_gradient(pe, 0, 2.0);
+    auto gy = estimate_gradient(pe, 1, 2.0);
+    auto pc = pe | nd::select(0, 2, -2) | nd::select(1, 2, -2) | nd::to_shared();
+
+    auto pe_x = pe | nd::select(1, 2, -2) | nd::select(0, 1, -1);
+    auto gx_x = gx | nd::select(1, 2, -2);
+    auto gy_x = gy | nd::select(1, 1, -1) | nd::select(0, 1, -1);
+    auto pe_y = pe | nd::select(0, 2, -2) | nd::select(1, 1, -1);
+    auto gy_y = gy | nd::select(0, 2, -2);
+    auto gx_y = gx | nd::select(0, 1, -1) | nd::select(1, 1, -1);
+
+    auto fx = godunov_and_viscous_fluxes(pe_x, gx_x, gy_x, solver_data, block, 0);
+    auto fy = godunov_and_viscous_fluxes(pe_y, gy_y, gx_y, solver_data, block, 1);
     auto dfx = fx | nd::adjacent_diff(0);
     auto dfy = fy | nd::adjacent_diff(1);
 

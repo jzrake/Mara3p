@@ -160,27 +160,9 @@ nd::shared_array<iso2d::conserved_density_t, 2>            initial_conserved_arr
 //=============================================================================
 primitive_array_t recover_primitive_array(conserved_array_t uc);
 primitive_array_t estimate_gradient(primitive_array_t pc, bsp::uint axis, double theta);
-
-godunov_f_array_t godunov_fluxes(
-    primitive_array_t pc,
-    primitive_array_t gc,
-    solver_data_t solver_data,
-    bsp::tree_index_t<2> block,
-    bsp::uint axis);
-
-godunov_f_array_t godunov_and_viscous_fluxes(
-    primitive_array_t pc,
-    primitive_array_t gc_long,
-    primitive_array_t gc_tran,
-    solver_data_t solver_data,
-    bsp::tree_index_t<2> block,
-    bsp::uint axis);
-
 conserved_array_t updated_conserved(
     conserved_array_t uc,
-    primitive_array_t pc,
-    godunov_f_array_t fx,
-    godunov_f_array_t fy,
+    primitive_array_t pe,
     unit_time time,
     unit_time dt,
     bsp::tree_index_t<2> block,
