@@ -500,36 +500,7 @@ auto mapv(Function f, const char* name="")
  * @return     A pair of the eligible nodes in the next generation, and the
  *             updated set of completed nodes.
  */
-std::pair<node_set_t, node_set_t> next_generation(const node_set_t& eligible, node_set_t completed);
-
-
-
-
-//=============================================================================
-void print_graph(std::ostream& stream, const node_set_t& node_list);
-
-
-
-
-/**
- * @brief      Prints the execution graph for a computable in a format readable
- *             by the graphviz dot utility.
- *
- * @param      outfile    The file to write to
- * @param[in]  cs         The computables to print the graph for
- *
- * @tparam     ValueType  The computable value type
- *
- * @note       An example command to generate a PDF from an output file
- *             graph.dot is:
- *
- *             dot -Tpdf -o graph.pdf graph.dot
- */
-template<typename... ValueType>
-void print_graph(std::ostream& stream, computable<ValueType>... cs)
-{
-    print_graph(stream, node_set_t{cs.node()...});
-}
+std::pair<node_set_t, node_set_t> next_generation(node_set_t eligible, node_set_t completed);
 
 
 
@@ -567,6 +538,35 @@ std::vector<node_set_t> topological_sort(const node_set_t& nodes);
  *             execution group an equal number of tasks from each generation.
  */
 // std::vector<unsigned> divvy_tasks(const std::vector<computable_node_t*>& nodes, std::vector<unsigned>& generation, unsigned num_groups);
+
+
+
+
+//=============================================================================
+void print_graph(std::ostream& stream, const node_set_t& node_list);
+
+
+
+
+/**
+ * @brief      Prints the execution graph for a computable in a format readable
+ *             by the graphviz dot utility.
+ *
+ * @param      outfile    The file to write to
+ * @param[in]  cs         The computables to print the graph for
+ *
+ * @tparam     ValueType  The computable value type
+ *
+ * @note       An example command to generate a PDF from an output file
+ *             graph.dot is:
+ *
+ *             dot -Tpdf -o graph.pdf graph.dot
+ */
+template<typename... ValueType>
+void print_graph(std::ostream& stream, computable<ValueType>... cs)
+{
+    print_graph(stream, node_set_t{cs.node()...});
+}
 
 
 
@@ -624,11 +624,11 @@ void compute_mpi(const node_set_t& node_list, unsigned num_threads=0);
  *
  * @tparam     ValueType  The computable value type
  */
-// template<typename... ValueType>
-// void compute_mpi(computable<ValueType>... cs)
-// {
-//     compute_mpi({cs.node()...}, 1);
-// }
+template<typename... ValueType>
+void compute_mpi(computable<ValueType>... cs)
+{
+    compute_mpi({cs.node()...}, 1);
+}
 
 
 

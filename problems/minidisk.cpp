@@ -137,7 +137,7 @@ static auto initial_solution(const mara::config_t& cfg)
     return solution_t{
         0,
         0.0,
-        mesh | bsp::maps([sd] (auto b) { return mpr::from(std::bind(initial_conserved_array, sd, b)); })};
+        mesh | bsp::maps([sd] (auto b) { return mpr::from(std::bind(initial_conserved_array, sd, b)).name("U"); })};
 }
 
 static auto initial_schedule(const mara::config_t& cfg)
@@ -195,7 +195,7 @@ static auto compute(solution_t solution, unsigned threads=0)
 {
     auto nodes = mpr::node_set_t();
     sink(solution.conserved, [&nodes] (auto c) { nodes.insert(c.node()); });
-    mpr::compute(nodes, threads);
+    mpr::compute_mpi(nodes, threads);
     return solution;
 }
 
@@ -222,11 +222,18 @@ static void print_graph(const mara::config_t& cfg, solution_t solution, solver_d
     auto outdir = cfg.get_string("outdir");
     auto fname  = util::format("%s/task_graph.dot", outdir.data());
     auto next   = encode_step(solution, solver_data, nfold);
-    auto outf   = std::ofstream(fname);
     auto nodes  = mpr::node_set_t();
 
     sink(next.conserved, [&nodes] (auto c) { nodes.insert(c.node()); });
-    mpr::print_graph(outf, nodes);
+
+    if (mpi::comm_world().rank() == 0)
+    {
+        mara::filesystem::require_dir(outdir);
+        auto outf = std::ofstream(fname);
+
+        std::printf("writing task graph %s\n", fname.data());
+        mpr::print_graph(outf, nodes);        
+    }
 }
 
 
@@ -240,8 +247,6 @@ static void side_effects(const mara::config_t& cfg, solution_t solution, schedul
         auto outdir = cfg.get_string("outdir");
         auto fname = util::format("%s/chkpt.%04d.h5", outdir.data(), schedule.checkpoint.count);
 
-        mara::filesystem::require_dir(outdir);
-
         schedule.checkpoint.next_due += cfg.get_double("cpi") * binary_period;
         schedule.checkpoint.count += 1;
 
@@ -249,6 +254,8 @@ static void side_effects(const mara::config_t& cfg, solution_t solution, schedul
         {
             if (mpi::comm_world().rank() == 0)
             {
+                mara::filesystem::require_dir(outdir);
+
                 auto h5f = h5::File(fname, "w");
                 h5::write(h5f, "git_commit", std::string(GIT_COMMIT));
                 h5::write(h5f, "run_config", cfg);
@@ -281,8 +288,12 @@ int main(int argc, const char* argv[])
 
     if (mpi::comm_world().rank() == 0)
     {
-        print_graph(cfg, solution, solver_data, fold);
         mara::pretty_print(std::cout, "config", cfg);        
+    }
+
+    if (mpi::comm_world().rank() == 0 && orbits == 0.0)
+    {
+        print_graph(cfg, solution, solver_data, fold);        
     }
 
     while (solution.time < orbits * binary_period)
