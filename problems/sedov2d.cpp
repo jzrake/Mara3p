@@ -28,6 +28,7 @@
 
 #include <iostream>
 #include <fstream>
+#include "mara.hpp"
 #include "app_config.hpp"
 #include "app_control.hpp"
 #include "app_hdf5.hpp"
@@ -162,7 +163,7 @@ void write_checkpoint(const mara::config_t& cfg, solution_t solution)
 
     std::printf("output %s\n", fname.data());
 
-    h5::write(file, "git_commit", std::string(GIT_COMMIT));
+    h5::write(file, "git_commit", std::string(MARA_GIT_COMMIT));
     h5::write(file, "run_config", cfg);
     h5::write(file, "iteration", solution.iteration);
     h5::write(file, "time", solution.time);

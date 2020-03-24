@@ -43,15 +43,17 @@ TARGETS = $(ALL_TARGETS)
 -include Makefile.in
 
 
-# Record the Git commit info
-CXXFLAGS += -DGIT_COMMIT=\"$(shell git rev-parse --short=7 HEAD)\"
-
-
 # Build macros
 # =====================================================================
 SRC := $(wildcard src/*.cpp) $(wildcard examples/*.cpp) $(wildcard problems/*.cpp)
 OBJ := $(SRC:%.cpp=%.o)
 DEP := $(SRC:%.cpp=%.d)
+
+
+# Build config
+# =====================================================================
+GIT_COMMIT := $(shell git rev-parse --short=7 HEAD)
+MARA_H_TMP := $(shell mktemp -u make.XXXXXX)
 
 
 # Build rules
@@ -100,5 +102,14 @@ problems/minidisk: problems/minidisk.o problems/minidisk_io.o problems/minidisk_
 
 clean:
 	$(RM) $(OBJ) $(DEP) $(ALL_TARGETS)
+
+src/mara.hpp: .FORCE
+	@$(RM) $(MARA_H_TMP)
+	@echo "#define MARA_GIT_COMMIT \"$(GIT_COMMIT)\""   >> $(MARA_H_TMP)
+	@echo "#define MARA_INSTALL_PATH \"$(PWD)\""  >> $(MARA_H_TMP)
+	@cmp -s $(MARA_H_TMP) $@ || (echo "[mara.hpp updated]"; cat $(MARA_H_TMP)>$@)
+	@$(RM) $(MARA_H_TMP)
+
+.FORCE:
 
 -include $(DEP)

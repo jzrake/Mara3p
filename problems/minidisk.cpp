@@ -28,6 +28,7 @@
 
 #include <fstream>
 #include <iostream>
+#include "mara.hpp"
 #include "app_control.hpp"
 #include "app_filesystem.hpp"
 #include "app_hdf5_config.hpp"
@@ -41,8 +42,8 @@
 #include "parallel_computable.hpp"
 #include "parallel_mpi.hpp"
 #include "physics_two_body.hpp"
-#ifndef GIT_COMMIT
-#define GIT_COMMIT ""
+#ifndef MARA_GIT_COMMIT
+#define MARA_GIT_COMMIT ""
 #endif
 
 
@@ -257,7 +258,7 @@ static void side_effects(const mara::config_t& cfg, solution_t solution, schedul
                 mara::filesystem::require_dir(outdir);
 
                 auto h5f = h5::File(fname, "w");
-                h5::write(h5f, "git_commit", std::string(GIT_COMMIT));
+                h5::write(h5f, "git_commit", std::string(MARA_GIT_COMMIT));
                 h5::write(h5f, "run_config", cfg);
                 h5::write(h5f, "schedule", schedule);
                 std::printf("write %s\n", fname.data());
