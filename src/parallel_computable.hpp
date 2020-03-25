@@ -31,6 +31,7 @@
 #include <future>
 #include <ostream>
 #include <set>
+#include <string>
 #include <vector>
 #include "app_serial.hpp"
 
@@ -251,7 +252,7 @@ public:
         return incoming;
     }
 
-    auto& name(const char* new_name)
+    auto& name(std::string new_name)
     {
         node_name = new_name;
         return *this;
@@ -319,7 +320,7 @@ private:
     unsigned long node_id = 0;
     int task_group = -1;
     bool is_immediate = false;
-    const char* node_name = "";
+    std::string node_name = "";
     template<typename T> friend class computable_t;
     static unsigned long last_node_id;
 };
@@ -386,7 +387,7 @@ public:
         return g.get();
     }
 
-    auto& name(const char* new_name)
+    auto& name(std::string new_name)
     {
         g->name(new_name);
         return *this;
@@ -468,20 +469,20 @@ auto zip(computable<ValueType>... c)
 }
 
 template<typename ValueType, typename Function>
-auto map(computable<ValueType> c, Function f, const char* name="")
+auto map(computable<ValueType> c, Function f, std::string name="")
 {
     using value_type = std::invoke_result_t<Function, ValueType>;
     return computable<value_type>([c, f] () { return f(c.value()); }, {c.node()}).name(name);
 }
 
 template<typename Function>
-auto map(Function f, const char* name="")
+auto map(Function f, std::string name="")
 {
     return [f, name] (auto c) { return map(c, f, name); };
 }
 
 template<typename Function>
-auto mapv(Function f, const char* name="")
+auto mapv(Function f, std::string name="")
 {
     return [f, name] (auto c) { return map(c, [f] (auto t) { return std::apply(f, t); }, name); };
 }

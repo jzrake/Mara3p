@@ -69,7 +69,7 @@ default: $(TARGETS)
 
 all: $(ALL_TARGETS)
 
-mara: src/main.o src/core_unit_test.o src/test_app.o src/test_core.o src/test_mesh.o src/test_model.o src/test_physics.o $(LUA_OBJ)
+mara: src/main.o src/core_unit_test.o src/test_app.o src/test_core.o src/test_mesh.o src/test_model.o src/test_physics.o src/parallel_computable.o $(LUA_OBJ)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 examples/euler1d: examples/euler1d.o

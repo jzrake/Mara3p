@@ -197,7 +197,7 @@ void mpr::print_graph(std::ostream& stream, const node_set_t& node_set)
         << a->id()
         << "[shape=" << (a->immediate() ? "ellipse" : "box")
         << ",style=" << (a->immediate() ? "dotted" : "filled")
-        << ",label=" << '"' << (std::strlen(a->name()) == 0 ? std::to_string(a->id()) : std::string(a->name())) << '"'
+        << ",label=" << '"' << (a->name().length() == 0 ? std::to_string(a->id()) : a->name()) << '"'
         << "]\n";
     }
 
