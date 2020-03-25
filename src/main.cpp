@@ -45,6 +45,12 @@ int test_physics();
 
 
 
+struct thing_t
+{
+    double a = 1.0;
+    double b = 2.0;
+};
+
 //=============================================================================
 sol::table open_mara_lib(sol::this_state s)
 {
@@ -60,6 +66,10 @@ sol::table open_mara_lib(sol::this_state s)
         test_physics();
         report_test_results();
     };
+
+    auto thing = module.new_usertype<thing_t>("thing");
+    thing["get_a"] = [] (const thing_t& thing) { return thing.a; };
+    thing["get_b"] = [] (const thing_t& thing) { return thing.b; };
 
     return module;
 }
@@ -81,6 +91,9 @@ int main(int argc, const char* argv[])
     auto lua = sol::state();
     lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::package);
     lua.require("mara", sol::c_call<decltype(&open_mara_lib), &open_mara_lib>, false);
+
+
+
     lua.script_file(argv[1]);
 
 
