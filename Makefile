@@ -43,11 +43,18 @@ TARGETS = $(ALL_TARGETS)
 -include Makefile.in
 
 
-# Build macros
+# Mara source variables
 # =====================================================================
 SRC := $(wildcard src/*.cpp) $(wildcard examples/*.cpp) $(wildcard problems/*.cpp)
 OBJ := $(SRC:%.cpp=%.o)
 DEP := $(SRC:%.cpp=%.d)
+
+
+# Lua source variables
+# =====================================================================
+LUA_SRC := $(filter-out src/lua/lua.c src/lua/luac.c, $(wildcard src/lua/*.c))
+LUA_OBJ := $(LUA_SRC:%.c=%.o)
+LUA_DEP := $(LUA_SRC:%.c=%.d)
 
 
 # Build config
@@ -59,9 +66,10 @@ MARA_H_TMP := $(shell mktemp -u make.XXXXXX)
 # Build rules
 # =====================================================================
 default: $(TARGETS)
+
 all: $(ALL_TARGETS)
 
-mara: src/main.o src/core_unit_test.o src/test_app.o src/test_core.o src/test_mesh.o src/test_model.o src/test_physics.o
+mara: src/main.o src/core_unit_test.o src/test_app.o src/test_core.o src/test_mesh.o src/test_model.o src/test_physics.o $(LUA_OBJ)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 examples/euler1d: examples/euler1d.o
@@ -101,13 +109,13 @@ problems/minidisk: problems/minidisk.o problems/minidisk_io.o problems/minidisk_
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 clean:
-	$(RM) $(OBJ) $(DEP) $(ALL_TARGETS)
+	$(RM) $(OBJ) $(DEP) $(ALL_TARGETS) $(LUA_OBJ) $(LUA_DEP)
 
 src/mara.hpp: .FORCE
 	@$(RM) $(MARA_H_TMP)
-	@echo "#define MARA_GIT_COMMIT \"$(GIT_COMMIT)\""   >> $(MARA_H_TMP)
-	@echo "#define MARA_INSTALL_PATH \"$(PWD)\""  >> $(MARA_H_TMP)
-	@cmp -s $(MARA_H_TMP) $@ || (echo "[mara.hpp updated]"; cat $(MARA_H_TMP)>$@)
+	@echo "#define MARA_GIT_COMMIT \"$(GIT_COMMIT)\""        >> $(MARA_H_TMP)
+	@echo "#define MARA_INSTALL_PATH \"$(PWD)\""             >> $(MARA_H_TMP)
+	@cmp -s $(MARA_H_TMP) $@ || (echo "[mara.hpp updated]"; cat $(MARA_H_TMP) > $@)
 	@$(RM) $(MARA_H_TMP)
 
 .FORCE:

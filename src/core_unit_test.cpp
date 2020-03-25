@@ -38,19 +38,19 @@ static unsigned NumFailed = 0;
 
 
 //=============================================================================
-void start_unit_tests()
-{
-    NumPassed = 0;
-    NumFailed = 0;
-}
-
 void report_test_results()
 {
     std::cout << '\033' << Blue << "===============================================================================" << std::endl;
     std::cout << '\033' << BrightGreen << NumPassed << " passed" << std::endl;
 
     if (NumFailed)
+    {
         std::cout << '\033' << BrightRed << NumFailed << " failed" << std::endl;        
+    }
+    std::cout << '\033' << "[0;39m";
+
+    NumPassed = 0;
+    NumFailed = 0;
 }
 
 void increment_pass_count()

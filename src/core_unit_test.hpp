@@ -33,6 +33,16 @@
 
 
 //=============================================================================
+void report_test_results();
+void increment_pass_count();
+void increment_fail_count();
+
+
+
+
+//=============================================================================
+#ifndef UNIT_TEST_NO_MACROS
+
 #define White          "[0m"
 #define Red            "[0;31m"
 #define Green          "[0;32m"
@@ -45,15 +55,6 @@
 #define BrightGreen    "[1;32m"
 #define BrightWhite    "[1;37m"
 #define BrightYellow   "[1;33m"
-
-
-
-
-//=============================================================================
-void start_unit_tests();
-void report_test_results();
-void increment_pass_count();
-void increment_fail_count();
 
 
 
@@ -83,3 +84,5 @@ do { \
         /* std::cout << '\033' << Green     << "Test passed ... [" << __FILE__ << "] " << #expr << " [threw]" << std::endl; */ \
     } \
 } while (false)
+
+#endif // UNIT_TEST_NO_MACROS
