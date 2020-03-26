@@ -35,9 +35,7 @@ ALL_TARGETS = mara \
 	examples/euler1d_moving_mesh_plm \
 	examples/hardware_check \
 	examples/mhd3d \
-	examples/mhd3d_tbp \
 	examples/serial_perf \
-	examples/task_parallel \
 	problems/sedov \
 	problems/sedov2d
 TARGETS = $(ALL_TARGETS)
@@ -56,7 +54,7 @@ DEP := $(SRC:%.cpp=%.d)
 
 # Lua source variables
 # =====================================================================
-LUA_SRC := $(filter-out src/lua/lua.c src/lua/luac.c, $(wildcard src/lua/*.c))
+LUA_SRC := $(filter-out src/lua/core/lua.c src/lua/core/luac.c, $(wildcard src/lua/core/*.c))
 LUA_MOD := $(wildcard src/lua/modules/*.cpp)
 LUA_OBJ := $(LUA_SRC:%.c=%.o) $(LUA_MOD:%.cpp=%.o)
 LUA_DEP := $(LUA_SRC:%.c=%.d) $(LUA_MOD:%.cpp=%.d)

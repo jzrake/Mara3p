@@ -7,6 +7,7 @@
 *.h5
 *.vtk
 *.mp4
+*.dot
 .DS_Store
 
 /src/mara.hpp
