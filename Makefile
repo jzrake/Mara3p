@@ -1,26 +1,30 @@
 # =====================================================================
-# Mara build system
+# Copyright 2020, Jonathan Zrake
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy of
+# this software and associated documentation files (the "Software"), to deal in
+# the Software without restriction, including without limitation the rights to
+# use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+# of the Software, and to permit persons to whom the Software is furnished to do
+# so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 # =====================================================================
-#
-#
-# External library dependencies: HDF5, MPI
-#
-#
-# Notes
-# -----
-#
-# - A useful resource for techniques to process Makefile dependencies:
-# www.microhowto.info/howto/automatically_generate_makefile_dependencies.html
-#
-# - Using -O0 rather than -O3 during development may reduce compilation time
-# significantly.
 
 
-# Build configuration
+
+
+# Default build macros (these may be over-ridden in the Makefile.in)
 # =====================================================================
-
-
-# Default build macros (these may be over-ridden by entries in the Makefile.in)
 CXX      = mpicxx
 CXXFLAGS = -std=c++17 -Isrc -Wall -O0 -MMD -MP
 LDFLAGS  = -lhdf5
@@ -53,8 +57,17 @@ DEP := $(SRC:%.cpp=%.d)
 # Lua source variables
 # =====================================================================
 LUA_SRC := $(filter-out src/lua/lua.c src/lua/luac.c, $(wildcard src/lua/*.c))
-LUA_OBJ := $(LUA_SRC:%.c=%.o)
-LUA_DEP := $(LUA_SRC:%.c=%.d)
+LUA_MOD := $(wildcard src/lua/modules/*.cpp)
+LUA_OBJ := $(LUA_SRC:%.c=%.o) $(LUA_MOD:%.cpp=%.o)
+LUA_DEP := $(LUA_SRC:%.c=%.d) $(LUA_MOD:%.cpp=%.d)
+
+
+# Mara source variables
+# =====================================================================
+CORE_OBJ     = $(filter src/core_%.o,     $(OBJ))
+PARALLEL_OBJ = $(filter src/parallel_%.o, $(OBJ))
+PHYSICS_OBJ  = $(filter src/physics_%.o,  $(OBJ))
+TEST_OBJ     = $(filter src/test_%.o,     $(OBJ))
 
 
 # Build config
@@ -67,9 +80,16 @@ MARA_H_TMP := $(shell mktemp -u make.XXXXXX)
 # =====================================================================
 default: $(TARGETS)
 
+show:
+	@echo LUA_OBJ: $(LUA_OBJ)
+	@echo CORE_OBJ: $(CORE_OBJ)
+	@echo TEST_OBJ: $(TEST_OBJ)
+	@echo PHYSICS_OBJ: $(PHYSICS_OBJ)
+	@echo PARALLEL_OBJ: $(PARALLEL_OBJ)
+
 all: $(ALL_TARGETS)
 
-mara: src/main.o src/core_unit_test.o src/test_app.o src/test_core.o src/test_mesh.o src/test_model.o src/test_physics.o src/parallel_computable.o $(LUA_OBJ)
+mara: src/mara.o $(CORE_OBJ) $(PARALLEL_OBJ) $(PHYSICS_OBJ) $(TEST_OBJ) $(LUA_OBJ)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 examples/euler1d: examples/euler1d.o
