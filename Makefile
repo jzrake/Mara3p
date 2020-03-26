@@ -103,13 +103,13 @@ problems/minidisk: problems/minidisk.o problems/minidisk_io.o problems/minidisk_
 clean:
 	$(RM) $(OBJ) $(DEP) $(ALL_TARGETS)
 
-src/mara.hpp: .FORCE
+src/mara.hpp:
 	@$(RM) $(MARA_H_TMP)
 	@echo "#define MARA_GIT_COMMIT \"$(GIT_COMMIT)\""   >> $(MARA_H_TMP)
 	@echo "#define MARA_INSTALL_PATH \"$(PWD)\""  >> $(MARA_H_TMP)
 	@cmp -s $(MARA_H_TMP) $@ || (echo "[mara.hpp updated]"; cat $(MARA_H_TMP)>$@)
 	@$(RM) $(MARA_H_TMP)
 
-.FORCE:
+$(OBJ): src/mara.hpp
 
 -include $(DEP)
