@@ -68,7 +68,7 @@
  * [ ] VTK output option
  * [ ] time series of forces, work, orbital element evolution, etc.
  * [ ] computable: execution statistics to discover bottlenecks
- * [/] computable: MPI execution strategy
+ * [x] computable: MPI execution strategy
  */
 
 
@@ -79,6 +79,18 @@ using namespace dimensional;
 using namespace minidisk;
 using namespace std::placeholders;
 static const auto binary_period = unit_time(2 * M_PI);
+
+
+
+
+//=============================================================================
+template<typename T, std::size_t Ratio>
+mpr::node_set_t computable_tree_nodes(bsp::shared_tree<T, Ratio> tree)
+{
+    auto nodes = mpr::node_set_t();
+    sink(tree, [&nodes] (auto c) { nodes.insert(c.node()); });
+    return nodes;
+}
 
 
 
@@ -194,9 +206,7 @@ static auto encode_substep(solution_t solution, unit_time dt, solver_data_t solv
 //=============================================================================
 static auto compute(solution_t solution, unsigned threads=0)
 {
-    auto nodes = mpr::node_set_t();
-    sink(solution.conserved, [&nodes] (auto c) { nodes.insert(c.node()); });
-    mpr::compute_mpi(nodes, threads);
+    mpr::compute_mpi(computable_tree_nodes(solution.conserved), threads);
     return solution;
 }
 
@@ -223,16 +233,13 @@ static void print_graph(const mara::config_t& cfg, solution_t solution, solver_d
     auto outdir = cfg.get_string("outdir");
     auto fname  = util::format("%s/task_graph.dot", outdir.data());
     auto next   = encode_step(solution, solver_data, nfold);
-    auto nodes  = mpr::node_set_t();
-
-    sink(next.conserved, [&nodes] (auto c) { nodes.insert(c.node()); });
+    auto nodes  = computable_tree_nodes(next.conserved);
 
     if (mpi::comm_world().rank() == 0)
     {
+        std::printf("write %s\n", fname.data());
         mara::filesystem::require_dir(outdir);
         auto outf = std::ofstream(fname);
-
-        std::printf("writing task graph %s\n", fname.data());
         mpr::print_graph(outf, nodes);        
     }
 }
@@ -263,9 +270,7 @@ static void side_effects(const mara::config_t& cfg, solution_t solution, schedul
                 h5::write(h5f, "schedule", schedule);
                 std::printf("write %s\n", fname.data());
             }
-
-            auto h5f = h5::File(fname, "r+");
-            h5::write(h5f, "solution", solution);
+            h5::write(h5::File(fname, "r+"), "solution", solution);
         });
     }
 }
@@ -289,13 +294,13 @@ int main(int argc, const char* argv[])
 
     if (mpi::comm_world().rank() == 0)
     {
-        mara::pretty_print(std::cout, "config", cfg);        
+        mara::pretty_print(std::cout, "config", cfg);
+        std::printf("\trun on %d MPI processes and %d threads (%d compute units)\n\n",
+            mpi::comm_world().size(),
+            threads,
+            threads * mpi::comm_world().size());
     }
-
-    if (mpi::comm_world().rank() == 0 && orbits == 0.0)
-    {
-        print_graph(cfg, solution, solver_data, fold);        
-    }
+    print_graph(cfg, solution, solver_data, fold);        
 
     while (solution.time < orbits * binary_period)
     {

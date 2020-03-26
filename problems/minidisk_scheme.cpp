@@ -89,6 +89,46 @@ auto memoizer(Function function)
 
 
 //=============================================================================
+static auto buffer_rate_field(unit_length domain_radius, unit_length buffer_scale, unit_rate buffer_rate)
+{
+    return [=] (numeric::array_t<unit_length, 2> p)
+    {
+        auto r = sqrt(sum(p * p));
+        auto y = (r - domain_radius) / buffer_scale;
+        return 0.5 * buffer_rate * (1.0 + std::tanh(y));
+    };
+}
+
+static auto sink_rate_field(solver_data_t solver_data, numeric::array_t<unit_length, 2> sink_position)
+{
+    return [solver_data, sink_position] (numeric::array_t<unit_length, 2> p)
+    {
+        auto r6 = pow<3>(sum((p - sink_position) * (p - sink_position)));
+        auto s6 = pow<6>(solver_data.sink_radius);
+        return solver_data.sink_rate * std::exp(-r6 / s6);
+    };
+}
+
+static auto coriolis_term(geometric::euclidean_vector_t<unit_velocity> v, unit_rate omega_frame)
+{
+    auto [vx, vy, vz] = as_tuple(v);
+    return 2.0 * omega_frame * numeric::array(vy, -vx);
+}
+
+static auto centrifugal_term(numeric::array_t<unit_length, 2> p, unit_rate omega_frame)
+{
+    return omega_frame * omega_frame * p;
+}
+
+static auto cell_size(bsp::tree_index_t<2> block, solver_data_t solver_data)
+{
+    return 2.0 * solver_data.domain_radius / double(solver_data.block_size) / double(1 << block.level);
+}
+
+
+
+
+//=============================================================================
 static auto initial_primitive(unit_length softening_length, unit_rate omega_frame)
 {
     return [rs=softening_length, omega_frame] (numeric::array_t<unit_length, 2> p)
@@ -124,6 +164,12 @@ static auto vertex_positions(int block_size, unit_length domain_radius, bsp::tre
 
 
 //=============================================================================
+unit_length minidisk::smallest_cell_size(solver_data_t solver_data)
+{
+    return 2.0 * solver_data.domain_radius / double(solver_data.block_size) / double(1 << solver_data.depth);
+}
+
+
 unit_specific_energy minidisk::sound_speed_squared(numeric::array_t<unit_length, 2> p, unit_length softening_length, unit_scalar mach_number)
 {
     auto [x, y] = as_tuple(p);
