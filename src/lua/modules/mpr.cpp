@@ -36,22 +36,46 @@
 
 
 
+using lua_computable = mpr::computable<sol::object>;
+
+
+
+
+//=============================================================================
+static auto unwrap(sol::function f)
+{
+    return [f] (lua_computable c) -> sol::object
+    {
+        if (auto result = f(c.value()); result.valid())
+        {
+            return result;
+        }
+        else
+        {
+            throw sol::error(result);
+        }
+    };
+};
+
+
+
+
 //=============================================================================
 sol::table open_mpr_lib(sol::this_state s)
 {
-    using lua_computable = mpr::computable<sol::object>;
-
     auto lua        = sol::state_view(s);
     auto module     = lua.create_table();
     auto computable = module.new_usertype<lua_computable>("computable", "", sol::no_constructor);
 
     computable["has_value"] = &lua_computable::has_value;
     computable["value"]     = &lua_computable::value;
-    computable["map"]       = [] (lua_computable c, sol::function f) { return mpr::map(c, f); };
+    computable["map"]       = [] (lua_computable c, sol::function f) { return mpr::map(c, unwrap(f)); };
     computable["compute"]   = [] (lua_computable c) { return mpr::compute(c); };
     computable["as_dot"]    = [] (lua_computable c) { auto stream = std::stringstream(); mpr::print_graph(stream, c); return stream.str(); };
     computable["name"]      = sol::overload([] (lua_computable c) { return c.name(); }, [] (lua_computable c, std::string name) { return c.name(name); });
     computable["immediate"] = sol::overload([] (lua_computable c) { return c.immediate(); }, [] (lua_computable c, bool imm) { return c.immediate(imm); });
+
+    computable[sol::meta_function::to_string] = [] (lua_computable) { return std::string("<mpr::computable>"); };
 
     module["just"] = mpr::just<sol::object>;
     module["from"] = [] (sol::function f) { return mpr::from([f] () -> sol::object { return f(); }); };

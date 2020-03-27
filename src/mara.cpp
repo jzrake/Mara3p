@@ -50,6 +50,7 @@ int test_physics();
 
 
 //=============================================================================
+sol::table open_bsp_lib(sol::this_state s);
 sol::table open_mpr_lib(sol::this_state s);
 sol::table open_mara_lib(sol::this_state s);
 
@@ -93,8 +94,9 @@ int main(int argc, const char* argv[])
 
     auto lua = sol::state();
     lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::package, sol::lib::table);
-    lua.require("mara",  sol::c_call<decltype(&open_mara_lib), &open_mara_lib>, false);
+    lua.require("bsp",   sol::c_call<decltype(&open_bsp_lib), &open_bsp_lib>,   false);
     lua.require("mpr",   sol::c_call<decltype(&open_mpr_lib), &open_mpr_lib>,   false);
+    lua.require("mara",  sol::c_call<decltype(&open_mara_lib), &open_mara_lib>, false);
 
 
     try {
