@@ -28,6 +28,7 @@
 
 #include <mutex>
 #include "core_ndarray_ops.hpp"
+#include "core_memoize.hpp"
 #include "core_util.hpp"
 #include "physics_two_body.hpp"
 #include "scheme_plm_gradient.hpp"
@@ -39,52 +40,6 @@
 //=============================================================================
 using namespace std::placeholders;
 using namespace minidisk;
-
-
-
-
-//=============================================================================
-template<typename KeyType, typename ValueType>
-class memoizer_t
-{
-public:
-    memoizer_t(std::function<ValueType(KeyType)> function) : function(function) {}
-
-    ValueType operator()(const KeyType& arg_tuple)
-    {
-        auto lock = std::lock_guard<std::mutex>(mutex);
-
-        if (! cache.count(arg_tuple))
-        {
-            cache[arg_tuple] = function(arg_tuple);
-        }
-        return cache[arg_tuple];
-    }
-
-    template<typename... Args>
-    ValueType operator()(Args... args)
-    {
-        return this->operator()(std::tuple(args...));
-    }
-
-private:
-    std::mutex mutex;
-    std::function<ValueType(KeyType)> function;
-    std::map<KeyType, ValueType> cache;
-};
-
-template<typename... Args, typename Function>
-auto memoizer(Function function)
-{
-    using arg_type = std::tuple<Args...>;
-    using res_type = std::invoke_result_t<Function, Args...>;
-
-    return memoizer_t<arg_type, res_type>([function] (arg_type args)
-    {
-        return std::apply(function, args);
-    });
-}
-
 
 
 
@@ -169,7 +124,6 @@ unit_length minidisk::smallest_cell_size(solver_data_t solver_data)
     return 2.0 * solver_data.domain_radius / double(solver_data.block_size) / double(1 << solver_data.depth);
 }
 
-
 unit_specific_energy minidisk::sound_speed_squared(numeric::array_t<unit_length, 2> p, unit_length softening_length, unit_scalar mach_number)
 {
     auto [x, y] = as_tuple(p);
@@ -180,7 +134,7 @@ unit_specific_energy minidisk::sound_speed_squared(numeric::array_t<unit_length,
 nd::shared_array<numeric::array_t<unit_length, 2>, 2>
 minidisk::face_coordinates(int block_size, unit_length domain_radius, bsp::tree_index_t<2> block, bsp::uint axis)
 {
-    static auto memoize = memoizer<int, unit_length, bsp::tree_index_t<2>, bsp::uint>([] (auto block_size, auto domain_radius, auto block, auto axis)
+    return invoke_memoized([] (auto block_size, auto domain_radius, auto block, auto axis)
     {
         auto [xv, yv] = vertex_positions(block_size, domain_radius, block);
         auto xc = xv | nd::adjacent_mean(0);
@@ -193,15 +147,13 @@ minidisk::face_coordinates(int block_size, unit_length domain_radius, bsp::tree_
             case 1: return nd::cartesian_product(xc, yv) | vec2 | nd::to_shared();
         }
         throw std::invalid_argument("face_coordinates (invalid axis)");
-    });
-    return memoize(block_size, domain_radius, block, axis);
+    }, block_size, domain_radius, block, axis);
 }
 
 nd::shared_array<numeric::array_t<unit_length, 2>, 2>
 minidisk::cell_coordinates(int block_size, unit_length domain_radius, bsp::tree_index_t<2> block)
 {
-    static auto memoize = memoizer<int, unit_length, bsp::tree_index_t<2>>(
-    [] (auto block_size, auto domain_radius, auto block)
+    return invoke_memoized([] (auto block_size, auto domain_radius, auto block)
     {
         auto [xv, yv] = vertex_positions(block_size, domain_radius, block);
         auto xc = xv | nd::adjacent_mean(0);
@@ -209,8 +161,7 @@ minidisk::cell_coordinates(int block_size, unit_length domain_radius, bsp::tree_
         auto vec2 = nd::map(util::apply_to([] (auto x, auto y) { return numeric::array(x, y); }));
 
         return nd::cartesian_product(xc, yc) | vec2 | nd::to_shared();
-    });
-    return memoize(block_size, domain_radius, block);
+    }, block_size, domain_radius, block);
 }
 
 
@@ -220,53 +171,34 @@ minidisk::cell_coordinates(int block_size, unit_length domain_radius, bsp::tree_
 nd::shared_array<unit_rate, 2>
 minidisk::buffer_rate_field_array(solver_data_t solver_data, bsp::tree_index_t<2> block)
 {
-    static auto memoize = memoizer<int, unit_length, unit_length, unit_rate, bsp::tree_index_t<2>>(
-    [] (auto block_size, auto domain_radius, auto buffer_scale, auto buffer_rate, auto block)
+    return invoke_memoized([] (auto block_size, auto domain_radius, auto buffer_scale, auto buffer_rate, auto block)
     {
         auto xc = cell_coordinates(block_size, domain_radius, block);
         auto br = xc | nd::map(buffer_rate_field(domain_radius, buffer_scale, buffer_rate));
         return br | nd::to_shared();
-    });
-    return memoize(
-        solver_data.block_size,
-        solver_data.domain_radius,
-        solver_data.buffer_scale,
-        solver_data.buffer_rate, block);
+    }, solver_data.block_size, solver_data.domain_radius, solver_data.buffer_scale, solver_data.buffer_rate, block);
 }
 
 nd::shared_array<iso2d::conserved_density_t, 2>
 minidisk::initial_conserved_array(solver_data_t solver_data, bsp::tree_index_t<2> block)
 {
-    static auto memoize = memoizer<int, unit_length, unit_length, unit_rate, bsp::tree_index_t<2>>(
-    [] (auto block_size, auto domain_radius, auto softening_length, auto omega_frame, auto block)
+    return invoke_memoized([] (auto block_size, auto domain_radius, auto softening_length, auto omega_frame, auto block)
     {
         auto xc = cell_coordinates(block_size, domain_radius, block);
         auto uc = xc | nd::map(initial_primitive(softening_length, omega_frame)) | nd::map(iso2d::conserved_density);
         return uc | nd::to_shared();
-    });
-    return memoize(
-        solver_data.block_size,
-        solver_data.domain_radius,
-        solver_data.softening_length,
-        solver_data.omega_frame,
-        block);
+    }, solver_data.block_size, solver_data.domain_radius, solver_data.softening_length, solver_data.omega_frame, block);
 }
 
 nd::shared_array<numeric::array_t<unit_acceleration, 2>, 2>
 minidisk::centrifugal_term_array(solver_data_t solver_data, bsp::tree_index_t<2> block)
 {
-    static auto memoize = memoizer<int, unit_length, unit_rate, bsp::tree_index_t<2>>(
-    [] (auto block_size, auto domain_radius, auto omega_frame, auto block)
+    return invoke_memoized([] (auto block_size, auto domain_radius, auto omega_frame, auto block)
     {
         auto xc = cell_coordinates(block_size, domain_radius, block);
         auto cen = xc | nd::map(std::bind(centrifugal_term, _1, omega_frame));
         return cen | nd::to_shared();
-    });
-    return memoize(
-        solver_data.block_size,
-        solver_data.domain_radius,
-        solver_data.omega_frame,
-        block);
+    }, solver_data.block_size, solver_data.domain_radius, solver_data.omega_frame, block);
 }
 
 
