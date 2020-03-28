@@ -28,10 +28,12 @@
 
 
 #include "core_unit_test.hpp"
+#include "scheme_euler.hpp"
 
 
 
 
+//=============================================================================
 int test_app();
 int test_core();
 int test_mesh();
@@ -42,7 +44,7 @@ int test_physics();
 
 
 //=============================================================================
-int main()
+static void run_all_tests()
 {
     start_unit_tests();
     test_app();
@@ -51,5 +53,15 @@ int main()
     test_model();
     test_physics();
     report_test_results();
+}
+
+
+
+
+//=============================================================================
+int main(int argc, const char* argv[])
+{
+    run_all_tests();
+
     return 0;
 }

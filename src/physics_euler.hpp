@@ -221,7 +221,7 @@ inline flux_vector_t riemann_hlle(primitive_t pl, primitive_t pr, geometric::uni
     return (ap * fl - am * fr - (ul - ur) * ap * am) / (ap - am);
 }
 
-inline flux_vector_t riemann_hlle(primitive_t pl, primitive_t pr, geometric::unit_vector_t nhat, unit_velocity face_speed, double gamma_law_index)
+inline flux_vector_t riemann_hlle_moving_face(primitive_t pl, primitive_t pr, geometric::unit_vector_t nhat, unit_velocity face_speed, double gamma_law_index)
 {
     auto ul = conserved_density(pl, gamma_law_index);
     auto ur = conserved_density(pr, gamma_law_index);

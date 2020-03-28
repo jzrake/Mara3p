@@ -57,7 +57,7 @@ MARA_H_TMP := $(shell mktemp -u make.XXXXXX)
 default: $(TARGETS)
 all: $(ALL_TARGETS)
 
-mara: src/main.o src/core_unit_test.o src/test_app.o src/test_core.o src/test_mesh.o src/test_model.o src/test_physics.o
+mara: src/mara.o src/core_unit_test.o src/test_app.o src/test_core.o src/test_mesh.o src/test_model.o src/test_physics.o src/scheme_euler.o
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 examples/euler1d: examples/euler1d.o
