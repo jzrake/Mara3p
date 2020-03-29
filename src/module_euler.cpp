@@ -28,7 +28,6 @@
 
 #include "core_memoize.hpp"
 #include "core_ndarray_ops.hpp"
-#include "core_util.hpp"
 #include "module_euler.hpp"
 #include "scheme_plm_gradient.hpp"
 
@@ -108,18 +107,10 @@ mesh_geometry_t::mesh_geometry_t(unit_length domain_size, int block_size)
 
 nd::shared_array<coords_t, 2> mesh_geometry_t::vert_coordinates(bsp::tree_index_t<2> block) const
 {
-    auto [i0, j0] = as_tuple(block.coordinates);
-    auto [i1, j1] = std::tuple(i0 + 1, j0 + 1);
-    auto dl = double(1 << block.level);
-
-    auto x0 = domain_size * (-0.5 + 1.0 * i0 / dl);
-    auto x1 = domain_size * (-0.5 + 1.0 * i1 / dl);
-    auto y0 = domain_size * (-0.5 + 1.0 * j0 / dl);
-    auto y1 = domain_size * (-0.5 + 1.0 * j1 / dl);
-
-    auto xv = nd::linspace(x0, x1, block_size + 1);
-    auto yv = nd::linspace(y0, y1, block_size + 1);
-    auto vec2 = nd::map(util::apply_to([] (auto x, auto y) { return numeric::array(x, y); }));
+    auto [p0, p1] = block_extent(block);
+    auto xv = nd::linspace(p0[0], p1[0], block_size + 1);
+    auto yv = nd::linspace(p0[1], p1[1], block_size + 1);
+    auto vec2 = nd::mapv([] (auto x, auto y) { return numeric::array(x, y); });
 
     return nd::cartesian_product(xv, yv) | vec2 | nd::to_shared();
 }
@@ -143,6 +134,26 @@ nd::shared_array<coords_t, 2> mesh_geometry_t::cell_coordinates(bsp::tree_index_
         | nd::adjacent_mean(1)
         | nd::to_shared();
     }, this, block);
+}
+
+std::pair<coords_t, coords_t> mesh_geometry_t::block_extent(bsp::tree_index_t<2> block) const
+{
+    auto [i0, j0] = as_tuple(block.coordinates);
+    auto [i1, j1] = std::tuple(i0 + 1, j0 + 1);
+    auto dl = double(1 << block.level);
+
+    auto x0 = domain_size * (-0.5 + 1.0 * i0 / dl);
+    auto x1 = domain_size * (-0.5 + 1.0 * i1 / dl);
+    auto y0 = domain_size * (-0.5 + 1.0 * j0 / dl);
+    auto y1 = domain_size * (-0.5 + 1.0 * j1 / dl);
+
+    return std::pair(coords_t{x0, y0}, coords_t{x1, y1});
+}
+
+coords_t mesh_geometry_t::block_centroid(bsp::tree_index_t<2> block) const
+{
+    auto [p0, p1] = block_extent(block);
+    return 0.5 * (p0 + p1);
 }
 
 unit_length mesh_geometry_t::cell_spacing(bsp::tree_index_t<2> block) const
@@ -241,8 +252,8 @@ conserved_array_t euler2d::updated_conserved(
     auto pl_y = (pe_y - 0.5 * gy_y) | nd::select(1, 1);
     auto pr_y = (pe_y + 0.5 * gy_y) | nd::select(1, 0, -1);
 
-    auto fx = nd::zip(pr_x, pl_x) | nd::map(util::apply_to(riemann_x));
-    auto fy = nd::zip(pr_y, pl_y) | nd::map(util::apply_to(riemann_y));
+    auto fx = nd::zip(pr_x, pl_x) | nd::mapv(riemann_x);
+    auto fy = nd::zip(pr_y, pl_y) | nd::mapv(riemann_y);
 
     auto dfx = fx | nd::adjacent_diff(0);
     auto dfy = fy | nd::adjacent_diff(1);

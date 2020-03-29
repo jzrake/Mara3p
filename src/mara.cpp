@@ -78,11 +78,17 @@ static void run_euler2d()
         }
     };
 
-    auto tfinal           = dimensional::unit_time(0.1);
+    auto tfinal           = dimensional::unit_time(0.0);
     auto plm_theta        = 2.0;
     auto gamma_law_index  = 5. / 3;
-    auto mesh             = bsp::uniform_quadtree(3);
     auto geom             = mesh_geometry_t();
+    auto mesh             = bsp::quadtree([geom] (auto block)
+    {
+        auto p = geom.block_centroid(block);
+        auto r = sqrt(sum(p * p));
+        return r < unit_length(1.0) / double(block.level);
+    }, 4);
+
     auto u                = mpr::compute_all(initial_conserved_tree(mesh, geom, shocktube_2d, gamma_law_index));
     auto solution         = solution_t{0, 0.0, u};
     auto dx = smallest_cell_size(mesh, geom);
