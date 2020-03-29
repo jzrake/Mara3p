@@ -33,9 +33,9 @@ int main(int argc, const char* argv[])
 {
     auto mpi_session  = mpi::Session();
     auto cfg_template = mara::config_template()
-    .item("threads",              1)   // number of threads to use (zero for hardware concurrency)
-    .item("num_samples",        1e5)   // number of Monte-Carlo samples per batch
-    .item("num_batches",        1e3);  // number of total batches (not per MPI process)
+    .item("threads",              1, "number of threads to use (zero for hardware concurrency")
+    .item("num_samples",        1e5, "number of Monte-Carlo samples per batch")
+    .item("num_batches",        1e3, "number of total batches (not per MPI process");
 
     auto cfg = cfg_template.create().update(mara::argv_to_string_map(argc, argv));
     auto num_threads = cfg.get_int("threads");

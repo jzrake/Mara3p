@@ -29,7 +29,6 @@ ALL_TARGETS = mara \
 	examples/hardware_check \
 	examples/mhd3d \
 	examples/serial_perf \
-	examples/task_parallel \
 	problems/sedov \
 	problems/sedov2d
 TARGETS = $(ALL_TARGETS)

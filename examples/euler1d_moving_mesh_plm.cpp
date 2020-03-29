@@ -93,7 +93,7 @@ auto riemann_solver_for(geometric::unit_vector_t nhat)
     {
         auto [pf, vf] = t;
         auto [pl, pr] = pf;
-        return euler::riemann_hlle(pl, pr, nhat, vf, gamma_law_index);
+        return euler::riemann_hlle_moving_face(pl, pr, nhat, vf, gamma_law_index);
     };
 }
 

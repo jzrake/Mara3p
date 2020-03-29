@@ -56,29 +56,29 @@ static mara::ThreadPool thread_pool;
 auto config_template()
 {
     return mara::config_template()
-    .item("nt",                   100)   // number of radial tracks
-    .item("rk",                     1)     // Runge-Kutta order (1, 2, or 3)
-    .item("max_aspect",           4.0)   // aspect ratio of the longest cell allowed
-    .item("min_aspect",           0.0)   // aspect ratio of the widest cell allowed
-    .item("focus",                0.5)   // amount by which to increase resolution near the poles [0, 1)
-    .item("tfinal",            1000.0)   // time to stop the simulation
-    .item("cpi",                 5000)   // number of iterations between checkpoints
-    .item("vtk",                  500)   // number of iterations between VTK outputs
-    .item("cfl",                  0.5)   // courant number
-    .item("router",               5.0)   // outer boundary radius
-    .item("envelop_end_time",   100.0)   // time at which the relativistic envelope switches to a wind
-    .item("envelop_mdot_index",   4.0)   // alpha in envelop mdot(t) = (t / t0)^alpha
-    .item("envelop_u_index",     0.22)   // psi in envelop u(m) = u1 (m / m1)^(-psi)
-    .item("envelop_u",          10.00)   // maximum gamma-beta in outer envelop
-    .item("engine_mdot",          1e3)   // engine mass rate
-    .item("engine_onset",       200.0)   // the engine onset time [inner boundary light-crossing time]
-    .item("engine_duration",    500.0)   // the engine duration   [inner boundary light-crossing time]
-    .item("engine_u",            50.0)   // the engine gamma-beta
-    .item("engine_theta",         0.3)   // the engine opening angle
-    .item("engine_index",         2.0)   // shape parameter n of nozzle ~ exp(-(q / qj)^n)
-    .item("threads",                1)   // the number of concurrent threads to execute on
-    .item("restart", std::string(""))    // a checkpoint file to restart from
-    .item("outdir",  std::string("."));  // the directory where output files are written
+    .item("nt",                   100, "number of radial tracks")
+    .item("rk",                     1, "Runge-Kutta order (1, 2, or 3)")
+    .item("max_aspect",           4.0, "aspect ratio of the longest cell allowed")
+    .item("min_aspect",           0.0, "aspect ratio of the widest cell allowed")
+    .item("focus",                0.5, "amount by which to increase resolution near the poles [0, 1)")
+    .item("tfinal",            1000.0, "time to stop the simulation")
+    .item("cpi",                 5000, "number of iterations between checkpoints")
+    .item("vtk",                  500, "number of iterations between VTK outputs")
+    .item("cfl",                  0.5, "courant number")
+    .item("router",               5.0, "outer boundary radius")
+    .item("envelop_end_time",   100.0, "time at which the relativistic envelope switches to a wind")
+    .item("envelop_mdot_index",   4.0, "alpha in envelop mdot(t) = (t / t0)^alpha")
+    .item("envelop_u_index",     0.22, "psi in envelop u(m) = u1 (m / m1)^(-psi)")
+    .item("envelop_u",          10.00, "maximum gamma-beta in outer envelop")
+    .item("engine_mdot",          1e3, "engine mass rate")
+    .item("engine_onset",       200.0, "the engine onset time [inner boundary light-crossing time]")
+    .item("engine_duration",    500.0, "the engine duration   [inner boundary light-crossing time]")
+    .item("engine_u",            50.0, "the engine gamma-beta")
+    .item("engine_theta",         0.3, "the engine opening angle")
+    .item("engine_index",         2.0, "shape parameter n of nozzle ~ exp(-(q / qj)^n)")
+    .item("threads",                1, "the number of concurrent threads to execute on")
+    .item("restart",               "", "a checkpoint file to restart from")
+    .item("outdir",               ".", "the directory where output files are written");
 }
 
 

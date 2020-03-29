@@ -99,26 +99,26 @@ struct solver_data_t
 inline auto config_template()
 {
     return mara::config_template()
-    .item("block_size",            64)   // number of zones per side
-    .item("depth",                  1)   // number of levels in the mesh
-    .item("omega_frame",          1.0)   // reference frame rotation frequency (1.0 for co-rotating)
-    .item("mach_number",         10.0)   // Mach number of the disk
-    .item("nu",                   0.0)   // Kinematic viscosity coefficient
-    .item("domain_radius",        1.5)   // half-size of the domain
-    .item("eccentricity",         0.0)   // binary orbital eccentricity
-    .item("mass_ratio",           1.0)   // binary mass ratio M2 / M1
-    .item("softening_length",    0.01)   // gravitational softening length
-    .item("sink_radius",         0.01)   // radius of mass sinks
-    .item("sink_rate",            1e3)   // rate of mass and momentum removal at sinks
-    .item("buffer_rate",          1e2)   // maximum rate of buffer driving
-    .item("buffer_scale",         0.2)   // length scale of buffer onset
-    .item("cfl",                  0.3)   // Courant number
-    .item("orbits",             100.0)   // time to stop the simulation
-    .item("cpi",                  0.1)   // number of orbits between checkpoints
-    .item("threads",                1)   // number of threads to execute on
-    .item("fold",                   1)   // number of encodings per time step batch
-    .item("restart", std::string(""))    // a checkpoint file to restart from
-    .item("outdir",  std::string("."));  // the directory where output files are written
+    .item("block_size",            64, "number of zones per side")
+    .item("depth",                  1, "number of levels in the mesh")
+    .item("omega_frame",          1.0, "reference frame rotation frequency (1.0 for co-rotating)")
+    .item("mach_number",         10.0, "Mach number of the disk")
+    .item("nu",                   0.0, "Kinematic viscosity coefficient")
+    .item("domain_radius",        1.5, "half-size of the domain")
+    .item("eccentricity",         0.0, "binary orbital eccentricity")
+    .item("mass_ratio",           1.0, "binary mass ratio M2 / M1")
+    .item("softening_length",    0.01, "gravitational softening length")
+    .item("sink_radius",         0.01, "radius of mass sinks")
+    .item("sink_rate",            1e3, "rate of mass and momentum removal at sinks")
+    .item("buffer_rate",          1e2, "maximum rate of buffer driving")
+    .item("buffer_scale",         0.2, "length scale of buffer onset")
+    .item("cfl",                  0.3, "Courant number")
+    .item("orbits",             100.0, "time to stop the simulation")
+    .item("cpi",                  0.1, "number of orbits between checkpoints")
+    .item("threads",                1, "number of threads to execute on")
+    .item("fold",                   1, "number of encodings per time step batch")
+    .item("restart",               "", "a checkpoint file to restart from")
+    .item("outdir",               ".", "the directory where output files are written");
 }
 
 inline auto make_solver_data(const mara::config_t& cfg)

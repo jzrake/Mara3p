@@ -52,23 +52,23 @@
 auto config_template()
 {
     return mara::config_template()
-    .item("nr",                   256)   // number of radial zones, per decade
-    .item("tfinal",              10.0)   // time to stop the simulation
-    .item("print",                 10)   // the number of iterations between terminal outputs
-    .item("dfi",                  1.5)   // output interval (constant multiplier)
-    .item("rk_order",               2)   // Runge-Kutta order (1, 2, or 3)
-    .item("cfl",                  0.5)   // courant number
-    .item("mindr",               1e-3)   // minimum cell length to impose in remeshing
-    .item("plm_theta",            1.5)   // PLM parameter
-    .item("router",               1e3)   // outer boundary radius
-    .item("move",                   1)   // whether to move the cells
-    .item("envelop_mdot_index",   4.0)   // alpha in envelop mdot(t) = (t / t0)^alpha
-    .item("envelop_u_index",     0.22)   // psi in envelop u(m) = u1 (m / m1)^(-psi)
-    .item("envelop_u",          10.00)   // maximum gamma-beta in outer envelop
-    .item("engine_mdot",          1e4)   // engine mass rate
-    .item("engine_onset",        50.0)   // the engine onset time [inner boundary light-crossing time]
-    .item("engine_duration",    100.0)   // the engine duration   [inner boundary light-crossing time]
-    .item("engine_u",            10.0);  // the engine gamma-beta
+    .item("nr",                   256, "number of radial zones, per decade")
+    .item("tfinal",              10.0, "time to stop the simulation")
+    .item("print",                 10, "the number of iterations between terminal outputs")
+    .item("dfi",                  1.5, "output interval (constant multiplier)")
+    .item("rk_order",               2, "Runge-Kutta order (1, 2, or 3)")
+    .item("cfl",                  0.5, "courant number")
+    .item("mindr",               1e-3, "minimum cell length to impose in remeshing")
+    .item("plm_theta",            1.5, "PLM parameter")
+    .item("router",               1e3, "outer boundary radius")
+    .item("move",                   1, "whether to move the cells")
+    .item("envelop_mdot_index",   4.0, "alpha in envelop mdot(t) = (t / t0)^alpha")
+    .item("envelop_u_index",     0.22, "psi in envelop u(m) = u1 (m / m1)^(-psi)")
+    .item("envelop_u",          10.00, "maximum gamma-beta in outer envelop")
+    .item("engine_mdot",          1e4, "engine mass rate")
+    .item("engine_onset",        50.0, "the engine onset time [inner boundary light-crossing time]")
+    .item("engine_duration",    100.0, "the engine duration   [inner boundary light-crossing time]")
+    .item("engine_u",            10.0, "the engine gamma-beta");
 }
 
 static const auto gamma_law_index   = 4. / 3;
