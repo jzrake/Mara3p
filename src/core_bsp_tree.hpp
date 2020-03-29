@@ -455,13 +455,13 @@ auto zip(tree_t<ValueType, ChildrenType, Ratio>... trees)
 /**
  * @brief      Return the number of leaves in a tree
  *
- * @param[in]  tree          The tree
+ * @param[in]  tree          The tree whose size is needed
  *
- * @tparam     ValueType     { description }
- * @tparam     ChildrenType  { description }
- * @tparam     Ratio         { description }
+ * @tparam     ValueType     The tree value type
+ * @tparam     ChildrenType  The tree provider type
+ * @tparam     Ratio         The tree ratio
  *
- * @return     { description_of_the_return_value }
+ * @return     The size of the tree
  */
 template<typename ValueType, typename ChildrenType, uint Ratio>
 std::size_t size(tree_t<ValueType, ChildrenType, Ratio> tree)
@@ -473,15 +473,51 @@ std::size_t size(tree_t<ValueType, ChildrenType, Ratio> tree)
 
 
 /**
- * @brief      { function_description }
+ * @brief      Apply a reduction to a tree, such as taking the sum or the
+ *             mininum or maximum value.
  *
- * @param[in]  tree          The tree
- * @param[in]  function      The function
+ * @param[in]  tree          The tree to reduce
+ * @param[in]  reducer       The reducer function
+ * @param[in]  seed          The seed value
  *
- * @tparam     ValueType     { description }
- * @tparam     ChildrenType  { description }
- * @tparam     Ratio         { description }
- * @tparam     FunctionType  { description }
+ * @tparam     ValueType     The tree value type
+ * @tparam     ChildrenType  The tree provider type
+ * @tparam     Ratio         The tree ratio
+ * @tparam     Reducer       The reducer function type
+ * @tparam     SeedType      The seed type
+ *
+ * @return     The reduced value
+ */
+template<typename ValueType, typename ChildrenType, uint Ratio, typename Reducer, typename SeedType>
+SeedType reduce(tree_t<ValueType, ChildrenType, Ratio> tree, Reducer reducer, SeedType seed)
+{
+    static_assert(std::is_same_v<SeedType, std::invoke_result_t<Reducer, SeedType, ValueType>>,
+        "the reducer must be (seed, value) -> seed");
+
+    if (has_value(tree))
+    {
+        return reducer(seed, value(tree));
+    }
+    for (std::size_t i = 0; i < Ratio; ++i)
+    {
+        seed = reduce(child_at(tree, i), reducer, seed);
+    }
+    return seed;
+}
+
+
+
+
+/**
+ * @brief      Invoke a side-effect only function on the values of the tree.
+ *
+ * @param[in]  tree          The tree to invoke the function over
+ * @param[in]  function      The function to invoke
+ *
+ * @tparam     ValueType     The tree value type
+ * @tparam     ChildrenType  The tree provider type
+ * @tparam     Ratio         The tree ratio
+ * @tparam     FunctionType  The function type
  */
 template<typename ValueType, typename ChildrenType, uint Ratio, typename FunctionType>
 void sink(tree_t<ValueType, ChildrenType, Ratio> tree, FunctionType function)
@@ -493,34 +529,25 @@ void sink(tree_t<ValueType, ChildrenType, Ratio> tree, FunctionType function)
             sink(child_at(tree, i), function);
 }
 
-template<typename ValueType, uint Ratio, typename FunctionType>
-void sink(shared_tree<ValueType, Ratio> tree, FunctionType function)
-{
-    if (has_value(tree))
-        function(std::get<ValueType>(tree.provider));
-    else
-        for (std::size_t i = 0; i < Ratio; ++i)
-            sink(std::get<shared_children_t<ValueType, Ratio>>(tree.provider).ptr->operator[](i), function);
-}
-
 
 
 
 /**
- * @brief      { function_description }
+ * @brief      Convert a lazy tree (zipped or mapped) into a shared tree.
  *
- * @param[in]  tree          The tree
+ * @param[in]  tree          The tree to convert
  *
- * @tparam     ValueType     { description }
- * @tparam     ChildrenType  { description }
- * @tparam     Ratio         { description }
+ * @tparam     ValueType     The tree value type
+ * @tparam     ChildrenType  The tree provider type
+ * @tparam     Ratio         The tree ratio
  *
- * @return     { description_of_the_return_value }
+ * @return     A shared tree
  */
 template<typename ValueType, typename ChildrenType, uint Ratio>
 auto to_shared(tree_t<ValueType, ChildrenType, Ratio> tree)
 {
-    static_assert(! std::is_same_v<ChildrenType, shared_children_t<ValueType, Ratio>>, "tree is already shared");
+    static_assert(! std::is_same_v<ChildrenType, shared_children_t<ValueType, Ratio>>,
+        "tree is already shared");
 
     if (has_value(tree))
     {
