@@ -91,6 +91,8 @@ public:
     nd::shared_array<coords_t, 2> vert_coordinates(bsp::tree_index_t<2> block) const;
     nd::shared_array<coords_t, 2> face_coordinates(bsp::tree_index_t<2> block, bsp::uint axis) const;
     nd::shared_array<coords_t, 2> cell_coordinates(bsp::tree_index_t<2> block) const;
+    std::pair<coords_t, coords_t> block_extent(bsp::tree_index_t<2> block) const;
+    coords_t block_centroid(bsp::tree_index_t<2> block) const;
     unit_length cell_spacing(bsp::tree_index_t<2> block) const;
     std::size_t cells_per_block() const;
 

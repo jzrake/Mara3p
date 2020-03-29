@@ -737,6 +737,18 @@ inline auto uniform_octree(uint depth)
     return result;
 }
 
+inline auto quadtree(std::function<bool(bsp::tree_index_t<2>)> predicate, uint max_depth)
+{
+    auto branch_function = [] (auto i) { return child_indexes(i); };
+    auto result = just<4>(tree_index<2>());
+
+    while (max_depth--)
+    {
+        result = branch_if(result, branch_function, predicate);
+    }
+    return result;
+}
+
 } // namespace bsp
 
 
