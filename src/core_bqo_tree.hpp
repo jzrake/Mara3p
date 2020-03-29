@@ -610,16 +610,18 @@ shared_tree<ValueType, Ratio> insert(shared_tree<ValueType, Ratio> tree, tree_in
 
 
 /**
- * @brief      { function_description }
+ * @brief      Return a tree of indexes representing the topology of the given
+ *             tree.
  *
- * @param[in]  tree             The tree
- * @param[in]  index_in_parent  The index in parent
+ * @param[in]  tree             The tree node
+ * @param[in]  index_in_parent  The starting index (optional)
  *
- * @tparam     ValueType        { description }
- * @tparam     ChildrenType     { description }
- * @tparam     Ratio            { description }
+ * @tparam     ValueType        The tree value type
+ * @tparam     ChildrenType     The tree provider type
+ * @tparam     Ratio            The tree ratio
+ * @tparam     Rank             The rank of the tree: log2(ratio)
  *
- * @return     { description_of_the_return_value }
+ * @return     A tree of indexes
  */
 template<typename ValueType, typename ChildrenType, uint Ratio, uint Rank=rank_for_ratio_t<Ratio>::value>
 auto indexes(const tree_t<ValueType, ChildrenType, Ratio>& tree, tree_index_t<Rank> index_in_parent={})
@@ -718,7 +720,7 @@ inline auto uniform_quadtree(uint depth)
 
     while (depth--)
     {
-        result = branch_through(result, branch_function);
+        result = branch_all(result, branch_function);
     }
     return result;
 }
@@ -730,7 +732,7 @@ inline auto uniform_octree(uint depth)
 
     while (depth--)
     {
-        result = branch_through(result, branch_function);
+        result = branch_all(result, branch_function);
     }
     return result;
 }
@@ -778,7 +780,7 @@ inline void test_bqo_tree()
     require(! valid(with_coordinates(with_level(bsp::tree_index<3>(), 3), {0, 0, 8})));
 
     auto branch_function = [] (auto i) { return child_indexes(i); };
-    auto tree64 = branch_through(branch_through(bsp::just<8>(bsp::tree_index<3>()), branch_function), branch_function);
+    auto tree64 = branch_all(branch_all(bsp::just<8>(bsp::tree_index<3>()), branch_function), branch_function);
     auto index = with_coordinates(with_level(bsp::tree_index<3>(), 2), {0, 1, 2});
 
     require(size(bsp::from(child_indexes(bsp::tree_index<3>()))) == 8);
