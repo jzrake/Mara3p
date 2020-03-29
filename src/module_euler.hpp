@@ -27,10 +27,6 @@
 
 
 #pragma once
-
-
-
-
 #include "core_bsp_tree.hpp"
 #include "core_bqo_tree.hpp"
 #include "core_ndarray.hpp"
@@ -41,7 +37,7 @@
 
 
 //=============================================================================
-namespace schemes
+namespace modules
 {
 
 namespace euler2d
@@ -52,12 +48,12 @@ namespace euler2d
 
 using namespace dimensional;
 using coords_t            = numeric::array_t<unit_length, 2>;
+using mesh_topology_t     = bsp::shared_tree<bsp::tree_index_t<2>, 4>;
 using conserved_array_t   = nd::shared_array<euler::conserved_density_t, 2>;
 using primitive_array_t   = nd::shared_array<euler::primitive_t, 2>;
-using godunov_f_array_t   = nd::shared_array<euler::flux_vector_t, 2>;
 using conserved_tree_t    = bsp::shared_tree<mpr::computable<conserved_array_t>, 4>;
+using primitive_tree_t    = bsp::shared_tree<mpr::computable<primitive_array_t>, 4>;
 using primitive_mapping_t = std::function<euler::primitive_t(coords_t)>;
-using unit_viscosity      = dimensional::quantity_t<0, 2,-1>;
 
 
 
@@ -86,11 +82,11 @@ struct solution_t
 
 
 //=============================================================================
-class mesh_coordinates_t
+class mesh_geometry_t
 {
 public:
-    mesh_coordinates_t() {}
-    mesh_coordinates_t(unit_length domain_size, int block_size);
+    mesh_geometry_t() {}
+    mesh_geometry_t(unit_length domain_size, int block_size);
 
     nd::shared_array<coords_t, 2> vert_coordinates(bsp::tree_index_t<2> block) const;
     nd::shared_array<coords_t, 2> face_coordinates(bsp::tree_index_t<2> block, bsp::uint axis) const;
@@ -106,27 +102,71 @@ private:
 
 
 //=============================================================================
-class scheme_t
-{
-public:
-    conserved_array_t initial_conserved_array(bsp::tree_index_t<2> block, primitive_mapping_t initial) const;
-    primitive_array_t recover_primitive_array(conserved_array_t uc) const;
-    primitive_array_t estimate_gradient(primitive_array_t pc, bsp::uint axis) const;
-    conserved_array_t updated_conserved(
-        conserved_array_t uc,
-        primitive_array_t pe,
-        unit_time time,
-        unit_time dt,
-        bsp::tree_index_t<2> block) const;
-private:
-    double plm_theta = 2.0;
-    double gamma_law_index = 5. / 3;
-    mesh_coordinates_t mesh;
-};
+conserved_array_t initial_conserved_array(
+    mesh_geometry_t mesh_geometry,
+    bsp::tree_index_t<2> block,
+    primitive_mapping_t initial,
+    double gamma_law_index);
+
+conserved_tree_t initial_conserved_tree(
+    mesh_topology_t mesh_topology,
+    mesh_geometry_t mesh_geometry,
+    primitive_mapping_t initial,
+    double gamma_law_index);
+
+primitive_array_t recover_primitive_array(
+    conserved_array_t uc,
+    double gamma_law_index);
+
+primitive_array_t estimate_gradient(
+    primitive_array_t pc,
+    bsp::uint axis,
+    double plm_theta);
+
+conserved_array_t updated_conserved(
+    conserved_array_t uc,
+    primitive_array_t pe,
+    unit_time time,
+    unit_time dt,
+    mesh_geometry_t mesh_geometry,
+    bsp::tree_index_t<2> block,
+    double plm_theta,
+    double gamma_law_index);
+
+solution_t updated_solution(
+    solution_t solution,
+    unit_time dt,
+    mesh_geometry_t mesh_geometry,
+    double plm_theta,
+    double gamma_law_index);
+
+unit_length smallest_cell_size(
+    mesh_topology_t mesh_topology,
+    mesh_geometry_t mesh_geometry);
 
 
 
 
 } // namespace euler2d
 
-} // namespace schemes
+} // namespace modules
+
+
+
+
+//=============================================================================
+namespace h5 {
+
+class Group;
+
+void read(const Group& group, std::string name, modules::euler2d::conserved_tree_t& conserved);
+void read(const Group& group, std::string name, modules::euler2d::side_effect_t& side_effect);
+void read(const Group& group, std::string name, modules::euler2d::schedule_t& schedule);
+void read(const Group& group, std::string name, modules::euler2d::solution_t& solution);
+
+void write(const Group& group, std::string name, const modules::euler2d::conserved_tree_t& conserved);
+void write(const Group& group, std::string name, const modules::euler2d::side_effect_t& side_effect);
+void write(const Group& group, std::string name, const modules::euler2d::schedule_t& schedule);
+void write(const Group& group, std::string name, const modules::euler2d::solution_t& solution);
+
+} // namespace h5
