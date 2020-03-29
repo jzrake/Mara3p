@@ -633,4 +633,21 @@ void compute_mpi(computable<ValueType>... cs)
 
 
 
+//=============================================================================
+template<typename SequenceProtol>
+auto compute_all(SequenceProtol sequence, int num_threads=0)
+{
+    auto state = start(sequence);
+    auto nodes = node_set_t();
+
+    while (state.has_value())
+    {
+        nodes.insert(obtain(sequence, state.value()).node());
+        state = next(sequence, state.value());
+    }
+    compute(nodes, num_threads);
+
+    return sequence;
+}
+
 } // namespace mpr

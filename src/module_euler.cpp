@@ -82,6 +82,24 @@ auto extend_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, bsp::tre
 
 
 //=============================================================================
+template<typename ValueType, std::size_t Ratio>
+auto weighted_sum_tree(
+    bsp::shared_tree<mpr::computable<ValueType>, Ratio> s,
+    bsp::shared_tree<mpr::computable<ValueType>, Ratio> t, double b)
+{
+    return bsp::zip(s, t) | bsp::mapvs([b] (auto s, auto t)
+    {
+        return mpr::zip(s, t) | mpr::mapv([b] (auto s, auto t)
+        {
+            return nd::to_shared(s * b + t * (1.0 - b));
+        });
+    });
+}
+
+
+
+
+//=============================================================================
 mesh_geometry_t::mesh_geometry_t(unit_length domain_size, int block_size)
 : domain_size(domain_size)
 , block_size(block_size)
@@ -90,23 +108,20 @@ mesh_geometry_t::mesh_geometry_t(unit_length domain_size, int block_size)
 
 nd::shared_array<coords_t, 2> mesh_geometry_t::vert_coordinates(bsp::tree_index_t<2> block) const
 {
-    return invoke_memoized([this] (const mesh_geometry_t *self, bsp::tree_index_t<2> block)
-    {
-        auto [i0, j0] = as_tuple(block.coordinates);
-        auto [i1, j1] = std::tuple(i0 + 1, j0 + 1);
-        auto dl = double(1 << block.level);
+    auto [i0, j0] = as_tuple(block.coordinates);
+    auto [i1, j1] = std::tuple(i0 + 1, j0 + 1);
+    auto dl = double(1 << block.level);
 
-        auto x0 = self->domain_size * (-0.5 + 1.0 * i0 / dl);
-        auto x1 = self->domain_size * (-0.5 + 1.0 * i1 / dl);
-        auto y0 = self->domain_size * (-0.5 + 1.0 * j0 / dl);
-        auto y1 = self->domain_size * (-0.5 + 1.0 * j1 / dl);
+    auto x0 = domain_size * (-0.5 + 1.0 * i0 / dl);
+    auto x1 = domain_size * (-0.5 + 1.0 * i1 / dl);
+    auto y0 = domain_size * (-0.5 + 1.0 * j0 / dl);
+    auto y1 = domain_size * (-0.5 + 1.0 * j1 / dl);
 
-        auto xv = nd::linspace(x0, x1, block_size + 1);
-        auto yv = nd::linspace(y0, y1, block_size + 1);
-        auto vec2 = nd::map(util::apply_to([] (auto x, auto y) { return numeric::array(x, y); }));
+    auto xv = nd::linspace(x0, x1, block_size + 1);
+    auto yv = nd::linspace(y0, y1, block_size + 1);
+    auto vec2 = nd::map(util::apply_to([] (auto x, auto y) { return numeric::array(x, y); }));
 
-        return nd::cartesian_product(xv, yv) | vec2 | nd::to_shared();
-    }, this, block);
+    return nd::cartesian_product(xv, yv) | vec2 | nd::to_shared();
 }
 
 nd::shared_array<coords_t, 2> mesh_geometry_t::face_coordinates(bsp::tree_index_t<2> block, bsp::uint axis) const
@@ -130,9 +145,14 @@ nd::shared_array<coords_t, 2> mesh_geometry_t::cell_coordinates(bsp::tree_index_
     }, this, block);
 }
 
-unit_length mesh_geometry_t::cell_size(bsp::tree_index_t<2> block) const
+unit_length mesh_geometry_t::cell_spacing(bsp::tree_index_t<2> block) const
 {
     return domain_size / double(block_size) / double(1 << block.level);
+}
+
+std::size_t mesh_geometry_t::cells_per_block() const
+{
+    return block_size * block_size;
 }
 
 
@@ -203,7 +223,7 @@ conserved_array_t euler2d::updated_conserved(
     double plm_theta,
     double gamma_law_index)
 {
-    auto dl = mesh_geometry.cell_size(block);
+    auto dl = mesh_geometry.cell_spacing(block);
     auto gx = estimate_gradient(pe, 0, plm_theta);
     auto gy = estimate_gradient(pe, 1, plm_theta);
     auto pc = pe | nd::select(0, 2, -2) | nd::select(1, 2, -2) | nd::to_shared();
@@ -263,6 +283,30 @@ unit_length euler2d::smallest_cell_size(
 {
     return reduce(mesh_topology, [mesh_geometry] (auto seed, auto block)
     {
-        return std::min(seed, mesh_geometry.cell_size(block));
+        return std::min(seed, mesh_geometry.cell_spacing(block));
     }, unit_length(std::numeric_limits<double>::max()));
+}
+
+
+
+
+//=============================================================================
+std::size_t euler2d::total_cells(
+    mesh_topology_t mesh_topology,
+    mesh_geometry_t mesh_geometry)
+{
+    return size(mesh_topology) * mesh_geometry.cells_per_block();
+}
+
+
+
+
+//=============================================================================
+solution_t euler2d::weighted_sum(solution_t s, solution_t t, rational::number_t b)
+{
+    return {
+        s.iteration  *         b  + t.iteration *       (1 - b),
+        s.time       *  double(b) + t.time      * double(1 - b),
+        weighted_sum_tree(s.conserved, t.conserved, b),
+    };
 }

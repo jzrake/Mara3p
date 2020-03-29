@@ -45,6 +45,10 @@ SRC := $(wildcard src/*.cpp) $(wildcard examples/*.cpp) $(wildcard problems/*.cp
 OBJ := $(SRC:%.cpp=%.o)
 DEP := $(SRC:%.cpp=%.d)
 
+OBJ_TEST   := $(filter src/test_%.o,   $(OBJ))
+OBJ_CORE   := $(filter src/core_%.o,   $(OBJ))
+OBJ_MODULE := $(filter src/module_%.o, $(OBJ))
+
 
 # Build config
 # =====================================================================
@@ -55,9 +59,10 @@ MARA_H_TMP := $(shell mktemp -u make.XXXXXX)
 # Build rules
 # =====================================================================
 default: $(TARGETS)
+
 all: $(ALL_TARGETS)
 
-mara: src/mara.o src/core_unit_test.o src/test_app.o src/test_core.o src/test_mesh.o src/test_model.o src/test_physics.o src/scheme_euler.o
+mara: src/mara.o src/parallel_computable.o $(OBJ_TEST) $(OBJ_CORE) $(OBJ_MODULE)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 examples/euler1d: examples/euler1d.o

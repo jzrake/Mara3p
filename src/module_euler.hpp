@@ -91,7 +91,8 @@ public:
     nd::shared_array<coords_t, 2> vert_coordinates(bsp::tree_index_t<2> block) const;
     nd::shared_array<coords_t, 2> face_coordinates(bsp::tree_index_t<2> block, bsp::uint axis) const;
     nd::shared_array<coords_t, 2> cell_coordinates(bsp::tree_index_t<2> block) const;
-    unit_length cell_size(bsp::tree_index_t<2> block) const;
+    unit_length cell_spacing(bsp::tree_index_t<2> block) const;
+    std::size_t cells_per_block() const;
 
 private:
     unit_length domain_size = 1.0;
@@ -144,6 +145,11 @@ unit_length smallest_cell_size(
     mesh_topology_t mesh_topology,
     mesh_geometry_t mesh_geometry);
 
+std::size_t total_cells(
+    mesh_topology_t mesh_topology,
+    mesh_geometry_t mesh_geometry);
+
+solution_t weighted_sum(solution_t s, solution_t t, rational::number_t b);
 
 
 
