@@ -29,6 +29,7 @@
 #include "core_memoize.hpp"
 #include "core_ndarray_ops.hpp"
 #include "module_euler.hpp"
+#include "mesh_amr.hpp"
 #include "scheme_plm_gradient.hpp"
 
 
@@ -37,63 +38,6 @@
 using namespace std::placeholders;
 using namespace modules;
 using namespace euler2d;
-
-
-
-
-//=============================================================================
-template<typename ArrayType>
-auto extend_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, bsp::tree_index_t<2> block)
-{
-    auto c11 = value_at(tree, block);
-    auto c00 = value_at(tree, prev_on(prev_on(block, 0), 1));
-    auto c02 = value_at(tree, prev_on(next_on(block, 0), 1));
-    auto c20 = value_at(tree, next_on(prev_on(block, 0), 1));
-    auto c22 = value_at(tree, next_on(next_on(block, 0), 1));
-    auto c01 = value_at(tree, prev_on(block, 0));
-    auto c21 = value_at(tree, next_on(block, 0));
-    auto c10 = value_at(tree, prev_on(block, 1));
-    auto c12 = value_at(tree, next_on(block, 1));
-
-    return mpr::zip(c00, c01, c02, c10, c11, c12, c20, c21, c22)
-    | mpr::mapv([] (auto c00, auto c01, auto c02, auto c10, auto c11, auto c12, auto c20, auto c21, auto c22)
-    {
-        auto nx = shape(c11, 0);
-        auto ny = shape(c11, 1);
-        auto cs = std::array{
-            std::array{c00, c01, c02},
-            std::array{c10, c11, c12},
-            std::array{c20, c21, c22},
-        };
-
-        return nd::make_array(nd::indexing([cs, nx, ny] (auto i, auto j)
-        {
-            auto bi = i < 2 ? 0 : (i >= nx + 2 ? 2 : 1);
-            auto bj = j < 2 ? 0 : (j >= ny + 2 ? 2 : 1);
-            auto ii = i < 2 ? i - 2 + nx : (i >= nx + 2 ? i - 2 - nx : i - 2);
-            auto jj = j < 2 ? j - 2 + ny : (j >= ny + 2 ? j - 2 - ny : j - 2);
-            return cs[bi][bj](ii, jj);
-        }), nd::uivec(nx + 4, ny + 4)) | nd::to_shared();
-    });
-}
-
-
-
-
-//=============================================================================
-template<typename ValueType, std::size_t Ratio>
-auto weighted_sum_tree(
-    bsp::shared_tree<mpr::computable<ValueType>, Ratio> s,
-    bsp::shared_tree<mpr::computable<ValueType>, Ratio> t, double b)
-{
-    return bsp::zip(s, t) | bsp::mapvs([b] (auto s, auto t)
-    {
-        return mpr::zip(s, t) | mpr::mapv([b] (auto s, auto t)
-        {
-            return nd::to_shared(s * b + t * (1.0 - b));
-        });
-    });
-}
 
 
 
@@ -278,7 +222,7 @@ solution_t euler2d::updated_solution(
     auto mesh = indexes(solution.conserved);
     auto uc   = solution.conserved;
     auto pc   = uc   | bsp::maps(mpr::map([g=gamma_law_index] (auto u) { return recover_primitive_array(u, g); }, "P"));
-    auto pe   = mesh | bsp::maps([pc] (auto b) { return extend_block(pc, b); });
+    auto pe   = mesh | bsp::maps([pc] (auto b) { return amr::extend_block(pc, b); });
     auto u1   = mesh | bsp::maps([uc, pe, U] (auto b) { return zip(value_at(uc, b), value_at(pe, b)) | mpr::mapv(U(b)); });
 
     return solution_t{solution.iteration + 1, solution.time + dt, u1};
@@ -318,6 +262,6 @@ solution_t euler2d::weighted_sum(solution_t s, solution_t t, rational::number_t 
     return {
         s.iteration  *         b  + t.iteration *       (1 - b),
         s.time       *  double(b) + t.time      * double(1 - b),
-        weighted_sum_tree(s.conserved, t.conserved, b),
+        amr::weighted_sum_tree(s.conserved, t.conserved, b),
     };
 }
