@@ -85,7 +85,7 @@ struct shared_children_t
 
     auto operator()(std::size_t i) const
     {
-       return ptr->operator[](i);
+        return ptr->operator[](i);
     }
     std::shared_ptr<numeric::array_t<tree_t<value_type, shared_children_t, ratio>, ratio>> ptr;
 };
@@ -371,16 +371,17 @@ auto branch(shared_tree<ValueType, Ratio> tree, BranchType branch_function)
  * @tparam     Ratio            The tree ratio
  * @tparam     BranchType       The type of the branch function
  * @tparam     PredicateType    The predicate function type
- * @tparam     <unnamed>        std::enable_if
  *
  * @return     Another tree node
  *
  * @note       This function only works on shared trees.
  */
-template<typename ValueType, uint Ratio, typename BranchType, typename PredicateType,
-typename = std::enable_if_t<std::is_same_v<std::invoke_result_t<BranchType, ValueType>, numeric::array_t<ValueType, Ratio>>>>
+template<typename ValueType, uint Ratio, typename BranchType, typename PredicateType>
 auto branch_if(shared_tree<ValueType, Ratio> tree, BranchType branch_function, PredicateType predicate)
 {
+    static_assert(std::is_same_v<std::invoke_result_t<BranchType, ValueType>, numeric::array_t<ValueType, Ratio>>,
+        "the branch function must be ValueType -> numeric::array_t<ValueType, Ratio>");
+
     return attach_if(tree, [f=branch_function] (auto u) { return shared_values(f(u)); }, predicate); 
 }
 
@@ -396,17 +397,84 @@ auto branch_if(shared_tree<ValueType, Ratio> tree, BranchType branch_function, P
  * @tparam     ValueType        The tree value type
  * @tparam     Ratio            The tree ratio
  * @tparam     BranchType       The type of the branch function
- * @tparam     <unnamed>        std::enable_if
  *
  * @return     Another tree node
  *
  * @note       This function only works on shared trees.
  */
-template<typename ValueType, uint Ratio, typename BranchType,
-typename = std::enable_if_t<std::is_same_v<std::invoke_result_t<BranchType, ValueType>, numeric::array_t<ValueType, Ratio>>>>
+template<typename ValueType, uint Ratio, typename BranchType>
 auto branch_all(shared_tree<ValueType, Ratio> tree, BranchType branch_function)
 {
     return branch_if(tree, branch_function, [] (auto) { return true; });
+}
+
+
+
+
+/**
+ * @brief      Collapse a non-leaf node to a value by recursively mapping a
+ *             collapsing function over its descendents.
+ *
+ * @param[in]  tree              The tree to collapse entirely
+ * @param[in]  f                 The collapse function:
+ *                               numeric::array_t<ValueType, Ratio> -> ValueType
+ *
+ * @tparam     ValueType         The tree value type
+ * @tparam     Ratio             The tree ratio
+ * @tparam     CollapseFunction  The type of the collapse function
+ *
+ * @return     A value
+ *
+ * @note       This function differs from reduce in that the function maps an
+ *             array of values to a value.
+ */
+template<typename ValueType, uint Ratio, typename CollapseFunction>
+auto collapse_all(shared_tree<ValueType, Ratio> tree, CollapseFunction f) -> ValueType
+{
+    static_assert(std::is_same_v<std::invoke_result_t<CollapseFunction, numeric::array_t<ValueType, Ratio>>, ValueType>,
+       "the collapse function must be numeric::array_t<ValueType, Ratio> -> ValueType");
+
+    if (has_value(tree))
+    {
+        throw std::invalid_argument("bsp::collapse_all (cannot collapse a leaf node)");
+    }
+    return f(map(*children(tree).ptr, [f] (const auto& child)
+    {
+        return has_value(child) ? value(child) : collapse_all(child, f);
+    }));
+}
+
+
+
+
+/**
+ * @brief      Collapse a non-leaf node, reducing its depth and that of its
+ *             descendents by 1. Nodes with at least one leaf child are turned
+ *             into leaf nodes. Nodes with no leaf children map the
+ *             collapse_once function to their children.
+ *
+ * @param[in]  tree              The tree to collapse
+ * @param[in]  f                 The collapse function:
+ *                               numeric::array_t<ValueType, Ratio> -> ValueType
+ *
+ * @tparam     ValueType         The tree value type
+ * @tparam     Ratio             The tree ratio
+ * @tparam     CollapseFunction  The type of the collapse function
+ *
+ * @return     A tree with depth reduced by 1.
+ */
+template<typename ValueType, uint Ratio, typename CollapseFunction>
+auto collapse_once(shared_tree<ValueType, Ratio> tree, CollapseFunction f) -> shared_tree<ValueType, Ratio>
+{
+    if (has_value(tree))
+    {
+        throw std::invalid_argument("bsp::collapse_once (cannot collapse a leaf node)");
+    }
+    if (any(map(*children(tree).ptr, [] (const auto& child) { return has_value(child); })))
+    {
+        return just<Ratio>(collapse_all(tree, f));
+    }
+    return { shared_trees(map(*children(tree).ptr, [f] (const auto& child) { return collapse_once(child, f); })) };
 }
 
 
