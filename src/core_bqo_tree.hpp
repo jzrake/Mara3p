@@ -545,15 +545,15 @@ auto value_at(const tree_t<ValueType, ChildrenType, Ratio>& tree, tree_index_t<r
 
 
 /**
- * @brief      Determine whether a node exists at an arbitrary depth below the
- *             given node.
+ * @brief      Determine whether a leaf node exists at an arbitrary depth below
+ *             the given node.
  *
  * @param[in]  tree          The tree to check
  * @param[in]  index         The index into the tree
  *
  * @tparam     ValueType     The value type of the tree
  * @tparam     ChildrenType  The tree's children provider type
- * @tparam     Rank          The rank of the tree
+ * @tparam     Ratio         The ratio of the tree
  *
  * @return     True or false
  */
@@ -801,6 +801,7 @@ inline void test_bqo_tree()
     require(has_value(bsp::node_at(tree64, index)));
     require(  contains(tree64, index));
     require(! contains(tree64, child_indexes(index)[0]));
+    require(! contains(tree64, parent_index(index)));
     require_throws(bsp::node_at(tree64, child_indexes(index)[0]));
 }
 

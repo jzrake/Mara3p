@@ -42,47 +42,6 @@ namespace amr
 {
 
 
-
-
-//=============================================================================
-template<typename ArrayType>
-auto extend_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, bsp::tree_index_t<2> block)
-{
-    auto c11 = value_at(tree, block);
-    auto c00 = value_at(tree, prev_on(prev_on(block, 0), 1));
-    auto c02 = value_at(tree, prev_on(next_on(block, 0), 1));
-    auto c20 = value_at(tree, next_on(prev_on(block, 0), 1));
-    auto c22 = value_at(tree, next_on(next_on(block, 0), 1));
-    auto c01 = value_at(tree, prev_on(block, 0));
-    auto c21 = value_at(tree, next_on(block, 0));
-    auto c10 = value_at(tree, prev_on(block, 1));
-    auto c12 = value_at(tree, next_on(block, 1));
-
-    return mpr::zip(c00, c01, c02, c10, c11, c12, c20, c21, c22)
-    | mpr::mapv([] (auto c00, auto c01, auto c02, auto c10, auto c11, auto c12, auto c20, auto c21, auto c22)
-    {
-        auto nx = shape(c11, 0);
-        auto ny = shape(c11, 1);
-        auto cs = std::array{
-            std::array{c00, c01, c02},
-            std::array{c10, c11, c12},
-            std::array{c20, c21, c22},
-        };
-
-        return nd::make_array(nd::indexing([cs, nx, ny] (auto i, auto j)
-        {
-            auto bi = i < 2 ? 0 : (i >= nx + 2 ? 2 : 1);
-            auto bj = j < 2 ? 0 : (j >= ny + 2 ? 2 : 1);
-            auto ii = i < 2 ? i - 2 + nx : (i >= nx + 2 ? i - 2 - nx : i - 2);
-            auto jj = j < 2 ? j - 2 + ny : (j >= ny + 2 ? j - 2 - ny : j - 2);
-            return cs[bi][bj](ii, jj);
-        }), nd::uivec(nx + 4, ny + 4)) | nd::to_shared();
-    });
-}
-
-
-
-
 //=============================================================================
 struct tile_blocks
 {
@@ -247,6 +206,78 @@ auto refine_tree(bsp::shared_tree<mpr::computable<nd::shared_array<ValueType, 2>
     return bsp::branch_all(tree, [] (auto block)
     {
         return map(numeric::range<4>(), [block] (auto i) { return block | mpr::map(refine_block(i)); });
+    });
+}
+
+
+
+
+//=============================================================================
+template<typename ArrayType>
+auto get_or_create_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, bsp::tree_index_t<2> block)
+{
+    try {
+
+        // If the tree has a value at the target block, then return that value.
+        if (contains(tree, block))
+        {
+            return value_at(tree, block);
+        }
+
+        // If the tree has a value at the node above the target block, then
+        // refine the data on that node and select the array in the block's
+        // orthant.
+        if (contains(tree, parent_index(block)))
+        {
+            return value_at(tree, parent_index(block)) | mpr::map(refine_block(bsp::to_integral(orthant(relative_to_parent(block)))));
+        }
+
+        // If the target block is not a leaf, then tile and downsample its child
+        // blocks.
+        return value(coarsen_tree(node_at(tree, block)));
+    }
+    catch (const std::exception& e)
+    {
+        throw std::invalid_argument("amr::get_or_create_block (invalid mesh topology) " + std::string(e.what()));
+    }
+};
+
+
+
+
+//=============================================================================
+template<typename ArrayType>
+auto extend_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, bsp::tree_index_t<2> block)
+{
+    auto c11 = get_or_create_block(tree, block);
+    auto c00 = get_or_create_block(tree, prev_on(prev_on(block, 0), 1));
+    auto c02 = get_or_create_block(tree, prev_on(next_on(block, 0), 1));
+    auto c20 = get_or_create_block(tree, next_on(prev_on(block, 0), 1));
+    auto c22 = get_or_create_block(tree, next_on(next_on(block, 0), 1));
+    auto c01 = get_or_create_block(tree, prev_on(block, 0));
+    auto c21 = get_or_create_block(tree, next_on(block, 0));
+    auto c10 = get_or_create_block(tree, prev_on(block, 1));
+    auto c12 = get_or_create_block(tree, next_on(block, 1));
+
+    return mpr::zip(c00, c01, c02, c10, c11, c12, c20, c21, c22)
+    | mpr::mapv([] (auto c00, auto c01, auto c02, auto c10, auto c11, auto c12, auto c20, auto c21, auto c22)
+    {
+        auto nx = shape(c11, 0);
+        auto ny = shape(c11, 1);
+        auto cs = std::array{
+            std::array{c00, c01, c02},
+            std::array{c10, c11, c12},
+            std::array{c20, c21, c22},
+        };
+
+        return nd::make_array(nd::indexing([cs, nx, ny] (auto i, auto j)
+        {
+            auto bi = i < 2 ? 0 : (i >= nx + 2 ? 2 : 1);
+            auto bj = j < 2 ? 0 : (j >= ny + 2 ? 2 : 1);
+            auto ii = i < 2 ? i - 2 + nx : (i >= nx + 2 ? i - 2 - nx : i - 2);
+            auto jj = j < 2 ? j - 2 + ny : (j >= ny + 2 ? j - 2 - ny : j - 2);
+            return cs[bi][bj](ii, jj);
+        }), nd::uivec(nx + 4, ny + 4)) | nd::to_shared();
     });
 }
 
