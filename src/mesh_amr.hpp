@@ -84,73 +84,144 @@ auto extend_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, bsp::tre
 
 
 //=============================================================================
-template<typename P>
-auto tile_blocks(nd::array_t<P, 2> blocks)
+struct tile_blocks
 {
-    static_assert(nd::is_array<std::invoke_result_t<P, nd::uivec_t<2>>>::value,
-        "must be a 2d array of 2d arrays");
-
-    for (auto block : blocks)
-        if (shape(block) != shape(front(blocks)))
-            throw std::invalid_argument("mesh::tile_blocks (supplied blocks have non-uniform shapes)");
-
-    auto bi = shape(blocks, 0);
-    auto bj = shape(blocks, 1);
-    auto ni = shape(front(blocks), 0);
-    auto nj = shape(front(blocks), 1);
-
-    return nd::make_array(nd::indexing([ni, nj, blocks] (auto i, auto j)
+    template<typename P>
+    auto operator()(nd::array_t<P, 2> blocks) const
     {
-        auto b = nd::uivec(i / ni, j / nj);
-        auto c = nd::uivec(i % ni, j % nj);
-        return blocks(b)(c);
-    }), nd::uivec(bi * ni, bj * nj));
-}
+        static_assert(nd::is_array<std::invoke_result_t<P, nd::uivec_t<2>>>::value,
+            "must be a 2d array of 2d arrays");
 
+        for (auto block : blocks)
+            if (shape(block) != shape(front(blocks)))
+                throw std::invalid_argument("mesh::tile_blocks (supplied blocks have non-uniform shapes)");
 
+        auto bi = shape(blocks, 0);
+        auto bj = shape(blocks, 1);
+        auto ni = shape(front(blocks), 0);
+        auto nj = shape(front(blocks), 1);
 
-
-//=============================================================================
-template<typename P>
-auto downsample(nd::array_t<P, 2> a)
-{
-    auto [ni, nj] = as_tuple(shape(a));
-
-    if (ni % 2 != 0 || nj % 2 != 0)
-    {
-        throw std::invalid_argument("amr::downsample (array size must be even on all axes)");
+        return nd::make_array(nd::indexing([ni, nj, blocks] (auto i, auto j)
+        {
+            auto b = nd::uivec(i / ni, j / nj);
+            auto c = nd::uivec(i % ni, j % nj);
+            return blocks(b)(c);
+        }), nd::uivec(bi * ni, bj * nj));
     }
-
-    return nd::make_array(nd::indexing([a] (auto i, auto j)
-    {
-        return 0.25 * (
-            a(i * 2 + 0, j * 2 + 0) +
-            a(i * 2 + 0, j * 2 + 1) +
-            a(i * 2 + 1, j * 2 + 0) +
-            a(i * 2 + 1, j * 2 + 1));
-    }), nd::uivec(ni / 2, nj / 2));
-}
+};
 
 
 
 
 //=============================================================================
-template<typename ValueType>
-struct coarsen_blocks_t
+struct downsample
 {
-    using array_t = nd::shared_array<ValueType, 2>;
-
-    auto operator()(array_t v00, array_t v01, array_t v10, array_t v11) const
+    template<typename P>
+    auto operator()(nd::array_t<P, 2> a) const
     {
-        return downsample(tile_blocks(nd::make_array(nd::indexing([=] (auto i, auto j)
+        auto [ni, nj] = as_tuple(shape(a));
+
+        if (ni % 2 != 0 || nj % 2 != 0)
+        {
+            throw std::invalid_argument("amr::downsample (array size must be even on all axes)");
+        }
+
+        return nd::make_array(nd::indexing([a] (auto i, auto j)
+        {
+            return 0.25 * (
+                a(i * 2 + 0, j * 2 + 0) +
+                a(i * 2 + 0, j * 2 + 1) +
+                a(i * 2 + 1, j * 2 + 0) +
+                a(i * 2 + 1, j * 2 + 1));
+        }), nd::uivec(ni / 2, nj / 2));
+    }
+};
+
+
+
+
+//=============================================================================
+struct upsample
+{
+    template<typename P>
+    auto operator()(nd::array_t<P, 2> a)
+    {
+        auto [ni, nj] = as_tuple(shape(a));
+
+        return nd::make_array(nd::indexing([a] (auto i, auto j)
+        {
+            return a(i / 2, j / 2);
+        }), nd::uivec(ni * 2, nj * 2));
+    }
+};
+
+
+
+
+//=============================================================================
+struct coarsen_blocks
+{
+    template<typename P>
+    auto operator()(nd::array_t<P, 2> v00, nd::array_t<P, 2> v10, nd::array_t<P, 2> v01, nd::array_t<P, 2> v11) const
+    {
+        return nd::make_array(nd::indexing([=] (auto i, auto j)
         {
             if (i == 0 && j == 0) return v00;
             if (i == 0 && j == 1) return v01;
             if (i == 1 && j == 0) return v10;
             if (i == 1 && j == 1) return v11;
-            return nd::shared_array<ValueType, 2>{};
-        }), nd::uivec(2, 2)))) | nd::to_shared();
+            throw std::invalid_argument("amr::coarsen_blocks");
+        }), nd::uivec(2, 2)) | tile_blocks() | downsample() | nd::to_shared();
     }
+};
+
+
+
+
+//=============================================================================
+struct split_block
+{
+    split_block(unsigned which) : which(which) {}
+
+    template<typename P>
+    auto operator()(nd::array_t<P, 2> block) const
+    {
+        auto A = [block] (nd::uint a, nd::uint b)
+        {
+            return nd::indexing([block, a, b] (nd::uint i, nd::uint j)
+            {
+                return block(a + i, b + j);
+            });
+        };
+
+        auto [ni, nj] = as_tuple(shape(block));
+
+        switch (which)
+        {
+            case 0: return nd::make_array(A(     0,      0), nd::uivec(ni / 2, nj / 2));
+            case 1: return nd::make_array(A(ni / 2,      0), nd::uivec(ni / 2, nj / 2));
+            case 2: return nd::make_array(A(     0, nj / 2), nd::uivec(ni / 2, nj / 2));
+            case 3: return nd::make_array(A(ni / 2, nj / 2), nd::uivec(ni / 2, nj / 2));
+        }
+        throw std::invalid_argument("amr::split_block");
+    }
+    unsigned which = 0;
+};
+
+
+
+
+//=============================================================================
+struct refine_block
+{
+    refine_block(unsigned which) : which(which) {}
+
+    template<typename ValueType>
+    auto operator()(nd::shared_array<ValueType, 2> v) const
+    {
+        return v | upsample() | split_block(which) | nd::to_shared();
+    }
+    unsigned which = 0;
 };
 
 
@@ -162,7 +233,20 @@ auto coarsen_tree(bsp::shared_tree<mpr::computable<nd::shared_array<ValueType, 2
 {
     return bsp::collapse_once(tree, [] (auto blocks)
     {
-        return mpr::zip(blocks[0], blocks[1], blocks[2], blocks[3]) | mpr::mapv(coarsen_blocks_t<ValueType>());
+        return mpr::zip(blocks[0], blocks[1], blocks[2], blocks[3]) | mpr::mapv(coarsen_blocks());
+    });
+}
+
+
+
+
+//=============================================================================
+template<typename ValueType>
+auto refine_tree(bsp::shared_tree<mpr::computable<nd::shared_array<ValueType, 2>>, 4> tree)
+{
+    return bsp::branch_all(tree, [] (auto block)
+    {
+        return map(numeric::range<4>(), [block] (auto i) { return block | mpr::map(refine_block(i)); });
     });
 }
 
