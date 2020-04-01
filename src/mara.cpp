@@ -34,6 +34,7 @@
 #include "app_config.hpp"
 #include "app_control.hpp"
 #include "app_filesystem.hpp"
+#include "app_problem.hpp"
 #include "app_hdf5.hpp"
 #include "app_hdf5_config.hpp"
 #include "app_hdf5_std_map.hpp"
@@ -131,41 +132,17 @@ static auto initial_solution(const mara::config_t& cfg)
     auto gamma_law_index  = 5. / 3;
     auto geom             = create_mesh_geometry(cfg);
     auto mesh             = create_mesh_topology(cfg);
-    auto u                = mpr::compute_all(initial_conserved_tree(mesh, geom, shocktube_2d, gamma_law_index), 1);
+    auto u                = mpr::compute_all(modules::euler2d::initial_conserved_tree(mesh, geom, shocktube_2d, gamma_law_index), 1);
     auto solution         = modules::euler2d::solution_t{0, 0.0, u};
 
     return solution;
-}
-
-static auto initial_schedule(const mara::config_t& cfg)
-{
-    auto restart = cfg.get_string("restart");
-
-    if (! restart.empty())
-    {
-        auto result = modules::euler2d::schedule_t{};
-        auto h5f = h5::File(restart, "r");
-        read(h5f, "schedule", result);
-        return result;
-    }
-    return modules::euler2d::schedule_t();
-}
-
-static auto restart_run_config(const mara::config_string_map_t& args)
-{
-    if (args.count("restart"))
-    {
-        auto file = h5::File(args.at("restart"), "r");
-        return h5::read<mara::config_parameter_map_t>(file, "run_config");
-    }
-    return mara::config_parameter_map_t{};
 }
 
 
 
 
 //=============================================================================
-static void side_effects(const mara::config_t& cfg, modules::euler2d::solution_t solution, modules::euler2d::schedule_t& schedule)
+static void side_effects(const mara::config_t& cfg, modules::euler2d::solution_t solution, mara::schedule_t& schedule)
 {
     if (solution.time >= schedule.checkpoint.next_due)
     {
@@ -203,14 +180,14 @@ static void run_euler2d(int argc, const char* argv[])
     using namespace std::placeholders;
 
     auto args             = mara::argv_to_string_map(argc, argv);
-    auto cfg              = config_template().create().update(restart_run_config(args)).update(args);
+    auto cfg              = config_template().create().update(mara::restart_run_config(args)).update(args);
     auto tfinal           = dimensional::unit_time(cfg.get_double("tfinal"));
     auto rk_order         = cfg.get_int("rk");
     auto plm_theta        = cfg.get_double("plm");
     auto gamma_law_index  = 5. / 3;
     auto mesh             = create_mesh_topology(cfg);
     auto geom             = create_mesh_geometry(cfg);
-    auto schedule         = initial_schedule(cfg);
+    auto schedule         = mara::initial_schedule(cfg);
     auto solution         = initial_solution(cfg);
     auto dx               = smallest_cell_size(mesh, geom);
     auto kz               = total_cells(mesh, geom) / 1e3;

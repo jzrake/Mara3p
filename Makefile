@@ -44,9 +44,11 @@ SRC := $(wildcard src/*.cpp) $(wildcard examples/*.cpp) $(wildcard problems/*.cp
 OBJ := $(SRC:%.cpp=%.o)
 DEP := $(SRC:%.cpp=%.d)
 
-OBJ_TEST   := $(filter src/test_%.o,   $(OBJ))
+OBJ_APP    := $(filter src/app_%.o,   $(OBJ))
 OBJ_CORE   := $(filter src/core_%.o,   $(OBJ))
+OBJ_MESH   := $(filter src/mesh_%.o,   $(OBJ))
 OBJ_MODULE := $(filter src/module_%.o, $(OBJ))
+OBJ_TEST   := $(filter src/test_%.o,   $(OBJ))
 
 
 # Build config
@@ -61,7 +63,7 @@ default: $(TARGETS)
 
 all: $(ALL_TARGETS)
 
-mara: src/mara.o src/parallel_computable.o $(OBJ_TEST) $(OBJ_CORE) $(OBJ_MODULE)
+mara: src/mara.o src/parallel_computable.o $(OBJ_APP) $(OBJ_CORE) $(OBJ_MESH) $(OBJ_MODULE) $(OBJ_TEST)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 examples/euler1d: examples/euler1d.o

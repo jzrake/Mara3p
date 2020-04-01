@@ -58,20 +58,6 @@ void h5::read(const Group& group, std::string name,  modules::euler2d::conserved
     });
 }
 
-void h5::read(const Group& group, std::string name, modules::euler2d::side_effect_t& side_effect)
-{
-    auto sgroup = group.open_group(name);
-    read(sgroup, "next_due", side_effect.next_due);
-    read(sgroup, "count", side_effect.count);
-}
-
-void h5::read(const Group& group, std::string name, modules::euler2d::schedule_t& schedule)
-{
-    auto sgroup = group.open_group(name);
-    read(sgroup, "time_series", schedule.time_series);
-    read(sgroup, "checkpoint", schedule.checkpoint);
-}
-
 void h5::read(const Group& group, std::string name, modules::euler2d::solution_t& solution)
 {
     auto sgroup = group.open_group(name);
@@ -97,20 +83,6 @@ void h5::write(const Group& group, std::string name, const modules::euler2d::con
             write(ugroup, mesh::format_block_index(index), value.value());
         }
     }));
-}
-
-void h5::write(const Group& group, std::string name, const modules::euler2d::side_effect_t& side_effect)
-{
-    auto sgroup = group.require_group(name);
-    write(sgroup, "next_due", side_effect.next_due);
-    write(sgroup, "count", side_effect.count);
-}
-
-void h5::write(const Group& group, std::string name, const modules::euler2d::schedule_t& schedule)
-{
-    auto sgroup = group.require_group(name);
-    write(sgroup, "time_series", schedule.time_series);
-    write(sgroup, "checkpoint", schedule.checkpoint);
 }
 
 void h5::write(const Group& group, std::string name, const modules::euler2d::solution_t& solution)

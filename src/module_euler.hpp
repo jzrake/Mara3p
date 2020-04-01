@@ -27,11 +27,12 @@
 
 
 #pragma once
-#include "core_bsp_tree.hpp"
 #include "core_bqo_tree.hpp"
+#include "core_bsp_tree.hpp"
 #include "core_ndarray.hpp"
-#include "physics_euler.hpp"
+#include "mesh_geometry.hpp"
 #include "parallel_computable.hpp"
+#include "physics_euler.hpp"
 
 
 
@@ -46,8 +47,10 @@ namespace euler2d
 
 
 
+//=============================================================================
 using namespace dimensional;
-using coords_t            = numeric::array_t<unit_length, 2>;
+using coords_t            = mesh::cartesian_2d::coords_t;
+using mesh_geometry_t     = mesh::cartesian_2d::geometry_t;
 using mesh_topology_t     = bsp::shared_tree<mesh::block_index_t<2>, 4>;
 using conserved_array_t   = nd::shared_array<euler::conserved_density_t, 2>;
 using primitive_array_t   = nd::shared_array<euler::primitive_t, 2>;
@@ -59,46 +62,11 @@ using primitive_mapping_t = std::function<euler::primitive_t(coords_t)>;
 
 
 //=============================================================================
-struct side_effect_t
-{
-    unit_time next_due = 0.0;
-    int count = 0;
-};
-
-struct schedule_t
-{
-    side_effect_t checkpoint;
-    side_effect_t time_series;
-};
-
 struct solution_t
 {
     rational::number_t iteration;
     unit_time          time;
     conserved_tree_t   conserved;
-};
-
-
-
-
-//=============================================================================
-class mesh_geometry_t
-{
-public:
-    mesh_geometry_t() {}
-    mesh_geometry_t(unit_length domain_size, int block_size);
-
-    nd::shared_array<coords_t, 2> vert_coordinates(mesh::block_index_t<2> block) const;
-    nd::shared_array<coords_t, 2> face_coordinates(mesh::block_index_t<2> block, unsigned long axis) const;
-    nd::shared_array<coords_t, 2> cell_coordinates(mesh::block_index_t<2> block) const;
-    std::pair<coords_t, coords_t> block_extent(mesh::block_index_t<2> block) const;
-    coords_t block_centroid(mesh::block_index_t<2> block) const;
-    unit_length cell_spacing(mesh::block_index_t<2> block) const;
-    std::size_t cells_per_block() const;
-
-private:
-    unit_length domain_size = 1.0;
-    int block_size = 64;
 };
 
 
@@ -168,13 +136,9 @@ namespace h5 {
 class Group;
 
 void read(const Group& group, std::string name, modules::euler2d::conserved_tree_t& conserved);
-void read(const Group& group, std::string name, modules::euler2d::side_effect_t& side_effect);
-void read(const Group& group, std::string name, modules::euler2d::schedule_t& schedule);
 void read(const Group& group, std::string name, modules::euler2d::solution_t& solution);
 
 void write(const Group& group, std::string name, const modules::euler2d::conserved_tree_t& conserved);
-void write(const Group& group, std::string name, const modules::euler2d::side_effect_t& side_effect);
-void write(const Group& group, std::string name, const modules::euler2d::schedule_t& schedule);
 void write(const Group& group, std::string name, const modules::euler2d::solution_t& solution);
 
 } // namespace h5
