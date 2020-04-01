@@ -227,6 +227,46 @@ auto construct(numeric::array_t<U, S> a)
 
 
 
+/**
+ * @brief      Return a boolean sequence {a} representing a number:
+ *
+ *             value = a[0] * 2^0 + a[1] * 2^1 + ...
+ *
+ * @param[in]  value     The number to represent
+ *
+ * @tparam     BitCount  The number of bits to include
+ *
+ * @return     A boolean sequence, with the most significant bit at the
+ *             beginning.
+ */
+template<unsigned long BitCount>
+auto binary_repr(std::size_t value)
+{
+    return map(numeric::range<BitCount>(), [value] (auto n) { return bool(value & (1 << n)); });
+}
+
+
+
+
+/**
+ * @brief      Turn a binary representation of a number into a 64-bit unsigned
+ *             integer.
+ *
+ * @param[in]  bits      The bits (as returned from binary_repr)
+ *
+ * @tparam     BitCount  The number of bits
+ *
+ * @return     The decimal representation
+ */
+template<unsigned long BitCount>
+unsigned long to_integral(numeric::array_t<bool, BitCount> bits)
+{
+    return sum(apply_to(map(numeric::range<BitCount>(), [] (auto e) { return [e] (bool y) { return (1 << e) * y; }; }), bits));
+}
+
+
+
+
 //=============================================================================
 template<typename T, typename U, std::size_t S> auto operator+ (array_t<T, S> a, array_t<U, S> b) { return map(zip(a, b), [] (auto t) { return std::apply(std::plus<>(), t); }); }
 template<typename T, typename U, std::size_t S> auto operator- (array_t<T, S> a, array_t<U, S> b) { return map(zip(a, b), [] (auto t) { return std::apply(std::minus<>(), t); }); }
@@ -269,6 +309,11 @@ inline void test_numeric_array()
     require(numeric::array(1, 2) * 2.1 == numeric::array(2.1, 4.2));
     require(sum(numeric::array(1, 2, 3, 4)) == 10);
     require(product(numeric::array(1., 2., 3., 4.)) == 24);
+
+    require(to_integral(numeric::array(false, false, false)) == 0);
+    require(to_integral(numeric::array(true, true, true)) == 7);
+    require(to_integral(numeric::array(true, false, false)) == 1); // the 2^0 bit is on the left
+    require(to_integral(numeric::binary_repr<3>(6)) == 6);
 }
 
 #endif // DO_UNIT_TESTS

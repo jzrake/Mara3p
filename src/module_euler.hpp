@@ -48,7 +48,7 @@ namespace euler2d
 
 using namespace dimensional;
 using coords_t            = numeric::array_t<unit_length, 2>;
-using mesh_topology_t     = bsp::shared_tree<bsp::tree_index_t<2>, 4>;
+using mesh_topology_t     = bsp::shared_tree<mesh::block_index_t<2>, 4>;
 using conserved_array_t   = nd::shared_array<euler::conserved_density_t, 2>;
 using primitive_array_t   = nd::shared_array<euler::primitive_t, 2>;
 using conserved_tree_t    = bsp::shared_tree<mpr::computable<conserved_array_t>, 4>;
@@ -88,12 +88,12 @@ public:
     mesh_geometry_t() {}
     mesh_geometry_t(unit_length domain_size, int block_size);
 
-    nd::shared_array<coords_t, 2> vert_coordinates(bsp::tree_index_t<2> block) const;
-    nd::shared_array<coords_t, 2> face_coordinates(bsp::tree_index_t<2> block, bsp::uint axis) const;
-    nd::shared_array<coords_t, 2> cell_coordinates(bsp::tree_index_t<2> block) const;
-    std::pair<coords_t, coords_t> block_extent(bsp::tree_index_t<2> block) const;
-    coords_t block_centroid(bsp::tree_index_t<2> block) const;
-    unit_length cell_spacing(bsp::tree_index_t<2> block) const;
+    nd::shared_array<coords_t, 2> vert_coordinates(mesh::block_index_t<2> block) const;
+    nd::shared_array<coords_t, 2> face_coordinates(mesh::block_index_t<2> block, unsigned long axis) const;
+    nd::shared_array<coords_t, 2> cell_coordinates(mesh::block_index_t<2> block) const;
+    std::pair<coords_t, coords_t> block_extent(mesh::block_index_t<2> block) const;
+    coords_t block_centroid(mesh::block_index_t<2> block) const;
+    unit_length cell_spacing(mesh::block_index_t<2> block) const;
     std::size_t cells_per_block() const;
 
 private:
@@ -107,7 +107,7 @@ private:
 //=============================================================================
 conserved_array_t initial_conserved_array(
     mesh_geometry_t mesh_geometry,
-    bsp::tree_index_t<2> block,
+    mesh::block_index_t<2> block,
     primitive_mapping_t initial,
     double gamma_law_index);
 
@@ -123,7 +123,7 @@ primitive_array_t recover_primitive_array(
 
 primitive_array_t estimate_gradient(
     primitive_array_t pc,
-    bsp::uint axis,
+    unsigned long axis,
     double plm_theta);
 
 conserved_array_t updated_conserved(
@@ -132,7 +132,7 @@ conserved_array_t updated_conserved(
     unit_time time,
     unit_time dt,
     mesh_geometry_t mesh_geometry,
-    bsp::tree_index_t<2> block,
+    mesh::block_index_t<2> block,
     double plm_theta,
     double gamma_law_index);
 

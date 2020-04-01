@@ -42,6 +42,8 @@ namespace amr
 {
 
 
+
+
 //=============================================================================
 struct tile_blocks
 {
@@ -214,7 +216,7 @@ auto refine_tree(bsp::shared_tree<mpr::computable<nd::shared_array<ValueType, 2>
 
 //=============================================================================
 template<typename ArrayType>
-auto get_or_create_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, bsp::tree_index_t<2> block)
+auto get_or_create_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, mesh::block_index_t<2> block)
 {
     try {
 
@@ -230,7 +232,7 @@ auto get_or_create_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, b
         if (contains(tree, parent_index(block)))
         {
             return value_at(tree, parent_index(block))
-            | mpr::map(refine_block(bsp::to_integral(orthant(relative_to_parent(block)))));
+            | mpr::map(refine_block(to_integral(orthant(relative_to_parent(block)))));
         }
 
         // If the target block is not a leaf, then tile and downsample its child
@@ -248,7 +250,7 @@ auto get_or_create_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, b
 
 //=============================================================================
 template<typename ArrayType>
-auto extend_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, bsp::tree_index_t<2> block)
+auto extend_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, mesh::block_index_t<2> block)
 {
     auto c11 = get_or_create_block(tree, block);
     auto c00 = get_or_create_block(tree, prev_on(prev_on(block, 0), 1));
@@ -292,9 +294,9 @@ auto extend_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, bsp::tre
  */
 struct has_over_refined_neighbors
 {
-    has_over_refined_neighbors(bsp::shared_tree<bsp::tree_index_t<2>, 4> tree) : tree(tree) {}
+    has_over_refined_neighbors(bsp::shared_tree<mesh::block_index_t<2>, 4> tree) : tree(tree) {}
 
-    bool operator()(bsp::tree_index_t<2> block) const
+    bool operator()(mesh::block_index_t<2> block) const
     {
         return
         (contains_node(tree, next_on(block, 0)) && depth(node_at(tree, next_on(block, 0))) > 1) ||
@@ -302,7 +304,7 @@ struct has_over_refined_neighbors
         (contains_node(tree, next_on(block, 1)) && depth(node_at(tree, next_on(block, 1))) > 1) ||
         (contains_node(tree, prev_on(block, 1)) && depth(node_at(tree, prev_on(block, 1))) > 1);        
     }
-    bsp::shared_tree<bsp::tree_index_t<2>, 4> tree;
+    bsp::shared_tree<mesh::block_index_t<2>, 4> tree;
 };
 
 
@@ -317,9 +319,9 @@ struct has_over_refined_neighbors
  *
  * @return     A tree without any over-refined neighbors
  */
-inline auto valid_quadtree(bsp::shared_tree<bsp::tree_index_t<2>, 4> tree)
+inline auto valid_quadtree(bsp::shared_tree<mesh::block_index_t<2>, 4> tree)
 {
-    return bsp::branch_if(tree, bsp::child_indexes<2>, has_over_refined_neighbors(tree));
+    return bsp::branch_if(tree, mesh::child_indexes<2>, has_over_refined_neighbors(tree));
 }
 
 

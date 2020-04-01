@@ -41,11 +41,11 @@
 //=============================================================================
 void h5::read(const Group& group, std::string name,  modules::euler2d::conserved_tree_t& conserved)
 {
-    auto mesh = bsp::just<4>(bsp::tree_index_t<2>());
+    auto mesh = bsp::just<4>(mesh::block_index_t<2>());
 
     for (auto block_name : group)
     {
-        auto block = bsp::read_tree_index<2>(block_name);
+        auto block = mesh::read_block_index<2>(block_name);
         mesh = insert(mesh, block, block);
     }
 
@@ -53,7 +53,7 @@ void h5::read(const Group& group, std::string name,  modules::euler2d::conserved
     {
         return mpr::from([block, &group] ()
         {
-            return read<modules::euler2d::conserved_array_t>(group, bsp::format_tree_index(block));
+            return read<modules::euler2d::conserved_array_t>(group, mesh::format_block_index(block));
         });
     });
 }
@@ -94,7 +94,7 @@ void h5::write(const Group& group, std::string name, const modules::euler2d::con
     {
         if (value.has_value())
         {
-            write(ugroup, bsp::format_tree_index(index), value.value());
+            write(ugroup, mesh::format_block_index(index), value.value());
         }
     }));
 }

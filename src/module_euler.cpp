@@ -49,7 +49,7 @@ mesh_geometry_t::mesh_geometry_t(unit_length domain_size, int block_size)
 {
 }
 
-nd::shared_array<coords_t, 2> mesh_geometry_t::vert_coordinates(bsp::tree_index_t<2> block) const
+nd::shared_array<coords_t, 2> mesh_geometry_t::vert_coordinates(mesh::block_index_t<2> block) const
 {
     auto [p0, p1] = block_extent(block);
     auto xv = nd::linspace(p0[0], p1[0], block_size + 1);
@@ -59,9 +59,9 @@ nd::shared_array<coords_t, 2> mesh_geometry_t::vert_coordinates(bsp::tree_index_
     return nd::cartesian_product(xv, yv) | vec2 | nd::to_shared();
 }
 
-nd::shared_array<coords_t, 2> mesh_geometry_t::face_coordinates(bsp::tree_index_t<2> block, bsp::uint axis) const
+nd::shared_array<coords_t, 2> mesh_geometry_t::face_coordinates(mesh::block_index_t<2> block, unsigned long axis) const
 {
-    return invoke_memoized([] (const mesh_geometry_t *self, bsp::tree_index_t<2> block, bsp::uint axis)
+    return invoke_memoized([] (const mesh_geometry_t *self, mesh::block_index_t<2> block, unsigned long axis)
     {
         return self->vert_coordinates(block)
         | nd::adjacent_mean(axis)
@@ -69,9 +69,9 @@ nd::shared_array<coords_t, 2> mesh_geometry_t::face_coordinates(bsp::tree_index_
     }, this, block, axis);
 }
 
-nd::shared_array<coords_t, 2> mesh_geometry_t::cell_coordinates(bsp::tree_index_t<2> block) const
+nd::shared_array<coords_t, 2> mesh_geometry_t::cell_coordinates(mesh::block_index_t<2> block) const
 {
-    return invoke_memoized([] (const mesh_geometry_t *self, bsp::tree_index_t<2> block)
+    return invoke_memoized([] (const mesh_geometry_t *self, mesh::block_index_t<2> block)
     {
         return self->vert_coordinates(block)
         | nd::adjacent_mean(0)
@@ -80,7 +80,7 @@ nd::shared_array<coords_t, 2> mesh_geometry_t::cell_coordinates(bsp::tree_index_
     }, this, block);
 }
 
-std::pair<coords_t, coords_t> mesh_geometry_t::block_extent(bsp::tree_index_t<2> block) const
+std::pair<coords_t, coords_t> mesh_geometry_t::block_extent(mesh::block_index_t<2> block) const
 {
     auto [i0, j0] = as_tuple(block.coordinates);
     auto [i1, j1] = std::tuple(i0 + 1, j0 + 1);
@@ -94,13 +94,13 @@ std::pair<coords_t, coords_t> mesh_geometry_t::block_extent(bsp::tree_index_t<2>
     return std::pair(coords_t{x0, y0}, coords_t{x1, y1});
 }
 
-coords_t mesh_geometry_t::block_centroid(bsp::tree_index_t<2> block) const
+coords_t mesh_geometry_t::block_centroid(mesh::block_index_t<2> block) const
 {
     auto [p0, p1] = block_extent(block);
     return 0.5 * (p0 + p1);
 }
 
-unit_length mesh_geometry_t::cell_spacing(bsp::tree_index_t<2> block) const
+unit_length mesh_geometry_t::cell_spacing(mesh::block_index_t<2> block) const
 {
     return domain_size / double(block_size) / double(1 << block.level);
 }
@@ -116,7 +116,7 @@ std::size_t mesh_geometry_t::cells_per_block() const
 //=============================================================================
 conserved_array_t euler2d::initial_conserved_array(
     mesh_geometry_t mesh_geometry,
-    bsp::tree_index_t<2> block,
+    mesh::block_index_t<2> block,
     primitive_mapping_t initial,
     double gamma_law_index)
 {
@@ -156,7 +156,7 @@ primitive_array_t euler2d::recover_primitive_array(conserved_array_t uc, double 
 
 
 //=============================================================================
-primitive_array_t euler2d::estimate_gradient(primitive_array_t pc, bsp::uint axis, double plm_theta)
+primitive_array_t euler2d::estimate_gradient(primitive_array_t pc, unsigned long axis, double plm_theta)
 {
     return pc
     | nd::adjacent_zip3(axis)
@@ -174,7 +174,7 @@ conserved_array_t euler2d::updated_conserved(
     unit_time time,
     unit_time dt,
     mesh_geometry_t mesh_geometry,
-    bsp::tree_index_t<2> block,
+    mesh::block_index_t<2> block,
     double plm_theta,
     double gamma_law_index)
 {
