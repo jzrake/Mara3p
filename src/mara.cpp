@@ -49,6 +49,7 @@
  * [x] put in runtime parameters
  * [x] proper side effects
  * [x] write ensure_valid_quadtree function
+ * [x] refactor problem / module / scheme code to reduce boilerplate
  * [ ] improve FMR scaling (cache computed blocks maybe)
  * [ ] check breaking of conservation laws at refinement boundaries
  * [ ] write the flux correction
@@ -109,14 +110,6 @@ static auto create_mesh_topology(const mara::config_t& cfg)
 
 static auto initial_solution(const mara::config_t& cfg)
 {
-    if (auto restart = cfg.get_string("restart"); ! restart.empty())
-    {
-        auto result = modules::euler2d::solution_t{};
-        auto h5f = h5::File(restart, "r");
-        read(h5f, "solution", result);
-        return result;
-    }
-
     auto shocktube_2d = [] (auto x)
     {
         if (sqrt(sum(x * x)) < dimensional::unit_length(0.2))
@@ -133,42 +126,34 @@ static auto initial_solution(const mara::config_t& cfg)
     auto geom             = create_mesh_geometry(cfg);
     auto mesh             = create_mesh_topology(cfg);
     auto u                = mpr::compute_all(modules::euler2d::initial_conserved_tree(mesh, geom, shocktube_2d, gamma_law_index), 1);
-    auto solution         = modules::euler2d::solution_t{0, 0.0, u};
 
-    return solution;
+    return modules::euler2d::solution_t{0, 0.0, u};
 }
 
 
 
 
 //=============================================================================
-static void side_effects(const mara::config_t& cfg, modules::euler2d::solution_t solution, mara::schedule_t& schedule)
+class euler2d_demo_problem_t : public mara::problem_base_t
 {
-    if (solution.time >= schedule.checkpoint.next_due)
+public:
+    dimensional::unit_time get_time_from_solution(std::any solution) const override
     {
-        auto outdir = cfg.get_string("outdir");
-        auto fname = util::format("%s/chkpt.%04d.h5", outdir.data(), schedule.checkpoint.count);
-
-        schedule.checkpoint.next_due += dimensional::unit_time(cfg.get_double("cpi"));
-        schedule.checkpoint.count += 1;
-
-        // mpi::comm_world().invoke([&] ()
-        {
-            // if (mpi::comm_world().rank() == 0)
-            {
-                mara::filesystem::require_dir(outdir);
-
-                auto h5f = h5::File(fname, "w");
-                h5::write(h5f, "git_commit", std::string(MARA_GIT_COMMIT));
-                h5::write(h5f, "run_config", cfg);
-                h5::write(h5f, "schedule", schedule);
-                h5::write(h5f, "module", std::string("euler2d"));
-                std::printf("write %s\n", fname.data());
-            }
-            h5::write(h5::File(fname, "r+"), "solution", solution);
-        } // );
+        return std::any_cast<modules::euler2d::solution_t>(solution).time;
     }
-}
+
+    void write_solution(std::string filename, std::any solution) const override
+    {
+        h5::write(h5::File(filename, "r+"), "solution", std::any_cast<modules::euler2d::solution_t>(solution));
+    }
+
+    std::any read_solution(std::string filename) const override
+    {
+        auto solution = modules::euler2d::solution_t();
+        h5::read(h5::File(filename, "r+"), "solution", solution);
+        return solution;
+    }
+};
 
 
 
@@ -181,6 +166,7 @@ static void run_euler2d(int argc, const char* argv[])
 
     auto args             = mara::argv_to_string_map(argc, argv);
     auto cfg              = config_template().create().update(mara::restart_run_config(args)).update(args);
+    auto problem          = euler2d_demo_problem_t();
     auto tfinal           = dimensional::unit_time(cfg.get_double("tfinal"));
     auto rk_order         = cfg.get_int("rk");
     auto plm_theta        = cfg.get_double("plm");
@@ -188,14 +174,14 @@ static void run_euler2d(int argc, const char* argv[])
     auto mesh             = create_mesh_topology(cfg);
     auto geom             = create_mesh_geometry(cfg);
     auto schedule         = mara::initial_schedule(cfg);
-    auto solution         = initial_solution(cfg);
+    auto solution         = std::any_cast<modules::euler2d::solution_t>(problem.initial_solution(cfg, initial_solution(cfg)));
     auto dx               = smallest_cell_size(mesh, geom);
     auto kz               = total_cells(mesh, geom) / 1e3;
     auto vm               = dimensional::unit_velocity(5.0);
 
     while (solution.time < tfinal)
     {
-        side_effects(cfg, solution, schedule);
+        problem.side_effects(cfg, schedule, solution);
 
         auto dt = dx / vm;
         auto scheme = std::bind(updated_solution, _1, dt, geom, plm_theta, gamma_law_index);
@@ -206,7 +192,7 @@ static void run_euler2d(int argc, const char* argv[])
         auto ticks = std::chrono::high_resolution_clock::now() - start;
         std::printf("[%06ld] t=%.4lf kzps=%.2lf\n", long(solution.iteration), solution.time.value, kz / (ticks.count() * 1e-9));
     }
-    side_effects(cfg, solution, schedule);
+    problem.side_effects(cfg, schedule, solution);
 }
 
 

@@ -87,7 +87,20 @@ public:
      *
      * @return     { description_of_the_return_value }
      */
-    schedule_t side_effects(const mara::config_t& run_config, schedule_t schedule, std::any solution) const;
+    void side_effects(const mara::config_t& run_config, schedule_t& schedule, std::any solution) const;
+
+
+
+
+    /**
+     * @brief      { function_description }
+     *
+     * @param[in]  cfg                      The configuration
+     * @param[in]  solution_if_not_restart  The solution if not restart
+     *
+     * @return     { description_of_the_return_value }
+     */
+    std::any initial_solution(const mara::config_t& cfg, std::any solution_if_not_restart) const;
 
 
 
@@ -124,19 +137,6 @@ public:
      */
     virtual std::any read_solution(std::string filename) const = 0;
 };
-
-
-
-
-/**
- * @brief      { function_description }
- *
- * @param[in]  cfg                      The configuration
- * @param[in]  solution_if_not_restart  The solution if not restart
- *
- * @return     { description_of_the_return_value }
- */
-std::any initial_solution(const mara::config_t& cfg, std::any solution_if_not_restart);
 
 
 

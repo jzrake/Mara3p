@@ -26,11 +26,55 @@
 
 
 
+#include "mara.hpp"
 #include "app_problem.hpp"
+#include "app_filesystem.hpp"
 #include "app_hdf5_config.hpp"
 #include "app_hdf5_dimensional.hpp"
 #include "app_hdf5_rational.hpp"
 #include "core_util.hpp"
+#include "parallel_mpi.hpp"
+
+
+
+
+//=============================================================================
+void mara::problem_base_t::side_effects(const mara::config_t& cfg, schedule_t& schedule, std::any solution) const
+{
+    if (get_time_from_solution(solution) >= schedule.checkpoint.next_due)
+    {
+        auto outdir = cfg.get_string("outdir");
+        auto fname = util::format("%s/chkpt.%04d.h5", outdir.data(), schedule.checkpoint.count);
+
+        schedule.checkpoint.next_due += dimensional::unit_time(cfg.get_double("cpi"));
+        schedule.checkpoint.count += 1;
+
+        mpi::comm_world().invoke([&] ()
+        {
+            if (mpi::comm_world().rank() == 0)
+            {
+                mara::filesystem::require_dir(outdir);
+
+                auto h5f = h5::File(fname, "w");
+                h5::write(h5f, "git_commit", std::string(MARA_GIT_COMMIT));
+                h5::write(h5f, "run_config", cfg);
+                h5::write(h5f, "schedule", schedule);
+                h5::write(h5f, "module", std::string("euler2d"));
+                std::printf("write %s\n", fname.data());
+            }
+            write_solution(fname, solution);
+        });
+    }
+}
+
+std::any mara::problem_base_t::initial_solution(const mara::config_t& cfg, std::any solution_if_not_restart) const
+{
+    if (auto restart = cfg.get_string("restart"); ! restart.empty())
+    {
+        return read_solution(restart);
+    }
+    return solution_if_not_restart;
+}
 
 
 
