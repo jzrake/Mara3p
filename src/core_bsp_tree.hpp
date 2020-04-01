@@ -564,6 +564,31 @@ std::size_t size(tree_t<ValueType, ChildrenType, Ratio> tree)
 
 
 /**
+ * @brief      Return the tree's maximum depth below this node.
+ *
+ * @param[in]  tree          The tree whose depth is needed
+ * @param[in]  d             Starting depth (mainly for internal use)
+ *
+ * @tparam     ValueType     The tree value type
+ * @tparam     ChildrenType  The tree provider type
+ * @tparam     Ratio         The tree ratio
+ *
+ * @return     The tree's depth
+ */
+template<typename ValueType, typename ChildrenType, uint Ratio>
+std::size_t depth(tree_t<ValueType, ChildrenType, Ratio> tree, std::size_t d=0)
+{
+    if (has_value(tree))
+    {
+        return d;
+    }
+    return max(map(numeric::range<Ratio>(), [tree, d] (auto i) { return depth(child_at(tree, i), d + 1); }));
+}
+
+
+
+
+/**
  * @brief      Apply a reduction to a tree, such as taking the sum or the
  *             mininum or maximum value.
  *

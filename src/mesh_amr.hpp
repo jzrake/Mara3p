@@ -229,7 +229,8 @@ auto get_or_create_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, b
         // orthant.
         if (contains(tree, parent_index(block)))
         {
-            return value_at(tree, parent_index(block)) | mpr::map(refine_block(bsp::to_integral(orthant(relative_to_parent(block)))));
+            return value_at(tree, parent_index(block))
+            | mpr::map(refine_block(bsp::to_integral(orthant(relative_to_parent(block)))));
         }
 
         // If the target block is not a leaf, then tile and downsample its child
@@ -279,6 +280,46 @@ auto extend_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, bsp::tre
             return cs[bi][bj](ii, jj);
         }), nd::uivec(nx + 4, ny + 4)) | nd::to_shared();
     });
+}
+
+
+
+
+/**
+ * @brief      Determine whether each an index in a tree has any over-refined
+ *             neighbors. A node adjacent to a leaf node L is over-refined if
+ *             its maximum depth is more than one greater than the depth of L.
+ */
+struct has_over_refined_neighbors
+{
+    has_over_refined_neighbors(bsp::shared_tree<bsp::tree_index_t<2>, 4> tree) : tree(tree) {}
+
+    bool operator()(bsp::tree_index_t<2> block) const
+    {
+        return
+        (contains_node(tree, next_on(block, 0)) && depth(node_at(tree, next_on(block, 0))) > 1) ||
+        (contains_node(tree, prev_on(block, 0)) && depth(node_at(tree, prev_on(block, 0))) > 1) ||
+        (contains_node(tree, next_on(block, 1)) && depth(node_at(tree, next_on(block, 1))) > 1) ||
+        (contains_node(tree, prev_on(block, 1)) && depth(node_at(tree, prev_on(block, 1))) > 1);        
+    }
+    bsp::shared_tree<bsp::tree_index_t<2>, 4> tree;
+};
+
+
+
+
+/**
+ * @brief      Return a vertex tree guaranteed not to have any over-refined
+ *             neighbors. This is accomplished only by adding vertex blocks
+ *             where necessary (not removing them).
+ *
+ * @param[in]  tree  The tree of vertex blocks.
+ *
+ * @return     A tree without any over-refined neighbors
+ */
+inline auto valid_quadtree(bsp::shared_tree<bsp::tree_index_t<2>, 4> tree)
+{
+    return bsp::branch_if(tree, bsp::child_indexes<2>, has_over_refined_neighbors(tree));
 }
 
 

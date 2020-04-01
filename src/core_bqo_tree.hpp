@@ -567,16 +567,46 @@ bool contains(const tree_t<ValueType, ChildrenType, Ratio>& tree, tree_index_t<r
 
 
 /**
+ * @brief      Determine whether there is a node (leaf or otherwise) at the
+ *             given index.
+ *
+ * @param[in]  tree          The tree to check
+ * @param[in]  index         The index into the tree
+ *
+ * @tparam     ValueType     The value type of the tree
+ * @tparam     ChildrenType  The tree's children provider type
+ * @tparam     Ratio         The ratio of the tree
+ *
+ * @return     True or false
+ */
+template<typename ValueType, typename ChildrenType, uint Ratio>
+bool contains_node(const tree_t<ValueType, ChildrenType, Ratio>& tree, tree_index_t<rank_for_ratio_t<Ratio>::value> index)
+{
+    if (index.level == 0)
+    {
+        return ! any(index.coordinates);
+    }
+    if (has_value(tree))
+    {
+        return false;
+    }
+    return contains_node(child_at(tree, orthant(index)), advance_level(index));
+}
+
+
+
+
+/**
  * @brief      Insert or replace a value at the given index, creating
  *             intermediate nodes as necessary. Throws an exception if a
  *             non-leaf node already exists at the target index.
  *
- * @param[in]  tree       The tree
+ * @param[in]  tree       The tree to insert a node to
  * @param[in]  index      The target index
  * @param[in]  value      The value to insert at that index
  *
- * @tparam     ValueType  { description }
- * @tparam     Ratio      { description }
+ * @tparam     ValueType  The tree value type
+ * @tparam     Ratio      The tree ratio
  *
  * @return     A new tree
  *
