@@ -65,6 +65,7 @@ public:
     coords_t block_centroid(mesh::block_index_t<2> block) const;
     dimensional::unit_length cell_spacing(mesh::block_index_t<2> block) const;
     std::size_t cells_per_block() const;
+    std::tuple<dimensional::unit_length, int> as_tuple() const;
 
 private:
     dimensional::unit_length domain_size = 1.0;

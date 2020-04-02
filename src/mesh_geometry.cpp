@@ -52,28 +52,30 @@ nd::shared_array<mesh::cartesian_2d::coords_t, 2> mesh::cartesian_2d::geometry_t
 
 nd::shared_array<mesh::cartesian_2d::coords_t, 2> mesh::cartesian_2d::geometry_t::face_coordinates(mesh::block_index_t<2> block, unsigned long axis) const
 {
-    return invoke_memoized([] (const geometry_t *self, mesh::block_index_t<2> block, unsigned long axis)
+    return invoke_memoized([] (auto self, mesh::block_index_t<2> block, unsigned long axis)
     {
-        return self->vert_coordinates(block)
+        return std::apply([] (auto... args) { return geometry_t(args...); }, self)
+        . vert_coordinates(block)
         | nd::adjacent_mean(axis)
         | nd::to_shared();
-    }, this, block, axis);
+    }, as_tuple(), block, axis);
 }
 
 nd::shared_array<mesh::cartesian_2d::coords_t, 2> mesh::cartesian_2d::geometry_t::cell_coordinates(mesh::block_index_t<2> block) const
 {
-    return invoke_memoized([] (const geometry_t *self, mesh::block_index_t<2> block)
+    return invoke_memoized([] (auto self, mesh::block_index_t<2> block)
     {
-        return self->vert_coordinates(block)
+        return std::apply([] (auto... args) { return geometry_t(args...); }, self)
+        . vert_coordinates(block)
         | nd::adjacent_mean(0)
         | nd::adjacent_mean(1)
         | nd::to_shared();
-    }, this, block);
+    }, as_tuple(), block);
 }
 
 std::pair<mesh::cartesian_2d::coords_t, mesh::cartesian_2d::coords_t> mesh::cartesian_2d::geometry_t::block_extent(mesh::block_index_t<2> block) const
 {
-    auto [i0, j0] = as_tuple(block.coordinates);
+    auto [i0, j0] = numeric::as_tuple(block.coordinates);
     auto [i1, j1] = std::tuple(i0 + 1, j0 + 1);
     auto dl = double(1 << block.level);
 
@@ -99,4 +101,9 @@ dimensional::unit_length mesh::cartesian_2d::geometry_t::cell_spacing(mesh::bloc
 std::size_t mesh::cartesian_2d::geometry_t::cells_per_block() const
 {
     return block_size * block_size;
+}
+
+std::tuple<dimensional::unit_length, int> mesh::cartesian_2d::geometry_t::as_tuple() const
+{
+    return std::tuple(domain_size, block_size);
 }

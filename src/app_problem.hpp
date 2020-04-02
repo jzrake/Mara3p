@@ -78,14 +78,14 @@ public:
 
 
     /**
-     * @brief      { function_description }
+     * @brief      Run a set of side effects on the solution, using the
+     *             recurrence rules set in the run config, and the last
+     *             invocation time in the given schedule. Update the schedule
+     *             with the new last invocation time.
      *
-     * @param[in]  run_config  The run configuration
-     * @param[in]  time        The time
-     * @param[in]  schedule    The schedule
-     * @param[in]  solution    The solution
-     *
-     * @return     { description_of_the_return_value }
+     * @param[in]  run_config  The run config
+     * @param[in]  schedule    The schedule instance
+     * @param[in]  solution    The solution instance
      */
     void side_effects(const mara::config_t& run_config, schedule_t& schedule, std::any solution) const;
 
@@ -93,24 +93,30 @@ public:
 
 
     /**
-     * @brief      { function_description }
+     * @brief      Generate initial data by examining the run config for a
+     *             restart file, invoking the read_solution virtual function if
+     *             one is given, but otherwise returning the given initial
+     *             solution data.
      *
-     * @param[in]  cfg                      The configuration
-     * @param[in]  solution_if_not_restart  The solution if not restart
+     * @param[in]  run_config               The run config
+     * @param[in]  solution_if_not_restart  The solution to return if no restart
+     *                                      file was given
      *
-     * @return     { description_of_the_return_value }
+     * @return     A type-erased solution struct
      */
-    std::any initial_solution(const mara::config_t& cfg, std::any solution_if_not_restart) const;
+    std::any initial_solution(const mara::config_t& run_config, std::any solution_if_not_restart) const;
 
 
 
 
     /**
-     * @brief      Gets the time from solution.
+     * @brief      Get the time from solution. Your derived class must implement
+     *             this method to return the simulation time from the solution
+     *             struct.
      *
-     * @param[in]  solution  The solution
+     * @param[in]  solution  The (type-erased) solution instance
      *
-     * @return     The time from solution.
+     * @return     The time
      */
     virtual dimensional::unit_time get_time_from_solution(std::any solution) const = 0;
 
@@ -118,10 +124,15 @@ public:
 
 
     /**
-     * @brief      Writes a solution to checkpoint.
+     * @brief      Write a solution to a checkpoint file. Your derived class
+     *             must implement this method to write the given solution struct
+     *             to a checkpoint file with the specified filename. This method
+     *             is invoked sequentially on each MPI process, so you should
+     *             not do any MPI barriers in your implementation; just open the
+     *             file, write to it, and close it.
      *
-     * @param[in]  filename  The filename
-     * @param[in]  solution  The solution
+     * @param[in]  filename  The checkpoint filename
+     * @param[in]  solution  The (type-erased) solution struct
      */
     virtual void write_solution(std::string filename, std::any solution) const = 0;
 
@@ -129,11 +140,13 @@ public:
 
 
     /**
-     * @brief      Reads a solution from checkpoint.
+     * @brief      Read a solution from a checkpoint file. Your derived class
+     *             must implement this method to read a solution struct from a
+     *             checkpoint with the specified filename.
      *
-     * @param[in]  filename  The filename
+     * @param[in]  filename  The checkpoint filename
      *
-     * @return     { description_of_the_return_value }
+     * @return     A type-erased solution struct
      */
     virtual std::any read_solution(std::string filename) const = 0;
 };
@@ -142,24 +155,51 @@ public:
 
 
 /**
- * @brief      { function_description }
+ * @brief      Convenience method to invoke the problem initial_solution member
+ *             function, handling the type-erasure automatically.
  *
- * @param[in]  cfg                      The configuration
- * @param[in]  schedule_if_not_restart  The schedule if not restart
+ * @param[in]  problem                  The problem instance
+ * @param[in]  run_config               The run config
+ * @param[in]  solution_if_not_restart  The solution to return if no restart
+ *                                      file was given
  *
- * @return     { description_of_the_return_value }
+ * @tparam     SolutionType             The type of the solution struct
+ *
+ * @return     A solution struct
  */
-schedule_t initial_schedule(const mara::config_t& cfg, schedule_t schedule_if_not_restart={});
+template<typename SolutionType>
+SolutionType initial_solution(const problem_base_t& problem, const mara::config_t& run_config, SolutionType solution_if_not_restart)
+{
+    return std::any_cast<SolutionType>(problem.initial_solution(run_config, std::move(solution_if_not_restart)));
+}
 
 
 
 
 /**
- * @brief      { function_description }
+ * @brief      Generate an initial schedule instance, either by reading it from
+ *             a checkpoint file if a restart file is given in the run_config,
+ *             or otherwise the one given (defaulting to a fresh schedule).
  *
- * @param[in]  args  The arguments
+ * @param[in]  run_config               The run config
+ * @param[in]  schedule_if_not_restart  The schedule to return if no restart
+ *                                      file was given
  *
- * @return     { description_of_the_return_value }
+ * @return     A schedule struct
+ */
+schedule_t initial_schedule(const mara::config_t& run_config, schedule_t schedule_if_not_restart={});
+
+
+
+
+/**
+ * @brief      Read and return the run_config group of a restart file if one is
+ *             given in the arguments as e.g. restart=chkpt.1234.h5, otherwise
+ *             return an empty map.
+ *
+ * @param[in]  args  The command line arguments
+ *
+ * @return     A configuration parameter map
  */
 config_parameter_map_t restart_run_config(const config_string_map_t& args);
 

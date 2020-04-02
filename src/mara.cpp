@@ -174,7 +174,7 @@ static void run_euler2d(int argc, const char* argv[])
     auto mesh             = create_mesh_topology(cfg);
     auto geom             = create_mesh_geometry(cfg);
     auto schedule         = mara::initial_schedule(cfg);
-    auto solution         = std::any_cast<modules::euler2d::solution_t>(problem.initial_solution(cfg, initial_solution(cfg)));
+    auto solution         = mara::initial_solution(problem, cfg, initial_solution(cfg));
     auto dx               = smallest_cell_size(mesh, geom);
     auto kz               = total_cells(mesh, geom) / 1e3;
     auto vm               = dimensional::unit_velocity(5.0);
