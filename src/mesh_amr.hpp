@@ -207,7 +207,7 @@ auto refine_tree(bsp::shared_tree<mpr::computable<nd::shared_array<ValueType, 2>
 {
     return bsp::branch_all(tree, [] (auto block)
     {
-        return map(numeric::range<4>(), [block] (auto i) { return block | mpr::map(refine_block(i)); });
+        return map(numeric::range<4>(), [block] (auto i) { return block | mpr::map(refine_block(i), "C"); });
     });
 }
 
@@ -231,7 +231,7 @@ auto get_or_create_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, m
 
     if (contains(tree, parent_index(block)))
     {
-        return value_at(tree, parent_index(block)) | mpr::map(refine_block(to_integral(orthant(relative_to_parent(block)))));
+        return value_at(tree, parent_index(block)) | mpr::map(refine_block(to_integral(orthant(relative_to_parent(block)))), "R");
     }
 
     // If the target block is not a leaf, then tile and downsample its child

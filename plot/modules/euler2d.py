@@ -44,6 +44,12 @@ def print_quantiles(data):
 
 
 
+def print_totals(data):
+    print('total = {:.8f}'.format(data.mean()))
+
+
+
+
 def block_extent(level, i, j, domain_size=1.0):
     i0, j0 = i, j
     i1, j1 = i + 1, j + 1
@@ -96,6 +102,12 @@ def upsample(data, fold):
     result[0:nx*2:2, 1:ny*2:2] = data
     result[1:nx*2:2, 1:ny*2:2] = data
     return upsample(result, fold - 1)
+
+
+
+
+def field_names():
+    return ['rho', 'px', 'py', 'pz', 'E']
 
 
 
@@ -156,8 +168,8 @@ def plot_streamlines(ax, filename, args):
 
 
 def plot(fig, filename, args):
-    sigma = conserved(filename, 0)
-    color = sigma**args.index
+    value = conserved(filename, field_names().index(args.field))
+    color = value**args.index
     vmin, vmax = [a**args.index if a else a for a in eval(args.range or '[None,None]')]
 
     R = 0.5
@@ -177,7 +189,8 @@ def plot(fig, filename, args):
         plot_streamlines(ax1, filename, args)
 
     if args.print_quantiles:
-        print_quantiles(sigma)
+        print_quantiles(value)
+        print_totals(value)
 
 
 
@@ -234,18 +247,20 @@ def save_frames(fig, plot_fn, args):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('filenames', nargs='+')
-    parser.add_argument('--cmap',  metavar='inferno',       default='inferno', help='Name of the matplotlib color map to use')
-    parser.add_argument('--index', metavar=0.5, type=float, default=0.5,       help='Power-law index used in scaling the image')
-    parser.add_argument('--range', metavar='[0.0,1.0]',     default=None,      help='Manual vmin/vmax range (use None for auto)')
-    parser.add_argument('--print-quantiles', '-q', action='store_true',        help='Print a set of quantiles for the image data')
-    parser.add_argument('--streamlines',           action='store_true',        help='Overlay a streamplot of the velocity field')
-    parser.add_argument('--movie',                 action='store_true',        help='Use ffmpeg to make a movie from the provided files')
-    parser.add_argument('--frame',                 action='store_true',        help='Write a PNG image for each file rather than raising a window')
-    parser.add_argument('--archive',               action='store_true',        help='Compress images to images.tar.gz (implies --frame)')
+    parser.add_argument('--cmap',  metavar='inferno',       default='inferno',    help='Name of the matplotlib color map to use')
+    parser.add_argument('--index', metavar=0.5, type=float, default=0.5,          help='Power-law index used in scaling the image')
+    parser.add_argument('--range', metavar='[0.0,1.0]',     default=None,         help='Manual vmin/vmax range (use None for auto)')
+    parser.add_argument('--field', choices=field_names(),   default='rho',        help='Which hydrodynamic field to show')
+    parser.add_argument('--print-quantiles', '-q', action='store_true',           help='Print a set of quantiles for the image data')
+    parser.add_argument('--streamlines',           action='store_true',           help='Overlay a streamplot of the velocity field')
+    parser.add_argument('--movie',                 action='store_true',           help='Use ffmpeg to make a movie from the provided files')
+    parser.add_argument('--frame',                 action='store_true',           help='Write a PNG image for each file rather than raising a window')
+    parser.add_argument('--no-window', '-nw',      action='store_true',           help='Do not plot anything')
+    parser.add_argument('--archive',               action='store_true',           help='Compress images to images.tar.gz (implies --frame)')
 
     args = parser.parse_args()
 
-    if args.frame or args.movie:
+    if args.frame or args.movie or args.no_window:
         import matplotlib
         matplotlib.use('agg')
 
@@ -260,4 +275,5 @@ def main():
         save_frames(fig, plot, args)
     else:
         plot(fig, args.filenames, args)
-        plt.show()
+        if not args.no_window:
+            plt.show()

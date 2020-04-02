@@ -551,71 +551,8 @@ void print_graph(std::ostream& stream, computable<ValueType>... cs)
 
 
 
-//=============================================================================
-void compute(const node_set_t& node_set, unsigned num_threads=0);
-
-
-
-
-/**
- * @brief      Compute a computable on a (possibly asynchronous) scheduler.
- *
- * @param[in]  cs         The computables to compute
- *
- * @tparam     ValueType    The computable value type
- */
-template<typename... ValueType>
-void compute(computable<ValueType>... cs)
-{
-    compute({cs.node()...});
-}
-
-
-
-
-/**
- * @brief      Compute a list of nodes, delegating the work to all ranks
- *             participating in mpi::comm_world. This function only guarantees
- *             that the computed value is available on at least one of the MPI
- *             ranks. It is the responsibility of the calling code to maintain
- *             ownership of all the computable_node_t pointers in the node_list
- *             argument. This is done automatically if the corresponding
- *             computable instances exist in some type of container where this
- *             function is invoked.
- *
- * @param[in]  node_list  The list of nodes to be computed
- *
- * @note       The MPI rank to which a node was delegated can be queried by
- *             calling its group() method. Even if a node A was not delegated to
- *             this MPI rank, it may still have a value. This occurs if any
- *             nodes just downstream A are delegated to this MPI rank. In that
- *             case, A will have received the computed value from its delegated
- *             rank.
- */
-void compute_mpi(const node_set_t& node_list, unsigned num_threads=0);
-
-
-
-
-/**
- * @brief      Convenience function to invoke the compute_mpi above.
- *
- * @param[in]  cs         The computables to compute
- *
- * @tparam     ValueType  The computable value type
- */
-template<typename... ValueType>
-void compute_mpi(computable<ValueType>... cs)
-{
-    compute_mpi({cs.node()...}, 1);
-}
-
-
-
-
-//=============================================================================
 template<typename SequenceProtol>
-auto compute_all(SequenceProtol sequence, int num_threads=0)
+void print_graph_all(std::ostream& stream, SequenceProtol sequence)
 {
     auto state = start(sequence);
     auto nodes = node_set_t();
@@ -625,9 +562,138 @@ auto compute_all(SequenceProtol sequence, int num_threads=0)
         nodes.insert(obtain(sequence, state.value()).node());
         state = next(sequence, state.value());
     }
-    compute(nodes, num_threads);
+    print_graph(stream, nodes);
+}
+
+
+
+
+/**
+ * @brief      Struct describing an execution strategy to compute a list of
+ *             nodes. MPI execution delegates the work to all ranks
+ *             participating in mpi::comm_world. This only guarantees that the
+ *             computed value is available on at least one of the MPI ranks. It
+ *             is the responsibility of the calling code to maintain ownership
+ *             of all the computable_node_t pointers in the node_list argument.
+ *             This is done automatically if the corresponding computable
+ *             instances exist in some type of container when the compute
+ *             function is invoked.
+ *
+ * @note       The MPI rank to which a node was delegated can be queried by
+ *             calling its group() method. Even if a node A was not delegated to
+ *             this MPI rank, it may still have a value. This occurs if any
+ *             nodes just downstream A are delegated to this MPI rank. In that
+ *             case, A will have received the computed value from its delegated
+ *             rank.
+ */
+struct execution_strategy_t
+{
+    bool use_mpi         = false; // use the MPI execution strategy
+    bool async_serialize = false; // serialize data products on a background thread
+    bool async_load      = false; // deserialize data products on a background thread
+    unsigned num_threads = 1;     // size of the thread pool (use zero for hardware concurrency)
+};
+
+
+
+
+
+/**
+ * @brief      Factory functions for common execution strategies
+ *
+ * @param[in]  num_threads  The number threads
+ *
+ * @return     The execution strategy.
+ */
+inline execution_strategy_t multi_threaded_execution(unsigned num_threads)
+{
+    return {false, false, false, num_threads};
+}
+
+inline execution_strategy_t mpi_single_threaded_execution()
+{
+    return {true, true, true, 1};
+}
+
+inline execution_strategy_t mpi_multi_threaded_execution(unsigned num_threads)
+{
+    return {true, true, true, num_threads};
+}
+
+
+
+
+/**
+ * @brief      { function_description }
+ *
+ * @param[in]  node_set  The node set
+ * @param[in]  strategy  The strategy
+ */
+void compute(const node_set_t& node_set, execution_strategy_t strategy);
+
+
+
+
+
+/**
+ * @brief      Calculates the all.
+ *
+ * @param[in]  sequence        The sequence
+ * @param[in]  strategy        The strategy
+ *
+ * @tparam     SequenceProtol  { description }
+ *
+ * @return     All.
+ */
+template<typename SequenceProtol>
+auto compute_all(SequenceProtol sequence, execution_strategy_t strategy)
+{
+    auto state = start(sequence);
+    auto nodes = node_set_t();
+
+    while (state.has_value())
+    {
+        nodes.insert(obtain(sequence, state.value()).node());
+        state = next(sequence, state.value());
+    }
+    compute(nodes, strategy);
 
     return sequence;
+}
+
+
+
+
+/**
+ * @brief      Compute a set of computables on using the default hardware
+ *             concurrency and no MPI.
+ *
+ * @param[in]  cs         The computables to compute
+ *
+ * @tparam     ValueType  The computable value type
+ */
+template<typename... ValueType>
+void compute(computable<ValueType>... cs)
+{
+    compute({cs.node()...}, multi_threaded_execution(0));
+}
+
+
+
+
+
+/**
+ * @brief      { function_description }
+ *
+ * @param[in]  strategy   The strategy
+ * @param[in]  cs         The create struct
+ *
+ * @tparam     ValueType  { description }
+ */
+template<typename... ValueType>
+void compute(execution_strategy_t strategy, computable<ValueType>... cs)
+{
+    compute({cs.node()...}, strategy);
 }
 
 } // namespace mpr

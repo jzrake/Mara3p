@@ -27,6 +27,10 @@
 
 
 #pragma once
+#include "app_serial_ndarray.hpp"
+#include "app_serial_numeric_tuple.hpp"
+#include "app_serial_std_tuple.hpp"
+
 #include "core_bqo_tree.hpp"
 #include "core_bsp_tree.hpp"
 #include "core_ndarray.hpp"

@@ -26,12 +26,14 @@
 
 
 
+#include <fstream>
 #include "app_config.hpp"
 #include "app_control.hpp"
 #include "app_filesystem.hpp"
 #include "app_hdf5.hpp"
 #include "app_problem.hpp"
 #include "core_unit_test.hpp"
+#include "core_util.hpp"
 #include "mara.hpp"
 #include "mesh_amr.hpp"
 #include "module_euler.hpp"
@@ -48,7 +50,8 @@
  * [x] write ensure_valid_quadtree function
  * [x] refactor problem / module / scheme code to reduce boilerplate
  * [x] improve FMR scaling (cache computed blocks maybe)
- * [ ] check breaking of conservation laws at refinement boundaries
+ * [x] check breaking of conservation laws at refinement boundaries
+ * [ ] check MPI scaling
  * [ ] write the flux correction
  * 
  */
@@ -99,7 +102,7 @@ static auto create_mesh_topology(const mara::config_t& cfg)
         {
             auto p = geom.block_centroid(block);
             auto r = sqrt(sum(p * p));
-            return r < dimensional::unit_length(1.0) / double(block.level);
+            return r < dimensional::unit_length(0.5) / double(block.level);
         }, depth));
     }
     throw std::runtime_error("create_mesh (invalid mesh type " + mesh_type + ")");
@@ -119,12 +122,24 @@ static auto initial_solution(const mara::config_t& cfg)
         }
     };
 
+    auto strategy         = mpr::mpi_single_threaded_execution();
     auto gamma_law_index  = 5. / 3;
     auto geom             = create_mesh_geometry(cfg);
     auto mesh             = create_mesh_topology(cfg);
-    auto u                = mpr::compute_all(modules::euler2d::initial_conserved_tree(mesh, geom, shocktube_2d, gamma_law_index), 1);
+    auto u                = mpr::compute_all(modules::euler2d::initial_conserved_tree(mesh, geom, shocktube_2d, gamma_law_index), strategy);
 
     return modules::euler2d::solution_t{0, 0.0, u};
+}
+
+static void print_graph(const mara::config_t& cfg, modules::euler2d::solution_t solution)
+{
+    auto outdir = cfg.get_string("outdir");
+    auto fname  = util::format("%s/task_graph.dot", outdir.data());
+
+    std::printf("write %s\n", fname.data());
+    mara::filesystem::require_dir(outdir);
+    auto outf = std::ofstream(fname);
+    mpr::print_graph_all(outf, solution.conserved);        
 }
 
 
@@ -175,19 +190,26 @@ static void run_euler2d(int argc, const char* argv[])
     auto dx               = smallest_cell_size(mesh, geom);
     auto kz               = total_cells(mesh, geom) / 1e3;
     auto vm               = dimensional::unit_velocity(5.0);
+    auto strategy         = mpr::mpi_multi_threaded_execution(cfg.get_int("threads"));
 
-    mara::pretty_print(std::cout, "config", cfg);
+    auto dt     = dx / vm;
+    auto scheme = std::bind(updated_solution, _1, dt, geom, plm_theta, gamma_law_index);
+
+    auto example_solution = control::advance_runge_kutta(scheme, rk_order, solution);
+
+    if (mpi::comm_world().rank() == 0)
+    {
+        mara::pretty_print(std::cout, "config", cfg);
+        print_graph(cfg, example_solution);        
+    }
 
     while (solution.time < tfinal)
     {
         problem.side_effects(cfg, schedule, solution);
-
-        auto dt = dx / vm;
-        auto scheme = std::bind(updated_solution, _1, dt, geom, plm_theta, gamma_law_index);
         solution = control::advance_runge_kutta(scheme, rk_order, solution);
 
         auto start = std::chrono::high_resolution_clock::now();
-        mpr::compute_all(solution.conserved, cfg.get_int("threads"));
+        mpr::compute_all(solution.conserved, strategy);
         auto ticks = std::chrono::high_resolution_clock::now() - start;
         std::printf("[%06ld] t=%.4lf kzps=%.2lf\n", long(solution.iteration), solution.time.value, kz / (ticks.count() * 1e-9));
     }

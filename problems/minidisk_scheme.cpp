@@ -75,7 +75,7 @@ static auto centrifugal_term(numeric::array_t<unit_length, 2> p, unit_rate omega
     return omega_frame * omega_frame * p;
 }
 
-static auto cell_size(bsp::tree_index_t<2> block, solver_data_t solver_data)
+static auto cell_size(mesh::block_index_t<2> block, solver_data_t solver_data)
 {
     return 2.0 * solver_data.domain_radius / double(solver_data.block_size) / double(1 << block.level);
 }
@@ -98,7 +98,7 @@ static auto initial_primitive(unit_length softening_length, unit_rate omega_fram
     };
 }
 
-static auto vertex_positions(int block_size, unit_length domain_radius, bsp::tree_index_t<2> block)
+static auto vertex_positions(int block_size, unit_length domain_radius, mesh::block_index_t<2> block)
 {
     auto [i0, j0] = as_tuple(block.coordinates);
     auto [i1, j1] = std::tuple(i0 + 1, j0 + 1);
@@ -132,7 +132,7 @@ unit_specific_energy minidisk::sound_speed_squared(numeric::array_t<unit_length,
 }
 
 nd::shared_array<numeric::array_t<unit_length, 2>, 2>
-minidisk::face_coordinates(int block_size, unit_length domain_radius, bsp::tree_index_t<2> block, bsp::uint axis)
+minidisk::face_coordinates(int block_size, unit_length domain_radius, mesh::block_index_t<2> block, unsigned long axis)
 {
     return invoke_memoized([] (auto block_size, auto domain_radius, auto block, auto axis)
     {
@@ -151,7 +151,7 @@ minidisk::face_coordinates(int block_size, unit_length domain_radius, bsp::tree_
 }
 
 nd::shared_array<numeric::array_t<unit_length, 2>, 2>
-minidisk::cell_coordinates(int block_size, unit_length domain_radius, bsp::tree_index_t<2> block)
+minidisk::cell_coordinates(int block_size, unit_length domain_radius, mesh::block_index_t<2> block)
 {
     return invoke_memoized([] (auto block_size, auto domain_radius, auto block)
     {
@@ -169,7 +169,7 @@ minidisk::cell_coordinates(int block_size, unit_length domain_radius, bsp::tree_
 
 //=============================================================================
 nd::shared_array<unit_rate, 2>
-minidisk::buffer_rate_field_array(solver_data_t solver_data, bsp::tree_index_t<2> block)
+minidisk::buffer_rate_field_array(solver_data_t solver_data, mesh::block_index_t<2> block)
 {
     return invoke_memoized([] (auto block_size, auto domain_radius, auto buffer_scale, auto buffer_rate, auto block)
     {
@@ -180,7 +180,7 @@ minidisk::buffer_rate_field_array(solver_data_t solver_data, bsp::tree_index_t<2
 }
 
 nd::shared_array<iso2d::conserved_density_t, 2>
-minidisk::initial_conserved_array(solver_data_t solver_data, bsp::tree_index_t<2> block)
+minidisk::initial_conserved_array(solver_data_t solver_data, mesh::block_index_t<2> block)
 {
     return invoke_memoized([] (auto block_size, auto domain_radius, auto softening_length, auto omega_frame, auto block)
     {
@@ -191,7 +191,7 @@ minidisk::initial_conserved_array(solver_data_t solver_data, bsp::tree_index_t<2
 }
 
 nd::shared_array<numeric::array_t<unit_acceleration, 2>, 2>
-minidisk::centrifugal_term_array(solver_data_t solver_data, bsp::tree_index_t<2> block)
+minidisk::centrifugal_term_array(solver_data_t solver_data, mesh::block_index_t<2> block)
 {
     return invoke_memoized([] (auto block_size, auto domain_radius, auto omega_frame, auto block)
     {
@@ -210,7 +210,7 @@ primitive_array_t minidisk::recover_primitive_array(conserved_array_t uc)
     return uc | nd::maps(iso2d::recover_primitive);
 }
 
-primitive_array_t minidisk::estimate_gradient(primitive_array_t pc, bsp::uint axis, double theta)
+primitive_array_t minidisk::estimate_gradient(primitive_array_t pc, unsigned long axis, double theta)
 {
     return pc | nd::adjacent_zip3(axis) | nd::map(mara::plm_gradient(theta)) | nd::to_shared();
 }
@@ -225,8 +225,8 @@ godunov_f_array_t godunov_and_viscous_fluxes(
     GradientArrayL gc_long,
     GradientArrayT gc_tran,
     solver_data_t solver_data,
-    bsp::tree_index_t<2> block,
-    bsp::uint axis)
+    mesh::block_index_t<2> block,
+    unsigned long axis)
 {
     auto riemann = [axis, rs=solver_data.softening_length, mach=solver_data.mach_number] (auto pl, auto pr, auto xf)
     {
@@ -296,7 +296,7 @@ conserved_array_t minidisk::updated_conserved(
     primitive_array_t pe,
     unit_time time,
     unit_time dt,
-    bsp::tree_index_t<2> block,
+    mesh::block_index_t<2> block,
     solver_data_t solver_data)
 {
     auto gravitational_acceleration = [rs=solver_data.softening_length] (auto component)

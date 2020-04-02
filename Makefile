@@ -30,7 +30,8 @@ ALL_TARGETS = mara \
 	examples/mhd3d \
 	examples/serial_perf \
 	problems/sedov \
-	problems/sedov2d
+	problems/sedov2d \
+	problems/minidisk
 TARGETS = $(ALL_TARGETS)
 
 

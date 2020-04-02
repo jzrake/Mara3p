@@ -88,7 +88,7 @@ int main()
     auto stream = std::ofstream("computable.dot");
 
     mpr::print_graph(stream, aaaa, aaab, aaba, aabb, abaa, abab, abba, abbb, baaa, baab, baba, babb, bbaa, bbab, bbba, bbbb);
-    mpr::compute(aaaa, aaab, aaba, aabb, abaa, abab, abba, abbb, baaa, baab, baba, babb, bbaa, bbab, bbba, bbbb);
+    mpr::compute(mpr::mpi_multi_threaded_execution(0), aaaa, aaab, aaba, aabb, abaa, abab, abba, abbb, baaa, baab, baba, babb, bbaa, bbab, bbba, bbbb);
     mpi::comm_world().invoke([&] ()
     {
         if (aaaa.has_value()) { printf("%s compued on rank %d: %s\n", "aaaa", mpi::comm_world().rank(), aaaa.value().data()); }
