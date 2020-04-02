@@ -190,9 +190,9 @@ struct refine_block
 
 //=============================================================================
 template<typename ValueType>
-auto coarsen_tree(bsp::shared_tree<mpr::computable<nd::shared_array<ValueType, 2>>, 4> tree)
+auto collapse(bsp::shared_tree<mpr::computable<nd::shared_array<ValueType, 2>>, 4> tree)
 {
-    return bsp::collapse_once(tree, [] (auto blocks)
+    return bsp::collapse(tree, [] (auto blocks)
     {
         return mpr::zip(blocks[0], blocks[1], blocks[2], blocks[3]) | mpr::mapv(coarsen_blocks());
     });
@@ -218,31 +218,31 @@ auto refine_tree(bsp::shared_tree<mpr::computable<nd::shared_array<ValueType, 2>
 template<typename ArrayType>
 auto get_or_create_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, mesh::block_index_t<2> block)
 {
-    try {
+    // If the tree has a value at the target block, then return that value.
 
-        // If the tree has a value at the target block, then return that value.
-        if (contains(tree, block))
-        {
-            return value_at(tree, block);
-        }
-
-        // If the tree has a value at the node above the target block, then
-        // refine the data on that node and select the array in the block's
-        // orthant.
-        if (contains(tree, parent_index(block)))
-        {
-            return value_at(tree, parent_index(block))
-            | mpr::map(refine_block(to_integral(orthant(relative_to_parent(block)))));
-        }
-
-        // If the target block is not a leaf, then tile and downsample its child
-        // blocks.
-        return value(coarsen_tree(node_at(tree, block)));
-    }
-    catch (const std::exception& e)
+    if (contains(tree, block))
     {
-        throw std::invalid_argument("amr::get_or_create_block (invalid mesh topology) " + std::string(e.what()));
+        return value_at(tree, block);
     }
+
+    // If the tree has a value at the node above the target block, then
+    // refine the data on that node and select the array in the block's
+    // orthant.
+
+    if (contains(tree, parent_index(block)))
+    {
+        return value_at(tree, parent_index(block)) | mpr::map(refine_block(to_integral(orthant(relative_to_parent(block)))));
+    }
+
+    // If the target block is not a leaf, then tile and downsample its child
+    // blocks.
+
+    if (contains_node(tree, block))
+    {
+        return collapse(node_at(tree, block));
+    }
+
+    throw std::logic_error("amr::get_or_create_block (invalid mesh topology)");
 };
 
 
@@ -321,7 +321,11 @@ struct has_over_refined_neighbors
  */
 inline auto valid_quadtree(bsp::shared_tree<mesh::block_index_t<2>, 4> tree)
 {
-    return bsp::branch_if(tree, mesh::child_indexes<2>, has_over_refined_neighbors(tree));
+    while (reduce(bsp::map(indexes(tree), has_over_refined_neighbors(tree)), std::logical_or<>(), false))
+    {
+        tree = bsp::branch_if(tree, mesh::child_indexes<2>, has_over_refined_neighbors(tree));
+    }
+    return tree;
 }
 
 

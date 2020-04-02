@@ -95,7 +95,7 @@ bool check_root(const block_index_t<R>& i)
     {
         if (any(i.coordinates))
         {
-            throw std::invalid_argument("bsp::block_index_t (invalid tree index)");
+            throw std::invalid_argument("mesh::block_index_t (invalid tree index)");
         }
         return true;
     }
@@ -252,7 +252,7 @@ block_index_t<R> next_sibling(const block_index_t<R>& i)
 {
     if (is_last_child(i))
     {
-        throw std::out_of_range("bsp::next_sibling (is the last child)");
+        throw std::out_of_range("mesh::next_sibling (is the last child)");
     }
     return block_index_t<R>{i.level, parent_index(i).coordinates * 2 + numeric::binary_repr<R>(sibling_index(i) + 1)};
 }
@@ -392,7 +392,7 @@ block_index_t<Rank> read_block_index(std::string str)
 {
     if (std::count(str.begin(), str.end(), '-') != Rank - 1)
     {
-        throw std::invalid_argument("bsp::read_block_index (string has wrong rank)");
+        throw std::invalid_argument("mesh::read_block_index (string has wrong rank)");
     }
     auto result = block_index_t<Rank>();
 

@@ -429,7 +429,7 @@ auto branch_all(shared_tree<ValueType, Ratio> tree, BranchType branch_function)
  *             array of values to a value.
  */
 template<typename ValueType, unsigned long Ratio, typename CollapseFunction>
-auto collapse_all(shared_tree<ValueType, Ratio> tree, CollapseFunction f) -> ValueType
+auto collapse(shared_tree<ValueType, Ratio> tree, CollapseFunction f) -> ValueType
 {
     static_assert(std::is_same_v<std::invoke_result_t<CollapseFunction, numeric::array_t<ValueType, Ratio>>, ValueType>,
        "the collapse function must be numeric::array_t<ValueType, Ratio> -> ValueType");
@@ -440,41 +440,8 @@ auto collapse_all(shared_tree<ValueType, Ratio> tree, CollapseFunction f) -> Val
     }
     return f(map(*children(tree).ptr, [f] (const auto& child)
     {
-        return has_value(child) ? value(child) : collapse_all(child, f);
+        return has_value(child) ? value(child) : collapse(child, f);
     }));
-}
-
-
-
-
-/**
- * @brief      Collapse a non-leaf node, reducing its depth and that of its
- *             descendents by 1. Nodes with at least one leaf child are turned
- *             into leaf nodes. Nodes with no leaf children map the
- *             collapse_once function to their children.
- *
- * @param[in]  tree              The tree to collapse
- * @param[in]  f                 The collapse function:
- *                               numeric::array_t<ValueType, Ratio> -> ValueType
- *
- * @tparam     ValueType         The tree value type
- * @tparam     Ratio             The tree ratio
- * @tparam     CollapseFunction  The type of the collapse function
- *
- * @return     A tree with depth reduced by 1.
- */
-template<typename ValueType, unsigned long Ratio, typename CollapseFunction>
-auto collapse_once(shared_tree<ValueType, Ratio> tree, CollapseFunction f) -> shared_tree<ValueType, Ratio>
-{
-    if (has_value(tree))
-    {
-        throw std::invalid_argument("bsp::collapse_once (cannot collapse a leaf node)");
-    }
-    if (any(map(*children(tree).ptr, [] (const auto& child) { return has_value(child); })))
-    {
-        return just<Ratio>(collapse_all(tree, f));
-    }
-    return { shared_trees(map(*children(tree).ptr, [f] (const auto& child) { return collapse_once(child, f); })) };
 }
 
 
