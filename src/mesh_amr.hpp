@@ -249,18 +249,18 @@ auto get_or_create_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, m
 
 
 //=============================================================================
-template<typename ArrayType>
-auto extend_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, mesh::block_index_t<2> block)
+template<typename AtFunction>
+auto extend_block(AtFunction at, mesh::block_index_t<2> block)
 {
-    auto c11 = get_or_create_block(tree, block);
-    auto c00 = get_or_create_block(tree, prev_on(prev_on(block, 0), 1));
-    auto c02 = get_or_create_block(tree, prev_on(next_on(block, 0), 1));
-    auto c20 = get_or_create_block(tree, next_on(prev_on(block, 0), 1));
-    auto c22 = get_or_create_block(tree, next_on(next_on(block, 0), 1));
-    auto c01 = get_or_create_block(tree, prev_on(block, 0));
-    auto c21 = get_or_create_block(tree, next_on(block, 0));
-    auto c10 = get_or_create_block(tree, prev_on(block, 1));
-    auto c12 = get_or_create_block(tree, next_on(block, 1));
+    auto c11 = at(block);
+    auto c00 = at(prev_on(prev_on(block, 0), 1));
+    auto c02 = at(prev_on(next_on(block, 0), 1));
+    auto c20 = at(next_on(prev_on(block, 0), 1));
+    auto c22 = at(next_on(next_on(block, 0), 1));
+    auto c01 = at(prev_on(block, 0));
+    auto c21 = at(next_on(block, 0));
+    auto c10 = at(prev_on(block, 1));
+    auto c12 = at(next_on(block, 1));
 
     return mpr::zip(c00, c01, c02, c10, c11, c12, c20, c21, c22)
     | mpr::mapv([] (auto c00, auto c01, auto c02, auto c10, auto c11, auto c12, auto c20, auto c21, auto c22)

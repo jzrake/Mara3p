@@ -26,19 +26,16 @@
 
 
 
-#include "core_unit_test.hpp"
-#include "core_util.hpp"
-#include "mara.hpp"
-#include "mesh_amr.hpp"
-#include "module_euler.hpp"
 #include "app_config.hpp"
 #include "app_control.hpp"
 #include "app_filesystem.hpp"
-#include "app_problem.hpp"
 #include "app_hdf5.hpp"
-#include "app_hdf5_config.hpp"
-#include "app_hdf5_std_map.hpp"
-#include "app_hdf5_std_variant.hpp"
+#include "app_problem.hpp"
+#include "core_unit_test.hpp"
+#include "mara.hpp"
+#include "mesh_amr.hpp"
+#include "module_euler.hpp"
+#include "parallel_mpi.hpp"
 
 
 
@@ -50,7 +47,7 @@
  * [x] proper side effects
  * [x] write ensure_valid_quadtree function
  * [x] refactor problem / module / scheme code to reduce boilerplate
- * [ ] improve FMR scaling (cache computed blocks maybe)
+ * [x] improve FMR scaling (cache computed blocks maybe)
  * [ ] check breaking of conservation laws at refinement boundaries
  * [ ] write the flux correction
  * 
@@ -102,7 +99,7 @@ static auto create_mesh_topology(const mara::config_t& cfg)
         {
             auto p = geom.block_centroid(block);
             auto r = sqrt(sum(p * p));
-            return r < dimensional::unit_length(0.75) / double(block.level);
+            return r < dimensional::unit_length(1.0) / double(block.level);
         }, depth));
     }
     throw std::runtime_error("create_mesh (invalid mesh type " + mesh_type + ")");
@@ -179,6 +176,8 @@ static void run_euler2d(int argc, const char* argv[])
     auto kz               = total_cells(mesh, geom) / 1e3;
     auto vm               = dimensional::unit_velocity(5.0);
 
+    mara::pretty_print(std::cout, "config", cfg);
+
     while (solution.time < tfinal)
     {
         problem.side_effects(cfg, schedule, solution);
@@ -232,6 +231,7 @@ int main(int argc, const char* argv[])
         return 0;
     }
 
+    auto mpi_session = mpi::Session();
     auto command = std::string(argv[1]);
 
     if (false) {}

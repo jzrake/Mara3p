@@ -81,3 +81,33 @@ auto invoke_memoized(Function function, Args... args)
     }
     return cache[key] = std::apply(function, key);
 }
+
+
+
+
+/**
+ * @brief      Return a memoized version of a single-argument function object.
+ *             The returned function is only safe if invoked by a single thread
+ *             at a time.
+ *
+ * @param[in]  function  The function to memoize.
+ *
+ * @tparam     ArgType   The function argument type
+ * @tparam     Function  The function type
+ *
+ * @return     A memoized function object
+ */
+template<typename ArgType, typename Function>
+auto memoize_not_thread_safe(Function function)
+{
+    using result_type = std::invoke_result_t<Function, ArgType>;
+
+    return [function, cache = std::make_shared<std::map<ArgType, result_type>>()] (const ArgType& arg)
+    {
+        if (cache->count(arg))
+        {
+            return cache->at(arg);
+        }
+        return cache->emplace(arg, std::invoke(function, arg)).first->second;
+    };
+}

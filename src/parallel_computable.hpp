@@ -522,26 +522,6 @@ std::vector<node_set_t> topological_sort(const node_set_t& nodes);
 
 
 
-/**
- * @brief      Assign an execution group to a list of nodes. These nodes and
- *             their corresponding generation number must be the result of a
- *             call to topological_sort.
- *
- * @param[in]  nodes       The list of nodes (topologically sorted)
- * @param      generation  The list of node generations
- * @param[in]  num_groups  The number of execution groups
- *
- * @return     A list of execution group indexes corresponding to the list of
- *             nodes
- *
- * @note       The algorithm tries to maximize concurrency by assigning each
- *             execution group an equal number of tasks from each generation.
- */
-// std::vector<unsigned> divvy_tasks(const std::vector<computable_node_t*>& nodes, std::vector<unsigned>& generation, unsigned num_groups);
-
-
-
-
 //=============================================================================
 void print_graph(std::ostream& stream, const node_set_t& node_list);
 
