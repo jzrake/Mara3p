@@ -420,6 +420,7 @@ auto branch_all(shared_tree<ValueType, Ratio> tree, BranchType branch_function)
  *                               numeric::array_t<ValueType, Ratio> -> ValueType
  *
  * @tparam     ValueType         The tree value type
+ * @tparam     ChildrenType      The tree provider type
  * @tparam     Ratio             The tree ratio
  * @tparam     CollapseFunction  The type of the collapse function
  *
@@ -428,8 +429,8 @@ auto branch_all(shared_tree<ValueType, Ratio> tree, BranchType branch_function)
  * @note       This function differs from reduce in that the function maps an
  *             array of values to a value.
  */
-template<typename ValueType, unsigned long Ratio, typename CollapseFunction>
-auto collapse(shared_tree<ValueType, Ratio> tree, CollapseFunction f) -> ValueType
+template<typename ValueType, typename ChildrenType, unsigned long Ratio, typename CollapseFunction>
+auto collapse(tree_t<ValueType, ChildrenType, Ratio> tree, CollapseFunction f) -> ValueType
 {
     static_assert(std::is_same_v<std::invoke_result_t<CollapseFunction, numeric::array_t<ValueType, Ratio>>, ValueType>,
        "the collapse function must be numeric::array_t<ValueType, Ratio> -> ValueType");
@@ -438,9 +439,16 @@ auto collapse(shared_tree<ValueType, Ratio> tree, CollapseFunction f) -> ValueTy
     {
         throw std::invalid_argument("bsp::collapse_all (cannot collapse a leaf node)");
     }
-    return f(map(*children(tree).ptr, [f] (const auto& child)
+    return f(map(numeric::range<Ratio>(), [tree, f] (auto i)
     {
-        return has_value(child) ? value(child) : collapse(child, f);
+        if (auto child = child_at(tree, i); has_value(child))
+        {
+            return value(child);
+        }
+        else
+        {
+            return collapse(child, f);
+        }
     }));
 }
 
