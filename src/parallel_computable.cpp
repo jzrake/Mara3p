@@ -127,6 +127,32 @@ std::vector<node_set_t> mpr::topological_sort(const node_set_t& nodes)
 
 
 //=============================================================================
+static int closest_upstream_group(computable_node_t* node, const node_map_t& delegations)
+{
+    auto group_count = std::map<int, unsigned>();
+
+    for (auto i : node->incoming_nodes())
+    {
+        group_count[delegations.at(i)] += 1;
+    }
+
+    auto max_count = 0;
+    auto max_group = 0;
+
+    for (auto [group, count] : group_count)
+    {
+        if (count > max_count)
+        {
+            max_group = group;
+        }
+    }
+    return max_group;
+}
+
+
+
+
+//=============================================================================
 static node_map_t delegate_tasks(const std::vector<node_set_t>& generations)
 {
     auto delegations = node_map_t();
@@ -134,11 +160,23 @@ static node_map_t delegate_tasks(const std::vector<node_set_t>& generations)
 
     for (const auto& generation : generations)
     {
-        auto j = unsigned(0);
+        // Treat this generation as having a fixed number of tasks per block.
 
-        for (auto node : generation)
+        if (generation.size() % generations.front().size() == 0)
         {
-            delegations.emplace(node, j++ * num_groups / generation.size());
+            auto j = unsigned(0);
+
+            for (auto node : generation)
+            {
+                delegations.emplace(node, j++ * num_groups / generation.size());
+            }
+        }
+        else // Delegate this generation based on proximity to upstream tasks.
+        {
+            for (auto node : generation)
+            {
+                delegations.emplace(node, closest_upstream_group(node, delegations));
+            }
         }
     }
     return delegations;
@@ -152,7 +190,6 @@ void mpr::print_graph(std::ostream& stream, const node_set_t& node_set)
 {
     auto generations = topological_sort(node_set);
     auto delegations = delegate_tasks(generations);
-
     stream << "digraph {\n";
     stream << "    ranksep=2;\n";
 
