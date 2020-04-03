@@ -151,10 +151,10 @@ solution_t euler2d::updated_solution(
 
     auto mesh  = indexes(solution.conserved);
     auto uc    = solution.conserved;
-    auto pc    = uc   | bsp::maps(mpr::map([g=gamma_law_index] (auto u) { return recover_primitive_array(u, g); }));
-    auto pc_at = memoize_not_thread_safe<mesh::block_index_t<2>>([pc] (auto block) { return amr::get_or_create_block(pc, block); });
+    auto pc    = uc   | bsp::maps(mpr::map([g=gamma_law_index] (auto u) { return recover_primitive_array(u, g); }, "P"));
+    auto pc_at = memoize_not_thread_safe<mesh::block_index_t<2>>([pc] (auto block) { return amr::get_or_create_block(pc, block).name("Pc-g"); });
     auto pe    = mesh | bsp::maps([pc, pc_at] (auto b) { return amr::extend_block(pc_at, b).name("Pe"); });
-    auto u1    = mesh | bsp::maps([uc, pe, U] (auto b) { return zip(value_at(uc, b), value_at(pe, b)) | mpr::mapv(U(b)); });
+    auto u1    = mesh | bsp::maps([uc, pe, U] (auto b) { return zip(value_at(uc, b), value_at(pe, b)) | mpr::mapv(U(b), "U"); });
 
     return solution_t{solution.iteration + 1, solution.time + dt, u1};
 }

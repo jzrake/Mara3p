@@ -209,7 +209,7 @@ auto get_or_create_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, m
 
     if (contains(tree, block))
     {
-        return value_at(tree, block);
+        return value_at(tree, block) | mpr::map([] (auto v) { return v; });
     }
 
     // If the tree has a value at the node above the target block, then
@@ -329,7 +329,7 @@ auto weighted_sum_tree(
         return mpr::zip(s, t) | mpr::mapv([b] (auto s, auto t)
         {
             return nd::to_shared(s * b + t * (1.0 - b));
-        });
+        }, "RK");
     });
 }
 
