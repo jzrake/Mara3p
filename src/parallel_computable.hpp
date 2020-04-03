@@ -441,8 +441,24 @@ using computable = computable_t<T>;
 
 
 //=============================================================================
+template<typename... ValueType>
+struct zipped_computable_t
+{
+    std::tuple<computable<ValueType>...> tuple;
+};
+
+
+
+
+//=============================================================================
 template<typename ValueType, typename Function>
 auto operator|(computable<ValueType> c, Function f)
+{
+    return f(c);
+}
+
+template<typename... ValueType, typename Function>
+auto operator|(zipped_computable_t<ValueType...> c, Function f)
 {
     return f(c);
 }
@@ -463,27 +479,40 @@ auto from(Function f)
 template<typename... ValueType>
 auto zip(computable<ValueType>... c)
 {
-    using value_type = std::tuple<ValueType...>;
-    return computable<value_type>([c...] () { return std::tuple(c.value()...); }, {c.node()...}).immediate(true);
+    return zipped_computable_t<ValueType...>{std::tuple(c...)};
 }
 
 template<typename ValueType, typename Function>
 auto map(computable<ValueType> c, Function f, const char* name="")
 {
     using value_type = std::invoke_result_t<Function, ValueType>;
-    return computable<value_type>([c, f] () { return f(c.value()); }, {c.node()}).name(name);
+    return computable<value_type>([c, f] () { return std::invoke(f, c.value()); }, {c.node()}).name(name);
+}
+
+template<typename... ValueType, typename Function>
+auto map(zipped_computable_t<ValueType...> c, Function f, const char* name="")
+{
+    using value_type = std::invoke_result_t<Function, std::tuple<ValueType...>>;
+
+    return std::apply([name, f] (auto... t)
+    {
+        return computable<value_type>([f, t...] ()
+        {
+            return std::invoke(f, std::tuple(t.value()...));
+        }, {t.node()...}).name(name);
+    }, c.tuple);
 }
 
 template<typename Function>
 auto map(Function f, const char* name="")
 {
-    return [f, name] (auto c) { return map(c, f, name); };
+    return [f, name] (auto c) { return map(c, f).name(name); };
 }
 
 template<typename Function>
 auto mapv(Function f, const char* name="")
 {
-    return [f, name] (auto c) { return map(c, [f] (auto t) { return std::apply(f, t); }, name); };
+    return [f, name] (auto c) { return map(c, [f] (auto t) { return std::apply(f, t); }).name(name); };
 }
 
 
@@ -597,7 +626,6 @@ struct execution_strategy_t
 
 
 
-
 /**
  * @brief      Factory functions for common execution strategies
  *
@@ -612,12 +640,12 @@ inline execution_strategy_t multi_threaded_execution(unsigned num_threads)
 
 inline execution_strategy_t mpi_single_threaded_execution()
 {
-    return {true, true, true, 1};
+    return {true, false, false, 1};
 }
 
 inline execution_strategy_t mpi_multi_threaded_execution(unsigned num_threads)
 {
-    return {true, true, true, num_threads};
+    return {true, false, false, num_threads};
 }
 
 
@@ -630,7 +658,6 @@ inline execution_strategy_t mpi_multi_threaded_execution(unsigned num_threads)
  * @param[in]  strategy  The strategy
  */
 void compute(const node_set_t& node_set, execution_strategy_t strategy);
-
 
 
 
@@ -677,7 +704,6 @@ void compute(computable<ValueType>... cs)
 {
     compute({cs.node()...}, multi_threaded_execution(0));
 }
-
 
 
 

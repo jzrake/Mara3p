@@ -40,7 +40,7 @@ struct serial::is_serializable_t<std::string> : std::true_type {};
 //=============================================================================
 auto concat(mpr::computable<std::string> a, mpr::computable<std::string> b)
 {
-    return zip(a, b).name("zip") | mpr::mapv([] (auto a, auto b)
+    return zip(a, b) | mpr::mapv([] (auto a, auto b)
     {
         std::this_thread::sleep_for(OPERATION_DELAY);
         return a + b;

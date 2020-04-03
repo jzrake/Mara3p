@@ -211,7 +211,11 @@ static void run_euler2d(int argc, const char* argv[])
         auto start = std::chrono::high_resolution_clock::now();
         mpr::compute_all(solution.conserved, strategy);
         auto ticks = std::chrono::high_resolution_clock::now() - start;
-        std::printf("[%06ld] t=%.4lf kzps=%.2lf\n", long(solution.iteration), solution.time.value, kz / (ticks.count() * 1e-9));
+
+        if (mpi::comm_world().rank() == 0)
+        {
+            std::printf("[%06ld] t=%.4lf kzps=%.2lf\n", long(solution.iteration), solution.time.value, kz / (ticks.count() * 1e-9));
+        }
     }
     problem.side_effects(cfg, schedule, solution);
 }
