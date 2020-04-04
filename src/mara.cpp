@@ -98,7 +98,7 @@ static auto create_mesh_topology(const mara::config_t& cfg)
     }
     if (mesh_type == "nested")
     {
-        return amr::valid_quadtree(bsp::quadtree([geom] (auto block)
+        return amr::valid_mesh_tree(bsp::quadtree([geom] (auto block)
         {
             auto p = geom.block_centroid(block);
             auto r = sqrt(sum(p * p));

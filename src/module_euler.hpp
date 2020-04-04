@@ -45,13 +45,95 @@
 namespace modules
 {
 
-namespace euler2d
+
+
+
+//=============================================================================
+namespace euler1d
 {
+
+using namespace dimensional;
+using coords_t            = mesh::cartesian_1d::coords_t;
+using mesh_geometry_t     = mesh::cartesian_1d::geometry_t;
+using mesh_topology_t     = bsp::shared_tree<mesh::block_index_t<1>, 2>;
+using conserved_array_t   = nd::shared_array<euler::conserved_density_t, 1>;
+using primitive_array_t   = nd::shared_array<euler::primitive_t, 1>;
+using conserved_tree_t    = bsp::shared_tree<mpr::computable<conserved_array_t>, 2>;
+using primitive_tree_t    = bsp::shared_tree<mpr::computable<primitive_array_t>, 2>;
+using primitive_mapping_t = std::function<euler::primitive_t(coords_t)>;
 
 
 
 
 //=============================================================================
+struct solution_t
+{
+    rational::number_t iteration;
+    unit_time          time;
+    conserved_tree_t   conserved;
+};
+
+
+
+
+//=============================================================================
+conserved_array_t initial_conserved_array(
+    mesh_geometry_t mesh_geometry,
+    mesh::block_index_t<1> block,
+    primitive_mapping_t initial,
+    double gamma_law_index);
+
+conserved_tree_t initial_conserved_tree(
+    mesh_topology_t mesh_topology,
+    mesh_geometry_t mesh_geometry,
+    primitive_mapping_t initial,
+    double gamma_law_index);
+
+primitive_array_t recover_primitive_array(
+    conserved_array_t uc,
+    double gamma_law_index);
+
+primitive_array_t estimate_gradient(
+    primitive_array_t pc,
+    unsigned long axis,
+    double plm_theta);
+
+conserved_array_t updated_conserved(
+    conserved_array_t uc,
+    primitive_array_t pe,
+    unit_time time,
+    unit_time dt,
+    mesh_geometry_t mesh_geometry,
+    mesh::block_index_t<1> block,
+    double plm_theta,
+    double gamma_law_index);
+
+solution_t updated_solution(
+    solution_t solution,
+    unit_time dt,
+    mesh_geometry_t mesh_geometry,
+    double plm_theta,
+    double gamma_law_index);
+
+unit_length smallest_cell_size(
+    mesh_topology_t mesh_topology,
+    mesh_geometry_t mesh_geometry);
+
+std::size_t total_cells(
+    mesh_topology_t mesh_topology,
+    mesh_geometry_t mesh_geometry);
+
+solution_t weighted_sum(solution_t s, solution_t t, rational::number_t b);
+
+} // namespace euler2d
+
+
+
+
+//=============================================================================
+namespace euler2d
+{
+
 using namespace dimensional;
 using coords_t            = mesh::cartesian_2d::coords_t;
 using mesh_geometry_t     = mesh::cartesian_2d::geometry_t;
@@ -124,8 +206,6 @@ std::size_t total_cells(
     mesh_geometry_t mesh_geometry);
 
 solution_t weighted_sum(solution_t s, solution_t t, rational::number_t b);
-
-
 
 } // namespace euler2d
 

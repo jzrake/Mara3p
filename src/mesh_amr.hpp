@@ -48,6 +48,27 @@ namespace amr
 struct tile_blocks
 {
     template<typename P>
+    auto operator()(nd::array_t<P, 1> blocks) const
+    {
+        static_assert(nd::is_array<std::invoke_result_t<P, nd::uivec_t<1>>>::value,
+            "must be a 1d array of 1d arrays");
+
+        for (auto block : blocks)
+            if (shape(block) != shape(front(blocks)))
+                throw std::invalid_argument("mesh::tile_blocks (supplied blocks have non-uniform shapes)");
+
+        auto bi = shape(blocks, 0);
+        auto ni = shape(front(blocks), 0);
+
+        return nd::make_array(nd::indexing([ni, blocks] (auto i)
+        {
+            auto b = nd::uivec(i / ni);
+            auto c = nd::uivec(i % ni);
+            return blocks(b)(c);
+        }), nd::uivec(bi * ni));
+    }
+
+    template<typename P>
     auto operator()(nd::array_t<P, 2> blocks) const
     {
         static_assert(nd::is_array<std::invoke_result_t<P, nd::uivec_t<2>>>::value,
@@ -78,6 +99,24 @@ struct tile_blocks
 struct downsample
 {
     template<typename P>
+    auto operator()(nd::array_t<P, 1> a) const
+    {
+        auto [ni] = as_tuple(shape(a));
+
+        if (ni % 2 != 0)
+        {
+            throw std::invalid_argument("amr::downsample (array size must be even on all axes)");
+        }
+
+        return nd::make_array(nd::indexing([a] (auto i)
+        {
+            return 0.5 * (
+                a(i * 2 + 0) +
+                a(i * 2 + 1));
+        }), nd::uivec(ni / 2));
+    }
+
+    template<typename P>
     auto operator()(nd::array_t<P, 2> a) const
     {
         auto [ni, nj] = as_tuple(shape(a));
@@ -105,6 +144,17 @@ struct downsample
 struct upsample
 {
     template<typename P>
+    auto operator()(nd::array_t<P, 1> a)
+    {
+        auto [ni] = as_tuple(shape(a));
+
+        return nd::make_array(nd::indexing([a] (auto i)
+        {
+            return a(i / 2);
+        }), nd::uivec(ni * 2));
+    }
+
+    template<typename P>
     auto operator()(nd::array_t<P, 2> a)
     {
         auto [ni, nj] = as_tuple(shape(a));
@@ -122,6 +172,17 @@ struct upsample
 //=============================================================================
 struct coarsen_blocks
 {
+    template<typename P>
+    auto operator()(nd::array_t<P, 1> v0, nd::array_t<P, 1> v1) const
+    {
+        return nd::make_array(nd::indexing([=] (auto i)
+        {
+            if (i == 0) return v0;
+            if (i == 1) return v1;
+            throw std::invalid_argument("amr::coarsen_blocks");
+        }), nd::uivec(2)) | tile_blocks() | downsample() | nd::to_shared();
+    }
+
     template<typename P>
     auto operator()(nd::array_t<P, 2> v00, nd::array_t<P, 2> v10, nd::array_t<P, 2> v01, nd::array_t<P, 2> v11) const
     {
@@ -143,6 +204,27 @@ struct coarsen_blocks
 struct split_block
 {
     split_block(unsigned which) : which(which) {}
+
+    template<typename P>
+    auto operator()(nd::array_t<P, 1> block) const
+    {
+        auto A = [block] (nd::uint a)
+        {
+            return nd::indexing([block, a] (nd::uint i)
+            {
+                return block(a + i);
+            });
+        };
+
+        auto [ni] = as_tuple(shape(block));
+
+        switch (which)
+        {
+            case 0: return nd::make_array(A(     0), nd::uivec(ni / 2));
+            case 1: return nd::make_array(A(ni / 2), nd::uivec(ni / 2));
+        }
+        throw std::invalid_argument("amr::split_block");
+    }
 
     template<typename P>
     auto operator()(nd::array_t<P, 2> block) const
@@ -177,13 +259,26 @@ struct refine_block
 {
     refine_block(unsigned which) : which(which) {}
 
-    template<typename ValueType>
-    auto operator()(nd::shared_array<ValueType, 2> v) const
+    template<typename ValueType, unsigned long Rank>
+    auto operator()(nd::shared_array<ValueType, Rank> v) const
     {
         return v | upsample() | split_block(which) | nd::to_shared();
     }
     unsigned which = 0;
 };
+
+
+
+
+//=============================================================================
+template<typename ValueType>
+auto collapse(bsp::shared_tree<mpr::computable<nd::shared_array<ValueType, 1>>, 2> tree)
+{
+    return bsp::collapse(tree, [] (auto blocks)
+    {
+        return mpr::zip(blocks[0], blocks[1]) | mpr::mapv(coarsen_blocks());
+    });
+}
 
 
 
@@ -202,8 +297,8 @@ auto collapse(bsp::shared_tree<mpr::computable<nd::shared_array<ValueType, 2>>, 
 
 
 //=============================================================================
-template<typename ArrayType>
-auto get_or_create_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, mesh::block_index_t<2> block)
+template<typename ArrayType, unsigned long Ratio>
+auto get_or_create_block(bsp::shared_tree<mpr::computable<ArrayType>, Ratio> tree, mesh::block_index_t<bsp::log2<Ratio>::value> block)
 {
     // If the tree has a value at the target block, then return that value.
 
@@ -231,6 +326,32 @@ auto get_or_create_block(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, m
 
     throw std::logic_error("amr::get_or_create_block (invalid mesh topology)");
 };
+
+
+
+
+//=============================================================================
+template<typename AtFunction>
+auto extend_block(AtFunction at, mesh::block_index_t<1> block)
+{
+    auto c0 = at(prev_on(block, 0));
+    auto c1 = at(block);
+    auto c2 = at(next_on(block, 0));
+
+    return mpr::zip(c0, c1, c2)
+    | mpr::mapv([] (auto c0, auto c1, auto c2)
+    {
+        auto nx = shape(c1, 0);
+        auto cs = std::array{c0, c1, c2};
+
+        return nd::make_array(nd::indexing([cs, nx] (auto i)
+        {
+            auto bi = i < 2 ? 0 : (i >= nx + 2 ? 2 : 1);
+            auto ii = i < 2 ? i - 2 + nx : (i >= nx + 2 ? i - 2 - nx : i - 2);
+            return cs[bi](ii);
+        }), nd::uivec(nx + 4)) | nd::to_shared();
+    });
+}
 
 
 
@@ -278,39 +399,51 @@ auto extend_block(AtFunction at, mesh::block_index_t<2> block)
  * @brief      Determine whether each an index in a tree has any over-refined
  *             neighbors. A node adjacent to a leaf node L is over-refined if
  *             its maximum depth is more than one greater than the depth of L.
+ *
+ * @param[in]  tree  The tree to check
+ *
+ * @return     True or false
  */
-struct has_over_refined_neighbors
+inline auto has_over_refined_neighbors(bsp::shared_tree<mesh::block_index_t<1>, 2> tree)
 {
-    has_over_refined_neighbors(bsp::shared_tree<mesh::block_index_t<2>, 4> tree) : tree(tree) {}
+    return [tree] (mesh::block_index_t<1> block)
+    {
+        return
+        (contains_node(tree, next_on(block, 0)) && depth(node_at(tree, next_on(block, 0))) > 1) ||
+        (contains_node(tree, prev_on(block, 0)) && depth(node_at(tree, prev_on(block, 0))) > 1);
+    };
+}
 
-    bool operator()(mesh::block_index_t<2> block) const
+inline auto has_over_refined_neighbors(bsp::shared_tree<mesh::block_index_t<2>, 4> tree)
+{
+    return [tree] (mesh::block_index_t<2> block)
     {
         return
         (contains_node(tree, next_on(block, 0)) && depth(node_at(tree, next_on(block, 0))) > 1) ||
         (contains_node(tree, prev_on(block, 0)) && depth(node_at(tree, prev_on(block, 0))) > 1) ||
         (contains_node(tree, next_on(block, 1)) && depth(node_at(tree, next_on(block, 1))) > 1) ||
-        (contains_node(tree, prev_on(block, 1)) && depth(node_at(tree, prev_on(block, 1))) > 1);        
-    }
-    bsp::shared_tree<mesh::block_index_t<2>, 4> tree;
-};
+        (contains_node(tree, prev_on(block, 1)) && depth(node_at(tree, prev_on(block, 1))) > 1);
+    };
+}
 
 
 
 
 /**
- * @brief      Return a vertex tree guaranteed not to have any over-refined
- *             neighbors. This is accomplished only by adding vertex blocks
- *             where necessary (not removing them).
+ * @brief      Return a mesh tree (binary, quad, or oct) guaranteed not to have
+ *             any over-refined neighbors. This is accomplished only by
+ *             repeatedly branching nodes that have over-refined neighbors.
  *
  * @param[in]  tree  The tree of vertex blocks.
  *
  * @return     A tree without any over-refined neighbors
  */
-inline auto valid_quadtree(bsp::shared_tree<mesh::block_index_t<2>, 4> tree)
+template<unsigned long Ratio>
+inline auto valid_mesh_tree(bsp::shared_tree<mesh::block_index_t<bsp::log2<Ratio>::value>, Ratio> tree)
 {
     while (reduce(bsp::map(indexes(tree), has_over_refined_neighbors(tree)), std::logical_or<>(), false))
     {
-        tree = bsp::branch_if(tree, mesh::child_indexes<2>, has_over_refined_neighbors(tree));
+        tree = bsp::branch_if(tree, mesh::child_indexes<bsp::log2<Ratio>::value>, has_over_refined_neighbors(tree));
     }
     return tree;
 }
@@ -319,7 +452,7 @@ inline auto valid_quadtree(bsp::shared_tree<mesh::block_index_t<2>, 4> tree)
 
 
 //=============================================================================
-template<typename ValueType, std::size_t Ratio>
+template<typename ValueType, unsigned long Ratio>
 auto weighted_sum_tree(
     bsp::shared_tree<mpr::computable<ValueType>, Ratio> s,
     bsp::shared_tree<mpr::computable<ValueType>, Ratio> t, double b)

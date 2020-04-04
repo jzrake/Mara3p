@@ -38,13 +38,184 @@
 
 using namespace std::placeholders;
 using namespace modules;
-using namespace euler2d;
 
 
 
 
 //=============================================================================
-conserved_array_t euler2d::initial_conserved_array(
+euler1d::conserved_array_t euler1d::initial_conserved_array(
+    mesh_geometry_t mesh_geometry,
+    mesh::block_index_t<1> block,
+    primitive_mapping_t initial,
+    double gamma_law_index)
+{
+    return mesh_geometry.cell_coordinates(block)
+    | nd::map(initial)
+    | nd::map(std::bind(euler::conserved_density, _1, gamma_law_index))
+    | nd::to_shared();
+}
+
+
+
+
+//=============================================================================
+euler1d::conserved_tree_t euler1d::initial_conserved_tree(
+    mesh_topology_t mesh_topology,
+    mesh_geometry_t mesh_geometry,
+    primitive_mapping_t initial,
+    double gamma_law_index)
+{
+    auto u0 = std::bind(initial_conserved_array, mesh_geometry, _1, initial, gamma_law_index);
+    auto uc = [u0] (auto block) { return mpr::from(std::bind(u0, block)).name("U"); };
+    return mesh_topology | bsp::maps(uc);
+}
+
+
+
+
+//=============================================================================
+euler1d::primitive_array_t euler1d::recover_primitive_array(conserved_array_t uc, double gamma_law_index)
+{
+    return uc
+    | nd::map(std::bind(euler::recover_primitive, _1, gamma_law_index))
+    | nd::to_shared();
+}
+
+
+
+
+//=============================================================================
+euler1d::primitive_array_t euler1d::estimate_gradient(primitive_array_t pc, unsigned long axis, double plm_theta)
+{
+    return pc
+    | nd::adjacent_zip3(axis)
+    | nd::map(mara::plm_gradient(plm_theta))
+    | nd::to_shared();
+}
+
+
+
+
+//=============================================================================
+euler1d::conserved_array_t euler1d::updated_conserved(
+    conserved_array_t uc,
+    primitive_array_t pe,
+    unit_time time,
+    unit_time dt,
+    mesh_geometry_t mesh_geometry,
+    mesh::block_index_t<1> block,
+    double plm_theta,
+    double gamma_law_index)
+{
+    auto dl = mesh_geometry.cell_spacing(block);
+    auto gx = estimate_gradient(pe, 0, plm_theta);
+    auto pc = pe | nd::select(0, 2, -2) | nd::to_shared();
+
+    auto pe_x = pe | nd::select(1, 2, -2) | nd::select(0, 1, -1);
+    auto gx_x = gx | nd::select(1, 2, -2);
+
+    auto riemann_x = std::bind(euler::riemann_hlle, _1, _2, geometric::unit_vector_on(1), gamma_law_index);
+
+    auto pl_x = (pe_x - 0.5 * gx_x) | nd::select(0, 1);
+    auto pr_x = (pe_x + 0.5 * gx_x) | nd::select(0, 0, -1);
+
+    auto fx = nd::zip(pr_x, pl_x) | nd::mapv(riemann_x);
+    auto dfx = fx | nd::adjacent_diff(0);
+
+    return (uc - dfx * dt / dl) | nd::to_shared();
+}
+
+
+
+
+//=============================================================================
+euler1d::solution_t euler1d::updated_solution(
+    solution_t solution,
+    unit_time dt,
+    mesh_geometry_t mesh_geometry,
+    double plm_theta,
+    double gamma_law_index)
+{
+    auto F = std::bind(updated_conserved, _1, _2, solution.time, dt, mesh_geometry, _3, plm_theta, gamma_law_index);
+    auto U = [F] (auto b) { return std::bind(F, _1, _2, b); };
+
+    auto mesh  = indexes(solution.conserved);
+    auto uc    = solution.conserved;
+    auto pc    = uc   | bsp::maps(mpr::map([g=gamma_law_index] (auto u) { return recover_primitive_array(u, g); }, "P"));
+    auto pc_at = memoize_not_thread_safe<mesh::block_index_t<1>>([pc] (auto block) { return amr::get_or_create_block(pc, block).name("Pc-g"); });
+    auto pe    = mesh | bsp::maps([pc, pc_at] (auto b) { return amr::extend_block(pc_at, b).name("Pe"); });
+    auto u1    = mesh | bsp::maps([uc, pe, U] (auto b) { return zip(value_at(uc, b), value_at(pe, b)) | mpr::mapv(U(b), "U"); });
+
+    return solution_t{solution.iteration + 1, solution.time + dt, u1};
+}
+
+
+
+
+//=============================================================================
+dimensional::unit_length euler1d::smallest_cell_size(
+    mesh_topology_t mesh_topology,
+    mesh_geometry_t mesh_geometry)
+{
+    return reduce(mesh_topology, [mesh_geometry] (auto seed, auto block)
+    {
+        return std::min(seed, mesh_geometry.cell_spacing(block));
+    }, unit_length(std::numeric_limits<double>::max()));
+}
+
+
+
+
+//=============================================================================
+std::size_t euler1d::total_cells(
+    mesh_topology_t mesh_topology,
+    mesh_geometry_t mesh_geometry)
+{
+    return size(mesh_topology) * mesh_geometry.cells_per_block();
+}
+
+
+
+
+//=============================================================================
+euler1d::solution_t euler1d::weighted_sum(solution_t s, solution_t t, rational::number_t b)
+{
+    return {
+        s.iteration  *         b  + t.iteration *       (1 - b),
+        s.time       *  double(b) + t.time      * double(1 - b),
+        amr::weighted_sum_tree(s.conserved, t.conserved, b),
+    };
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//=============================================================================
+euler2d::conserved_array_t euler2d::initial_conserved_array(
     mesh_geometry_t mesh_geometry,
     mesh::block_index_t<2> block,
     primitive_mapping_t initial,
@@ -60,7 +231,7 @@ conserved_array_t euler2d::initial_conserved_array(
 
 
 //=============================================================================
-conserved_tree_t euler2d::initial_conserved_tree(
+euler2d::conserved_tree_t euler2d::initial_conserved_tree(
     mesh_topology_t mesh_topology,
     mesh_geometry_t mesh_geometry,
     primitive_mapping_t initial,
@@ -75,7 +246,7 @@ conserved_tree_t euler2d::initial_conserved_tree(
 
 
 //=============================================================================
-primitive_array_t euler2d::recover_primitive_array(conserved_array_t uc, double gamma_law_index)
+euler2d::primitive_array_t euler2d::recover_primitive_array(conserved_array_t uc, double gamma_law_index)
 {
     return uc
     | nd::map(std::bind(euler::recover_primitive, _1, gamma_law_index))
@@ -86,7 +257,7 @@ primitive_array_t euler2d::recover_primitive_array(conserved_array_t uc, double 
 
 
 //=============================================================================
-primitive_array_t euler2d::estimate_gradient(primitive_array_t pc, unsigned long axis, double plm_theta)
+euler2d::primitive_array_t euler2d::estimate_gradient(primitive_array_t pc, unsigned long axis, double plm_theta)
 {
     return pc
     | nd::adjacent_zip3(axis)
@@ -98,7 +269,7 @@ primitive_array_t euler2d::estimate_gradient(primitive_array_t pc, unsigned long
 
 
 //=============================================================================
-conserved_array_t euler2d::updated_conserved(
+euler2d::conserved_array_t euler2d::updated_conserved(
     conserved_array_t uc,
     primitive_array_t pe,
     unit_time time,
@@ -139,7 +310,7 @@ conserved_array_t euler2d::updated_conserved(
 
 
 //=============================================================================
-solution_t euler2d::updated_solution(
+euler2d::solution_t euler2d::updated_solution(
     solution_t solution,
     unit_time dt,
     mesh_geometry_t mesh_geometry,
@@ -163,7 +334,7 @@ solution_t euler2d::updated_solution(
 
 
 //=============================================================================
-unit_length euler2d::smallest_cell_size(
+dimensional::unit_length euler2d::smallest_cell_size(
     mesh_topology_t mesh_topology,
     mesh_geometry_t mesh_geometry)
 {
@@ -188,7 +359,7 @@ std::size_t euler2d::total_cells(
 
 
 //=============================================================================
-solution_t euler2d::weighted_sum(solution_t s, solution_t t, rational::number_t b)
+euler2d::solution_t euler2d::weighted_sum(solution_t s, solution_t t, rational::number_t b)
 {
     return {
         s.iteration  *         b  + t.iteration *       (1 - b),

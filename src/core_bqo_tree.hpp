@@ -42,10 +42,10 @@ namespace bsp { // bqo := binary tree, quad-tree, oct-tree
 
 
 //=============================================================================
-template<unsigned long Ratio> struct rank_for_ratio_t {};
-template<> struct rank_for_ratio_t<2> { static const unsigned long value = 1; };
-template<> struct rank_for_ratio_t<4> { static const unsigned long value = 2; };
-template<> struct rank_for_ratio_t<8> { static const unsigned long value = 3; };
+template<unsigned long Ratio> struct log2 {};
+template<> struct log2<2> { static const unsigned long value = 1; };
+template<> struct log2<4> { static const unsigned long value = 2; };
+template<> struct log2<8> { static const unsigned long value = 3; };
 
 
 
@@ -64,7 +64,7 @@ template<> struct rank_for_ratio_t<8> { static const unsigned long value = 3; };
  * @return     A tree node that is a child of the given node
  */
 template<typename ValueType, typename ChildrenType, unsigned long Ratio>
-auto child_at(const tree_t<ValueType, ChildrenType, Ratio>& tree, numeric::array_t<bool, rank_for_ratio_t<Ratio>::value> orthant)
+auto child_at(const tree_t<ValueType, ChildrenType, Ratio>& tree, numeric::array_t<bool, log2<Ratio>::value> orthant)
 {
     return child_at(tree, to_integral(orthant));
 }
@@ -86,7 +86,7 @@ auto child_at(const tree_t<ValueType, ChildrenType, Ratio>& tree, numeric::array
  * @return     A tree node that is a descendant of the given node
  */
 template<typename ValueType, typename ChildrenType, unsigned long Ratio>
-auto node_at(const tree_t<ValueType, ChildrenType, Ratio>& tree, mesh::block_index_t<rank_for_ratio_t<Ratio>::value> index)
+auto node_at(const tree_t<ValueType, ChildrenType, Ratio>& tree, mesh::block_index_t<log2<Ratio>::value> index)
 -> tree_t<ValueType, ChildrenType, Ratio>
 {
     return check_root(index) ? tree : node_at(child_at(tree, orthant(index)), advance_level(index));
@@ -108,7 +108,7 @@ auto node_at(const tree_t<ValueType, ChildrenType, Ratio>& tree, mesh::block_ind
  * @return     { description_of_the_return_value }
  */
 template<typename ValueType, typename ChildrenType, unsigned long Ratio>
-auto value_at(const tree_t<ValueType, ChildrenType, Ratio>& tree, mesh::block_index_t<rank_for_ratio_t<Ratio>::value> index)
+auto value_at(const tree_t<ValueType, ChildrenType, Ratio>& tree, mesh::block_index_t<log2<Ratio>::value> index)
 {
     return value(node_at(tree, index));
 }
@@ -130,7 +130,7 @@ auto value_at(const tree_t<ValueType, ChildrenType, Ratio>& tree, mesh::block_in
  * @return     True or false
  */
 template<typename ValueType, typename ChildrenType, unsigned long Ratio>
-bool contains(const tree_t<ValueType, ChildrenType, Ratio>& tree, mesh::block_index_t<rank_for_ratio_t<Ratio>::value> index)
+bool contains(const tree_t<ValueType, ChildrenType, Ratio>& tree, mesh::block_index_t<log2<Ratio>::value> index)
 {
     return has_value(tree) ? check_root(index) : contains(child_at(tree, orthant(index)), advance_level(index));
 }
@@ -152,7 +152,7 @@ bool contains(const tree_t<ValueType, ChildrenType, Ratio>& tree, mesh::block_in
  * @return     True or false
  */
 template<typename ValueType, typename ChildrenType, unsigned long Ratio>
-bool contains_node(const tree_t<ValueType, ChildrenType, Ratio>& tree, mesh::block_index_t<rank_for_ratio_t<Ratio>::value> index)
+bool contains_node(const tree_t<ValueType, ChildrenType, Ratio>& tree, mesh::block_index_t<log2<Ratio>::value> index)
 {
     if (index.level == 0)
     {
@@ -188,7 +188,7 @@ bool contains_node(const tree_t<ValueType, ChildrenType, Ratio>& tree, mesh::blo
  *             into the tree from a file.
  */
 template<typename ValueType, unsigned long Ratio>
-shared_tree<ValueType, Ratio> insert(shared_tree<ValueType, Ratio> tree, mesh::block_index_t<rank_for_ratio_t<Ratio>::value> index, ValueType value)
+shared_tree<ValueType, Ratio> insert(shared_tree<ValueType, Ratio> tree, mesh::block_index_t<log2<Ratio>::value> index, ValueType value)
 {
     if (index.level == 0)
     {
@@ -225,7 +225,7 @@ shared_tree<ValueType, Ratio> insert(shared_tree<ValueType, Ratio> tree, mesh::b
  *
  * @return     A tree of indexes
  */
-template<typename ValueType, typename ChildrenType, unsigned long Ratio, unsigned long Rank=rank_for_ratio_t<Ratio>::value>
+template<typename ValueType, typename ChildrenType, unsigned long Ratio, unsigned long Rank=log2<Ratio>::value>
 auto indexes(const tree_t<ValueType, ChildrenType, Ratio>& tree, mesh::block_index_t<Rank> index_in_parent={})
 {
     using provider_type = shared_children_t<mesh::block_index_t<Rank>, Ratio>;
@@ -277,13 +277,13 @@ auto indexify(const tree_t<ValueType, ChildrenType, Ratio>& tree)
  *
  * @return     An optional to the tree start, as expected by sequence operators
  */
-template<typename ValueType, typename ChildrenType, unsigned long Ratio, unsigned long Rank=rank_for_ratio_t<Ratio>::value>
+template<typename ValueType, typename ChildrenType, unsigned long Ratio, unsigned long Rank=log2<Ratio>::value>
 std::optional<mesh::block_index_t<Rank>> start(tree_t<ValueType, ChildrenType, Ratio> tree, mesh::block_index_t<Rank> current={})
 {
     return has_value(tree) ? current : start(child_at(tree, 0), child_indexes(current).at(0));
 }
 
-template<typename ValueType, typename ChildrenType, unsigned long Ratio, unsigned long Rank=rank_for_ratio_t<Ratio>::value>
+template<typename ValueType, typename ChildrenType, unsigned long Ratio, unsigned long Rank=log2<Ratio>::value>
 std::optional<mesh::block_index_t<Rank>> next(tree_t<ValueType, ChildrenType, Ratio> tree, mesh::block_index_t<Rank> current)
 {
     if (check_root(current))
@@ -320,7 +320,7 @@ std::optional<mesh::block_index_t<Rank>> next(tree_t<ValueType, ChildrenType, Ra
     return current;
 }
 
-template<typename ValueType, typename ChildrenType, unsigned long Ratio, unsigned long Rank=rank_for_ratio_t<Ratio>::value>
+template<typename ValueType, typename ChildrenType, unsigned long Ratio, unsigned long Rank=log2<Ratio>::value>
 auto obtain(tree_t<ValueType, ChildrenType, Ratio> tree, mesh::block_index_t<Rank> index)
 {
     return value(node_at(tree, index));

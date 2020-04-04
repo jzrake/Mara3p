@@ -42,13 +42,45 @@ namespace mesh
 
 
 //=============================================================================
+namespace cartesian_1d
+{
+
+
+using coords_t = dimensional::unit_length;
+
+
+//=============================================================================
+class geometry_t
+{
+public:
+    geometry_t() {}
+    geometry_t(dimensional::unit_length domain_size, int block_size);
+
+    nd::shared_array<coords_t, 1> vert_coordinates(mesh::block_index_t<1> block) const;
+    nd::shared_array<coords_t, 1> face_coordinates(mesh::block_index_t<1> block, unsigned long axis) const;
+    nd::shared_array<coords_t, 1> cell_coordinates(mesh::block_index_t<1> block) const;
+    std::pair<coords_t, coords_t> block_extent(mesh::block_index_t<1> block) const;
+    coords_t block_centroid(mesh::block_index_t<1> block) const;
+    dimensional::unit_length cell_spacing(mesh::block_index_t<1> block) const;
+    std::size_t cells_per_block() const;
+    std::tuple<dimensional::unit_length, int> as_tuple() const;
+
+private:
+    dimensional::unit_length domain_size = 1.0;
+    int block_size = 64;
+};
+
+} // cartesian_1d
+
+
+
+
+//=============================================================================
 namespace cartesian_2d
 {
 
 
 using coords_t = numeric::array_t<dimensional::unit_length, 2>;
-
-
 
 
 //=============================================================================
