@@ -59,7 +59,7 @@ void mara::problem_base_t::side_effects(const mara::config_t& cfg, schedule_t& s
                 h5::write(h5f, "git_commit", std::string(MARA_GIT_COMMIT));
                 h5::write(h5f, "run_config", cfg);
                 h5::write(h5f, "schedule", schedule);
-                h5::write(h5f, "module", std::string("euler2d"));
+                h5::write(h5f, "module", get_module_name());
                 std::printf("write %s\n", fname.data());
             }
             write_solution(fname, solution);

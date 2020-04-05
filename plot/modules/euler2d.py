@@ -142,7 +142,7 @@ def conserved(filename, field):
 
 
 
-def formatted_orbit(filename):
+def formatted_time(filename):
     if len(filename) == 1:
         h5f = h5py.File(filename[0], 'r')
         return r'$t = {:.01f}$'.format(h5f['solution']['time'][()])
@@ -175,7 +175,7 @@ def plot(fig, filename, args):
     R = 0.5
     ax1 = fig.add_subplot(1, 1, 1)
     ax1.imshow(color.T, cmap=args.cmap, vmin=vmin, vmax=vmax, origin='bottom', extent=[-R, R, -R, R])
-    ax1.text(0.02, 0.02, formatted_orbit(filename), transform=ax1.transAxes, color='white')
+    ax1.text(0.02, 0.02, formatted_time(filename), transform=ax1.transAxes, color='white')
 
     for x0, y0, x1, y1 in read_block_edges(filename[0]):
         ax1.plot([x0, x1], [y0, y1], lw=0.5, c='k')

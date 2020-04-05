@@ -133,7 +133,7 @@ static auto initial_solution(const mara::config_t& cfg)
         return result;
     }
     auto sd = make_solver_data(cfg);
-    auto mesh = bsp::uniform_quadtree(sd.depth);
+    auto mesh = bsp::uniform_mesh_tree<2>(sd.depth);
 
     return solution_t{
         0,

@@ -26,12 +26,14 @@
 
 
 
+#include "app_serial_ndarray.hpp"
+#include "app_serial_numeric_tuple.hpp"
+#include "app_serial_std_tuple.hpp"
 #include "core_memoize.hpp"
 #include "core_ndarray_ops.hpp"
 #include "module_euler.hpp"
 #include "mesh_amr.hpp"
 #include "scheme_plm_gradient.hpp"
-
 
 
 
@@ -111,8 +113,8 @@ euler1d::conserved_array_t euler1d::updated_conserved(
     auto gx = estimate_gradient(pe, 0, plm_theta);
     auto pc = pe | nd::select(0, 2, -2) | nd::to_shared();
 
-    auto pe_x = pe | nd::select(1, 2, -2) | nd::select(0, 1, -1);
-    auto gx_x = gx | nd::select(1, 2, -2);
+    auto pe_x = pe | nd::select(0, 1, -1);
+    auto gx_x = gx;
 
     auto riemann_x = std::bind(euler::riemann_hlle, _1, _2, geometric::unit_vector_on(1), gamma_law_index);
 

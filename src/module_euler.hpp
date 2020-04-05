@@ -27,10 +27,6 @@
 
 
 #pragma once
-#include "app_serial_ndarray.hpp"
-#include "app_serial_numeric_tuple.hpp"
-#include "app_serial_std_tuple.hpp"
-
 #include "core_bqo_tree.hpp"
 #include "core_bsp_tree.hpp"
 #include "core_ndarray.hpp"
@@ -219,9 +215,13 @@ namespace h5 {
 
 class Group;
 
+void read(const Group& group, std::string name, modules::euler1d::conserved_tree_t& conserved);
+void read(const Group& group, std::string name, modules::euler1d::solution_t& solution);
+void write(const Group& group, std::string name, const modules::euler1d::conserved_tree_t& conserved);
+void write(const Group& group, std::string name, const modules::euler1d::solution_t& solution);
+
 void read(const Group& group, std::string name, modules::euler2d::conserved_tree_t& conserved);
 void read(const Group& group, std::string name, modules::euler2d::solution_t& solution);
-
 void write(const Group& group, std::string name, const modules::euler2d::conserved_tree_t& conserved);
 void write(const Group& group, std::string name, const modules::euler2d::solution_t& solution);
 

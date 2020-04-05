@@ -149,6 +149,11 @@ public:
      * @return     A type-erased solution struct
      */
     virtual std::any read_solution(std::string filename) const = 0;
+
+
+
+
+    virtual std::string get_module_name() const = 0;
 };
 
 

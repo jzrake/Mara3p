@@ -55,7 +55,7 @@ struct tile_blocks
 
         for (auto block : blocks)
             if (shape(block) != shape(front(blocks)))
-                throw std::invalid_argument("mesh::tile_blocks (supplied blocks have non-uniform shapes)");
+                throw std::invalid_argument("amr::tile_blocks (supplied blocks have non-uniform shapes)");
 
         auto bi = shape(blocks, 0);
         auto ni = shape(front(blocks), 0);
@@ -76,7 +76,7 @@ struct tile_blocks
 
         for (auto block : blocks)
             if (shape(block) != shape(front(blocks)))
-                throw std::invalid_argument("mesh::tile_blocks (supplied blocks have non-uniform shapes)");
+                throw std::invalid_argument("amr::tile_blocks (supplied blocks have non-uniform shapes)");
 
         auto bi = shape(blocks, 0);
         auto bj = shape(blocks, 1);

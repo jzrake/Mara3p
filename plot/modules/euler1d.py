@@ -23,29 +23,56 @@ SOFTWARE.
 ==============================================================================
 """
 
-import sys
+
+
+
+import os
+import argparse
 import h5py
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 
 
-def run_module(module_name):
-	if module_name == b'euler1d':
-		from .modules import euler1d
-		euler1d.main()
-	if module_name == b'euler2d':
-		from .modules import euler2d
-		euler2d.main()
+def block_index_from_string(index_string):
+    level, rest = index_string.split(':')
+    return [int(level)] + [int(i) for i in rest.split('-')]
 
 
 
-module_names = set([h5py.File(f, 'r')['module'][()] for f in sys.argv if f.endswith('.h5')])
 
-if not module_names:
-	print('no input files given, could not infer module')
+def block_extent(level, index, domain_size=1.0):
+    i0 = index
+    i1 = index + 1
+    dl = float(1 << level)
+    x0 = domain_size * (-0.5 + 1.0 * i0 / dl)
+    x1 = domain_size * (-0.5 + 1.0 * i1 / dl)
+    return x0, x1
 
-elif len(module_names) > 1:
-	print('input files are from different modules:', module_names)
 
-else:
-	run_module([*module_names][0])
+
+
+def plot(fig, args):
+    h5f = h5py.File(args.filenames[0], 'r')
+
+    ax1 = fig.add_subplot(1, 1, 1)
+
+    for block, data in h5f['solution']['conserved'].items():
+        level, index = block_index_from_string(block)
+        x0, x1 = block_extent(level, index)
+        xv = np.linspace(x0, x1, data.shape[0] + 1)
+        xc = 0.5 * (xv[1:] + xv[:-1])
+        ax1.plot(xc, data[...][:,0], '-o')
+
+
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('filenames', nargs='+')
+    args = parser.parse_args()
+
+    fig = plt.figure(figsize=[10, 8])
+    plot(fig, args)
+    plt.show()

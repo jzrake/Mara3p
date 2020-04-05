@@ -330,10 +330,11 @@ auto obtain(tree_t<ValueType, ChildrenType, Ratio> tree, mesh::block_index_t<Ran
 
 
 //=============================================================================
-inline auto uniform_quadtree(unsigned long depth)
+template<unsigned long Rank>
+auto uniform_mesh_tree(unsigned long depth)
 {
     auto branch_function = [] (auto i) { return child_indexes(i); };
-    auto result = just<4>(mesh::block_index_t<2>());
+    auto result = just<1 << Rank>(mesh::block_index_t<Rank>());
 
     while (depth--)
     {
@@ -342,22 +343,15 @@ inline auto uniform_quadtree(unsigned long depth)
     return result;
 }
 
-inline auto uniform_octree(unsigned long depth)
+
+
+
+//=============================================================================
+template<unsigned long Rank>
+inline auto mesh_tree(std::function<bool(mesh::block_index_t<Rank>)> predicate, unsigned long max_depth)
 {
     auto branch_function = [] (auto i) { return child_indexes(i); };
-    auto result = just<8>(mesh::block_index_t<3>());
-
-    while (depth--)
-    {
-        result = branch_all(result, branch_function);
-    }
-    return result;
-}
-
-inline auto quadtree(std::function<bool(mesh::block_index_t<2>)> predicate, unsigned long max_depth)
-{
-    auto branch_function = [] (auto i) { return child_indexes(i); };
-    auto result = just<4>(mesh::block_index_t<2>());
+    auto result = just<1 << Rank>(mesh::block_index_t<Rank>());
 
     while (max_depth--)
     {
