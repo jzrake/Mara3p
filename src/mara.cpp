@@ -136,6 +136,28 @@ static auto initial_solution_1d(const mara::config_t& cfg)
     return modules::euler1d::solution_t{0, 0.0, u};
 }
 
+static auto outflow_boundary_condition()
+{
+    return [] (modules::euler1d::primitive_array_t pe, mesh::block_index_t<1> block)
+    {
+        if (block.coordinates[0] == 0)
+        {
+            return pe
+            | nd::select(0, 2, 3)
+            | nd::repeat(0, 2)
+            | nd::concat(nd::select(pe, 0, 2))
+            | nd::to_shared();
+        }
+        if (block.coordinates[0] == (1 << block.level) - 1)
+        {
+            return nd::select(pe, 0, 0, -2)
+            | nd::concat(pe | nd::select(0, -3, -2) | nd::repeat(0, 2))
+            | nd::to_shared();
+        }
+        return pe;
+    };
+}
+
 
 
 
@@ -283,14 +305,15 @@ static void run_euler1d(int argc, const char* argv[])
     auto geom             = create_mesh_geometry_1d(cfg);
     auto schedule         = mara::initial_schedule(cfg);
     auto dx               = euler1d::smallest_cell_size(mesh, geom);
-    auto zones            = euler1d::total_cells(mesh, geom);
+    auto bc               = outflow_boundary_condition();
+    auto zones            = euler1d::total_zones(mesh, geom);
     auto problem          = euler1d_demo_problem_t(zones);
     auto solution         = mara::initial_solution(problem, cfg, initial_solution_1d(cfg));
     auto vm               = dimensional::unit_velocity(5.0);
     auto strategy         = mpr::mpi_multi_threaded_execution(cfg.get_int("threads"));
     auto monitor          = mpr::execution_monitor_t();
     auto dt               = dx / vm;
-    auto scheme           = std::bind(euler1d::updated_solution, _1, dt, geom, plm_theta, gamma_law_index);
+    auto scheme           = std::bind(euler1d::updated_solution, _1, dt, geom, bc, plm_theta, gamma_law_index);
 
     mpr::compute_all(solution.conserved, mpr::mpi_single_threaded_execution());
     mara::pretty_print(mpi::master_cout(), "config", cfg);
@@ -325,7 +348,7 @@ static void run_euler2d(int argc, const char* argv[])
     auto geom             = create_mesh_geometry_2d(cfg);
     auto schedule         = mara::initial_schedule(cfg);
     auto dx               = euler2d::smallest_cell_size(mesh, geom);
-    auto zones            = euler2d::total_cells(mesh, geom);
+    auto zones            = euler2d::total_zones(mesh, geom);
     auto problem          = euler2d_demo_problem_t(zones);
     auto solution         = mara::initial_solution(problem, cfg, initial_solution_2d(cfg));
     auto vm               = dimensional::unit_velocity(5.0);

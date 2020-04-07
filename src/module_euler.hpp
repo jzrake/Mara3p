@@ -49,14 +49,15 @@ namespace euler1d
 {
 
 using namespace dimensional;
-using coords_t            = mesh::cartesian_1d::coords_t;
-using mesh_geometry_t     = mesh::cartesian_1d::geometry_t;
-using mesh_topology_t     = bsp::shared_tree<mesh::block_index_t<1>, 2>;
-using conserved_array_t   = nd::shared_array<euler::conserved_density_t, 1>;
-using primitive_array_t   = nd::shared_array<euler::primitive_t, 1>;
-using conserved_tree_t    = bsp::shared_tree<mpr::computable<conserved_array_t>, 2>;
-using primitive_tree_t    = bsp::shared_tree<mpr::computable<primitive_array_t>, 2>;
-using primitive_mapping_t = std::function<euler::primitive_t(coords_t)>;
+using coords_t             = mesh::cartesian_1d::coords_t;
+using mesh_geometry_t      = mesh::cartesian_1d::geometry_t;
+using mesh_topology_t      = bsp::shared_tree<mesh::block_index_t<1>, 2>;
+using conserved_array_t    = nd::shared_array<euler::conserved_density_t, 1>;
+using primitive_array_t    = nd::shared_array<euler::primitive_t, 1>;
+using conserved_tree_t     = bsp::shared_tree<mpr::computable<conserved_array_t>, 2>;
+using primitive_tree_t     = bsp::shared_tree<mpr::computable<primitive_array_t>, 2>;
+using primitive_mapping_t  = std::function<euler::primitive_t(coords_t)>;
+using boundary_condition_t = std::function<primitive_array_t(primitive_array_t, mesh::block_index_t<1>)>;
 
 
 
@@ -100,6 +101,7 @@ conserved_array_t updated_conserved(
     unit_time time,
     unit_time dt,
     mesh_geometry_t mesh_geometry,
+    boundary_condition_t boundary_condition,
     mesh::block_index_t<1> block,
     double plm_theta,
     double gamma_law_index);
@@ -108,6 +110,7 @@ solution_t updated_solution(
     solution_t solution,
     unit_time dt,
     mesh_geometry_t mesh_geometry,
+    boundary_condition_t boundary_condition,
     double plm_theta,
     double gamma_law_index);
 
@@ -115,7 +118,7 @@ unit_length smallest_cell_size(
     mesh_topology_t mesh_topology,
     mesh_geometry_t mesh_geometry);
 
-std::size_t total_cells(
+std::size_t total_zones(
     mesh_topology_t mesh_topology,
     mesh_geometry_t mesh_geometry);
 
@@ -197,7 +200,7 @@ unit_length smallest_cell_size(
     mesh_topology_t mesh_topology,
     mesh_geometry_t mesh_geometry);
 
-std::size_t total_cells(
+std::size_t total_zones(
     mesh_topology_t mesh_topology,
     mesh_geometry_t mesh_geometry);
 

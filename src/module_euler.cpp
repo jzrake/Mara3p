@@ -105,21 +105,23 @@ euler1d::conserved_array_t euler1d::updated_conserved(
     unit_time time,
     unit_time dt,
     mesh_geometry_t mesh_geometry,
+    boundary_condition_t boundary_condition,
     mesh::block_index_t<1> block,
     double plm_theta,
     double gamma_law_index)
 {
+    auto pf = boundary_condition ? boundary_condition(pe, block) : pe;
     auto dl = mesh_geometry.cell_spacing(block);
-    auto gx = estimate_gradient(pe, 0, plm_theta);
-    auto pc = pe | nd::select(0, 2, -2) | nd::to_shared();
+    auto gx = estimate_gradient(pf, 0, plm_theta);
+    auto pc = pf | nd::select(0, 2, -2) | nd::to_shared();
 
-    auto pe_x = pe | nd::select(0, 1, -1);
+    auto pf_x = pf | nd::select(0, 1, -1);
     auto gx_x = gx;
 
     auto riemann_x = std::bind(euler::riemann_hlle, _1, _2, geometric::unit_vector_on(1), gamma_law_index);
 
-    auto pl_x = (pe_x - 0.5 * gx_x) | nd::select(0, 1);
-    auto pr_x = (pe_x + 0.5 * gx_x) | nd::select(0, 0, -1);
+    auto pl_x = (pf_x - 0.5 * gx_x) | nd::select(0, 1);
+    auto pr_x = (pf_x + 0.5 * gx_x) | nd::select(0, 0, -1);
 
     auto fx = nd::zip(pr_x, pl_x) | nd::mapv(riemann_x);
     auto dfx = fx | nd::adjacent_diff(0);
@@ -135,10 +137,11 @@ euler1d::solution_t euler1d::updated_solution(
     solution_t solution,
     unit_time dt,
     mesh_geometry_t mesh_geometry,
+    boundary_condition_t boundary_condition,
     double plm_theta,
     double gamma_law_index)
 {
-    auto F = std::bind(updated_conserved, _1, _2, solution.time, dt, mesh_geometry, _3, plm_theta, gamma_law_index);
+    auto F = std::bind(updated_conserved, _1, _2, solution.time, dt, mesh_geometry, boundary_condition, _3, plm_theta, gamma_law_index);
     auto U = [F] (auto b) { return std::bind(F, _1, _2, b); };
 
     auto mesh  = indexes(solution.conserved);
@@ -169,7 +172,7 @@ dimensional::unit_length euler1d::smallest_cell_size(
 
 
 //=============================================================================
-std::size_t euler1d::total_cells(
+std::size_t euler1d::total_zones(
     mesh_topology_t mesh_topology,
     mesh_geometry_t mesh_geometry)
 {
@@ -350,7 +353,7 @@ dimensional::unit_length euler2d::smallest_cell_size(
 
 
 //=============================================================================
-std::size_t euler2d::total_cells(
+std::size_t euler2d::total_zones(
     mesh_topology_t mesh_topology,
     mesh_geometry_t mesh_geometry)
 {
