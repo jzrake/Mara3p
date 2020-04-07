@@ -30,6 +30,7 @@ import os
 import argparse
 import h5py
 import numpy as np
+from ..mesh import *
 
 
 
@@ -46,62 +47,6 @@ def print_quantiles(data):
 
 def print_totals(data):
     print('total = {:.8f}'.format(data.mean()))
-
-
-
-
-def block_extent(level, i, j, domain_size=1.0):
-    i0, j0 = i, j
-    i1, j1 = i + 1, j + 1
-    dl = float(1 << level)
-
-    x0 = domain_size * (-0.5 + 1.0 * i0 / dl)
-    x1 = domain_size * (-0.5 + 1.0 * i1 / dl)
-    y0 = domain_size * (-0.5 + 1.0 * j0 / dl)
-    y1 = domain_size * (-0.5 + 1.0 * j1 / dl)
-
-    return x0, x1, y0, y1
-
-
-
-
-def block_edges(block_list):
-    edges = set()
-    for block in block_list:
-        x0, x1, y0, y1 = block_extent(*block)
-        edges.add((x0, y0, x0, y1))
-        edges.add((x0, y0, x1, y0))
-        edges.add((x1, y0, x1, y1))
-        edges.add((x0, y1, x1, y1))
-
-    return edges
-
-
-
-
-def block_index_from_string(index_string):
-    level, rest = index_string.split(':')
-    return [int(level)] + [int(i) for i in rest.split('-')]
-
-
-
-
-def read_block_edges(filename):
-    return block_edges([block_index_from_string(block) for block in h5py.File(filename, 'r')['solution']['conserved']])
-
-
-
-
-def upsample(data, fold):
-    if fold == 0:
-        return data
-    nx, ny = data.shape
-    result = np.zeros([nx * 2, ny * 2])
-    result[0:nx*2:2, 0:ny*2:2] = data
-    result[1:nx*2:2, 0:ny*2:2] = data
-    result[0:nx*2:2, 1:ny*2:2] = data
-    result[1:nx*2:2, 1:ny*2:2] = data
-    return upsample(result, fold - 1)
 
 
 
@@ -177,7 +122,7 @@ def plot(fig, filename, args):
     ax1.imshow(color.T, cmap=args.cmap, vmin=vmin, vmax=vmax, origin='bottom', extent=[-R, R, -R, R])
     ax1.text(0.02, 0.02, formatted_time(filename), transform=ax1.transAxes, color='white')
 
-    for x0, y0, x1, y1 in read_block_edges(filename[0]):
+    for x0, y0, x1, y1 in read_block_edges_2d(filename[0]):
         ax1.plot([x0, x1], [y0, y1], lw=0.5, c='k')
 
     ax1.set_xticks([])

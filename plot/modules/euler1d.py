@@ -31,39 +31,30 @@ import argparse
 import h5py
 import numpy as np
 import matplotlib.pyplot as plt
-
-
-
-
-def block_index_from_string(index_string):
-    level, rest = index_string.split(':')
-    return [int(level)] + [int(i) for i in rest.split('-')]
-
-
-
-
-def block_extent(level, index, domain_size=1.0):
-    i0 = index
-    i1 = index + 1
-    dl = float(1 << level)
-    x0 = domain_size * (-0.5 + 1.0 * i0 / dl)
-    x1 = domain_size * (-0.5 + 1.0 * i1 / dl)
-    return x0, x1
+from ..mesh import *
 
 
 
 
 def plot(fig, args):
     h5f = h5py.File(args.filenames[0], 'r')
-
     ax1 = fig.add_subplot(1, 1, 1)
+
+    x_array = []
+    y_array = []
 
     for block, data in h5f['solution']['conserved'].items():
         level, index = block_index_from_string(block)
-        x0, x1 = block_extent(level, index)
+        x0, x1 = block_extent_1d(level, index)
         xv = np.linspace(x0, x1, data.shape[0] + 1)
         xc = 0.5 * (xv[1:] + xv[:-1])
-        ax1.plot(xc, data[...][:,0], '-o')
+        x_array += list(xc)
+        y_array += list(data[...][:,0])
+
+    ax1.plot(x_array, y_array, '-o', mfc='none')
+
+    for edge in read_block_edges_1d(args.filenames[0]):
+        ax1.axvline(edge, 0.0, 0.1, c='k', lw=0.5)
 
 
 
