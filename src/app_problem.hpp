@@ -31,6 +31,8 @@
 #include <string>
 #include "app_config.hpp"
 #include "core_dimensional.hpp"
+#include "core_rational.hpp"
+#include "parallel_computable.hpp"
 
 
 
@@ -87,8 +89,15 @@ public:
      * @param[in]  schedule    The schedule instance
      * @param[in]  solution    The solution instance
      */
-    void side_effects(const mara::config_t& run_config, schedule_t& schedule, std::any solution) const;
+    void side_effects(const mara::config_t& run_config, schedule_t& schedule, std::any solution, mpr::execution_monitor_t monitor) const;
 
+
+
+
+    //=============================================================================
+    void print_iteration_message(const mara::config_t& run_config, const schedule_t& schedule, std::any solution, mpr::execution_monitor_t monitor) const;
+    void write_checkpoint(const mara::config_t& run_config, schedule_t& schedule, std::any solution) const;
+    void print_task_graph(const mara::config_t& run_config, schedule_t& schedule, std::any solution) const;
 
 
 
@@ -119,6 +128,8 @@ public:
      * @return     The time
      */
     virtual dimensional::unit_time get_time_from_solution(std::any solution) const = 0;
+    virtual rational::number_t get_iteration_from_solution(std::any solution) const = 0;
+    virtual unsigned long get_zone_count(std::any solution) const = 0;
 
 
 
@@ -153,6 +164,30 @@ public:
 
 
 
+    /**
+     * @brief      Return a set of computable nodes in the solution. This set is
+     *             used to print the task graph in graphviz format, and in
+     *             driving the evaluation of computable graphs.
+     *
+     * @param[in]  solution  The (type-erased) solution struct
+     *
+     * @return     A set of computable nodes
+     */
+    virtual mpr::node_set_t get_computable_nodes(std::any solution) const = 0;
+
+
+
+
+    /**
+     * @brief      This method must be over-ridden to return a module name. The
+     *             module name is used to infer the problem type from restart
+     *             files, and to interpret data in plotting scripts. It is
+     *             probably synonymous with the type of solution struct being
+     *             used. The string is written to HDF5 checkpoint files as
+     *             'module' in the root group.
+     *
+     * @return     A string identifying the module name.
+     */
     virtual std::string get_module_name() const = 0;
 };
 

@@ -26,6 +26,7 @@
 
 
 
+#include <fstream>
 #include "mara.hpp"
 #include "app_problem.hpp"
 #include "app_filesystem.hpp"
@@ -39,31 +40,63 @@
 
 
 //=============================================================================
-void mara::problem_base_t::side_effects(const mara::config_t& cfg, schedule_t& schedule, std::any solution) const
+void mara::problem_base_t::side_effects(const mara::config_t& cfg, schedule_t& schedule, std::any solution, mpr::execution_monitor_t monitor) const
 {
+    print_iteration_message(cfg, schedule, solution, monitor);
     if (get_time_from_solution(solution) >= schedule.checkpoint.next_due)
     {
-        auto outdir = cfg.get_string("outdir");
-        auto fname = util::format("%s/chkpt.%04d.h5", outdir.data(), schedule.checkpoint.count);
+        write_checkpoint(cfg, schedule, solution);
+    }
+}
 
-        schedule.checkpoint.next_due += dimensional::unit_time(cfg.get_double("cpi"));
-        schedule.checkpoint.count += 1;
+void mara::problem_base_t::write_checkpoint(const mara::config_t& cfg, schedule_t& schedule, std::any solution) const
+{
+    auto outdir = cfg.get_string("outdir");
+    auto fname = util::format("%s/chkpt.%04d.h5", outdir.data(), schedule.checkpoint.count);
 
-        mpi::comm_world().invoke([&] ()
+    schedule.checkpoint.next_due += dimensional::unit_time(cfg.get_double("cpi"));
+    schedule.checkpoint.count += 1;
+
+    mpi::comm_world().invoke([&] ()
+    {
+        if (mpi::comm_world().rank() == 0)
         {
-            if (mpi::comm_world().rank() == 0)
-            {
-                mara::filesystem::require_dir(outdir);
+            mara::filesystem::require_dir(outdir);
 
-                auto h5f = h5::File(fname, "w");
-                h5::write(h5f, "git_commit", std::string(MARA_GIT_COMMIT));
-                h5::write(h5f, "run_config", cfg);
-                h5::write(h5f, "schedule", schedule);
-                h5::write(h5f, "module", get_module_name());
-                std::printf("write %s\n", fname.data());
-            }
-            write_solution(fname, solution);
-        });
+            auto h5f = h5::File(fname, "w");
+            h5::write(h5f, "git_commit", std::string(MARA_GIT_COMMIT));
+            h5::write(h5f, "run_config", cfg);
+            h5::write(h5f, "schedule", schedule);
+            h5::write(h5f, "module", get_module_name());
+            std::printf("write %s\n", fname.data());
+        }
+        write_solution(fname, solution);
+    });
+}
+
+void mara::problem_base_t::print_iteration_message(const mara::config_t& run_config, const schedule_t& schedule, std::any solution, mpr::execution_monitor_t monitor) const
+{
+    if (mpi::comm_world().rank() == 0)
+    {
+        auto iter = long(get_iteration_from_solution(solution));
+        auto time = get_time_from_solution(solution);
+        auto kz = get_zone_count(solution) * 1e-3;
+        auto ns = monitor.total_time;
+        std::printf("[%06ld] t=%.4lf kzps=%.2lf\n", iter, time.value, kz / (ns * 1e-9));
+    }
+}
+
+void mara::problem_base_t::print_task_graph(const mara::config_t& cfg, schedule_t& schedule, std::any solution) const
+{
+    if (mpi::comm_world().rank() == 0)
+    {
+        auto outdir = cfg.get_string("outdir");
+        auto fname  = util::format("%s/task_graph.dot", outdir.data());
+
+        std::printf("write %s\n", fname.data());
+        mara::filesystem::require_dir(outdir);
+        auto outf = std::ofstream(fname);
+        mpr::print_graph(outf, get_computable_nodes(solution));
     }
 }
 

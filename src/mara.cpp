@@ -26,7 +26,6 @@
 
 
 
-#include <fstream>
 #include "app_config.hpp"
 #include "app_control.hpp"
 #include "app_filesystem.hpp"
@@ -42,19 +41,35 @@
 
 
 
-/*
- * Todo list:
- * 
- * [x] put in runtime parameters
- * [x] proper side effects
- * [x] write ensure_valid_quadtree function
- * [x] refactor problem / module / scheme code to reduce boilerplate
- * [x] improve FMR scaling (cache computed blocks maybe)
- * [x] check breaking of conservation laws at refinement boundaries
- * [x] check MPI scaling
- * [ ] write the flux correction
- * 
- */
+//=============================================================================
+struct filtered_ostream_t : std::streambuf, std::ostream
+{
+    filtered_ostream_t(std::ostream& stream, bool should_output) : std::ostream(this), stream(stream), should_output(should_output)
+    {
+    }
+
+    int overflow(int c) override
+    {
+        stream.put(c);
+        return 0;
+    }
+
+    std::ostream& stream;
+    bool should_output = true;
+};
+
+
+
+
+//=============================================================================
+namespace mpi
+{
+    inline filtered_ostream_t& master_cout()
+    {
+        static auto os = filtered_ostream_t(std::cout, mpi::comm_world().rank() == 0);
+        return os;
+    }    
+}
 
 
 
@@ -121,17 +136,6 @@ static auto initial_solution_1d(const mara::config_t& cfg)
     return modules::euler1d::solution_t{0, 0.0, u};
 }
 
-static void print_graph_1d(const mara::config_t& cfg, modules::euler1d::solution_t solution)
-{
-    auto outdir = cfg.get_string("outdir");
-    auto fname  = util::format("%s/task_graph.dot", outdir.data());
-
-    std::printf("write %s\n", fname.data());
-    mara::filesystem::require_dir(outdir);
-    auto outf = std::ofstream(fname);
-    mpr::print_graph_all(outf, solution.conserved);        
-}
-
 
 
 
@@ -185,17 +189,6 @@ static auto initial_solution_2d(const mara::config_t& cfg)
     return modules::euler2d::solution_t{0, 0.0, u};
 }
 
-static void print_graph_2d(const mara::config_t& cfg, modules::euler2d::solution_t solution)
-{
-    auto outdir = cfg.get_string("outdir");
-    auto fname  = util::format("%s/task_graph.dot", outdir.data());
-
-    std::printf("write %s\n", fname.data());
-    mara::filesystem::require_dir(outdir);
-    auto outf = std::ofstream(fname);
-    mpr::print_graph_all(outf, solution.conserved);        
-}
-
 
 
 
@@ -222,10 +215,54 @@ public:
         h5::read(h5::File(filename, "r"), "solution", solution);
         return solution;
     }
+
+    rational::number_t get_iteration_from_solution(std::any solution) const override
+    {
+        return std::any_cast<SolutionType>(solution).iteration;
+    }
+
+    mpr::node_set_t get_computable_nodes(std::any solution) const override
+    {
+        auto sequence = std::any_cast<SolutionType>(solution).conserved;
+        auto state = start(sequence);
+        auto nodes = mpr::node_set_t();
+
+        while (state.has_value())
+        {
+            nodes.insert(obtain(sequence, state.value()).node());
+            state = next(sequence, state.value());
+        }
+        return nodes;
+    }
 };
 
-class euler1d_demo_problem_t : public euler_demo_problem_t<modules::euler1d::solution_t> { std::string get_module_name() const override { return "euler1d"; } };
-class euler2d_demo_problem_t : public euler_demo_problem_t<modules::euler2d::solution_t> { std::string get_module_name() const override { return "euler2d"; } };
+
+
+
+//=============================================================================
+class euler1d_demo_problem_t : public euler_demo_problem_t<modules::euler1d::solution_t>
+{
+public:
+    euler1d_demo_problem_t(unsigned zone_count) : zone_count(zone_count) {}
+    std::string get_module_name() const override { return "euler1d"; }
+    unsigned long get_zone_count(std::any) const override { return zone_count; }
+private:
+    unsigned long zone_count = 0;
+};
+
+
+
+
+//=============================================================================
+class euler2d_demo_problem_t : public euler_demo_problem_t<modules::euler2d::solution_t>
+{
+public:
+    euler2d_demo_problem_t(unsigned zone_count) : zone_count(zone_count) {}
+    std::string get_module_name() const override { return "euler2d"; }
+    unsigned long get_zone_count(std::any) const override { return zone_count; }
+private:
+    unsigned long zone_count = 0;
+};
 
 
 
@@ -238,7 +275,6 @@ static void run_euler1d(int argc, const char* argv[])
 
     auto args             = mara::argv_to_string_map(argc, argv);
     auto cfg              = config_template().create().update(mara::restart_run_config(args)).update(args);
-    auto problem          = euler1d_demo_problem_t();
     auto tfinal           = dimensional::unit_time(cfg.get_double("tfinal"));
     auto rk_order         = cfg.get_int("rk");
     auto plm_theta        = cfg.get_double("plm");
@@ -246,39 +282,28 @@ static void run_euler1d(int argc, const char* argv[])
     auto mesh             = create_mesh_topology_1d(cfg);
     auto geom             = create_mesh_geometry_1d(cfg);
     auto schedule         = mara::initial_schedule(cfg);
-    auto solution         = mara::initial_solution(problem, cfg, initial_solution_1d(cfg));
     auto dx               = euler1d::smallest_cell_size(mesh, geom);
-    auto kz               = euler1d::total_cells(mesh, geom) / 1e3;
+    auto zones            = euler1d::total_cells(mesh, geom);
+    auto problem          = euler1d_demo_problem_t(zones);
+    auto solution         = mara::initial_solution(problem, cfg, initial_solution_1d(cfg));
     auto vm               = dimensional::unit_velocity(5.0);
     auto strategy         = mpr::mpi_multi_threaded_execution(cfg.get_int("threads"));
-
-    auto dt     = dx / vm;
-    auto scheme = std::bind(euler1d::updated_solution, _1, dt, geom, plm_theta, gamma_law_index);
+    auto monitor          = mpr::execution_monitor_t();
+    auto dt               = dx / vm;
+    auto scheme           = std::bind(euler1d::updated_solution, _1, dt, geom, plm_theta, gamma_law_index);
 
     mpr::compute_all(solution.conserved, mpr::mpi_single_threaded_execution());
-    auto example_solution = control::advance_runge_kutta(scheme, rk_order, solution);
+    mara::pretty_print(mpi::master_cout(), "config", cfg);
 
-    if (mpi::comm_world().rank() == 0)
-    {
-        mara::pretty_print(std::cout, "config", cfg);
-        print_graph_1d(cfg, example_solution);        
-    }
+    problem.print_task_graph(cfg, schedule, control::advance_runge_kutta(scheme, rk_order, solution));        
+    problem.side_effects(cfg, schedule, solution, monitor);
 
     while (solution.time < tfinal)
     {
-        problem.side_effects(cfg, schedule, solution);
         solution = control::advance_runge_kutta(scheme, rk_order, solution);
-
-        auto start = std::chrono::high_resolution_clock::now();
-        mpr::compute_all(solution.conserved, strategy);
-        auto ticks = std::chrono::high_resolution_clock::now() - start;
-
-        if (mpi::comm_world().rank() == 0)
-        {
-            std::printf("[%06ld] t=%.4lf kzps=%.2lf\n", long(solution.iteration), solution.time.value, kz / (ticks.count() * 1e-9));
-        }
+        monitor = mpr::compute_all(solution.conserved, strategy);
+        problem.side_effects(cfg, schedule, solution, monitor);
     }
-    problem.side_effects(cfg, schedule, solution);
 }
 
 
@@ -292,7 +317,6 @@ static void run_euler2d(int argc, const char* argv[])
 
     auto args             = mara::argv_to_string_map(argc, argv);
     auto cfg              = config_template().create().update(mara::restart_run_config(args)).update(args);
-    auto problem          = euler2d_demo_problem_t();
     auto tfinal           = dimensional::unit_time(cfg.get_double("tfinal"));
     auto rk_order         = cfg.get_int("rk");
     auto plm_theta        = cfg.get_double("plm");
@@ -300,39 +324,28 @@ static void run_euler2d(int argc, const char* argv[])
     auto mesh             = create_mesh_topology_2d(cfg);
     auto geom             = create_mesh_geometry_2d(cfg);
     auto schedule         = mara::initial_schedule(cfg);
-    auto solution         = mara::initial_solution(problem, cfg, initial_solution_2d(cfg));
     auto dx               = euler2d::smallest_cell_size(mesh, geom);
-    auto kz               = euler2d::total_cells(mesh, geom) / 1e3;
+    auto zones            = euler2d::total_cells(mesh, geom);
+    auto problem          = euler2d_demo_problem_t(zones);
+    auto solution         = mara::initial_solution(problem, cfg, initial_solution_2d(cfg));
     auto vm               = dimensional::unit_velocity(5.0);
     auto strategy         = mpr::mpi_multi_threaded_execution(cfg.get_int("threads"));
-
-    auto dt     = dx / vm;
-    auto scheme = std::bind(euler2d::updated_solution, _1, dt, geom, plm_theta, gamma_law_index);
+    auto monitor          = mpr::execution_monitor_t();
+    auto dt               = dx / vm;
+    auto scheme           = std::bind(euler2d::updated_solution, _1, dt, geom, plm_theta, gamma_law_index);
 
     mpr::compute_all(solution.conserved, mpr::mpi_single_threaded_execution());
-    auto example_solution = control::advance_runge_kutta(scheme, rk_order, solution);
+    mara::pretty_print(mpi::master_cout(), "config", cfg);
 
-    if (mpi::comm_world().rank() == 0)
-    {
-        mara::pretty_print(std::cout, "config", cfg);
-        print_graph_2d(cfg, example_solution);        
-    }
+    problem.print_task_graph(cfg, schedule, control::advance_runge_kutta(scheme, rk_order, solution));        
+    problem.side_effects(cfg, schedule, solution, monitor);
 
     while (solution.time < tfinal)
     {
-        problem.side_effects(cfg, schedule, solution);
         solution = control::advance_runge_kutta(scheme, rk_order, solution);
-
-        auto start = std::chrono::high_resolution_clock::now();
-        mpr::compute_all(solution.conserved, strategy);
-        auto ticks = std::chrono::high_resolution_clock::now() - start;
-
-        if (mpi::comm_world().rank() == 0)
-        {
-            std::printf("[%06ld] t=%.4lf kzps=%.2lf\n", long(solution.iteration), solution.time.value, kz / (ticks.count() * 1e-9));
-        }
+        monitor = mpr::compute_all(solution.conserved, strategy);
+        problem.side_effects(cfg, schedule, solution, monitor);
     }
-    problem.side_effects(cfg, schedule, solution);
 }
 
 

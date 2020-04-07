@@ -580,8 +580,8 @@ void print_graph(std::ostream& stream, computable<ValueType>... cs)
 
 
 
-template<typename SequenceProtol>
-void print_graph_all(std::ostream& stream, SequenceProtol sequence)
+template<typename SequenceProtocol>
+void print_graph_all(std::ostream& stream, SequenceProtocol sequence)
 {
     auto state = start(sequence);
     auto nodes = node_set_t();
@@ -593,6 +593,19 @@ void print_graph_all(std::ostream& stream, SequenceProtol sequence)
     }
     print_graph(stream, nodes);
 }
+
+
+
+
+/**
+ * @brief      Struct to be filled out by the graph evaluation function
+ */
+struct execution_monitor_t
+{
+    double total_time = 0.0;
+    double dead_time  = 0.0;
+    double eval_time  = 0.0;
+};
 
 
 
@@ -652,28 +665,31 @@ inline execution_strategy_t mpi_multi_threaded_execution(unsigned num_threads)
 
 
 /**
- * @brief      { function_description }
+ * @brief      Compute all the nodes in a node set using a given strategy.
  *
- * @param[in]  node_set  The node set
- * @param[in]  strategy  The strategy
+ * @param[in]  node_set  The node set to copmute
+ * @param[in]  strategy  The strategy to use
+ *
+ * @return     The execution monitor
  */
-void compute(const node_set_t& node_set, execution_strategy_t strategy);
+execution_monitor_t compute(const node_set_t& node_set, execution_strategy_t strategy);
 
 
 
 
 /**
- * @brief      Calculates the all.
+ * @brief      Extract all computable nodes from a container of computables
+ *             satisfying the sequence protocol, and compute them.
  *
- * @param[in]  sequence        The sequence
- * @param[in]  strategy        The strategy
+ * @param[in]  sequence          The sequence of computables
+ * @param[in]  strategy          The execution strategy
  *
- * @tparam     SequenceProtol  { description }
+ * @tparam     SequenceProtocol  A container of computables
  *
- * @return     All.
+ * @return     The execution monitor
  */
-template<typename SequenceProtol>
-auto compute_all(SequenceProtol sequence, execution_strategy_t strategy)
+template<typename SequenceProtocol>
+execution_monitor_t compute_all(SequenceProtocol sequence, execution_strategy_t strategy)
 {
     auto state = start(sequence);
     auto nodes = node_set_t();
@@ -683,9 +699,7 @@ auto compute_all(SequenceProtol sequence, execution_strategy_t strategy)
         nodes.insert(obtain(sequence, state.value()).node());
         state = next(sequence, state.value());
     }
-    compute(nodes, strategy);
-
-    return sequence;
+    return compute(nodes, strategy);
 }
 
 
@@ -700,9 +714,9 @@ auto compute_all(SequenceProtol sequence, execution_strategy_t strategy)
  * @tparam     ValueType  The computable value type
  */
 template<typename... ValueType>
-void compute(computable<ValueType>... cs)
+execution_monitor_t compute(computable<ValueType>... cs)
 {
-    compute({cs.node()...}, multi_threaded_execution(0));
+    return compute({cs.node()...}, multi_threaded_execution(0));
 }
 
 
@@ -717,9 +731,9 @@ void compute(computable<ValueType>... cs)
  * @tparam     ValueType  { description }
  */
 template<typename... ValueType>
-void compute(execution_strategy_t strategy, computable<ValueType>... cs)
+execution_monitor_t compute(execution_strategy_t strategy, computable<ValueType>... cs)
 {
-    compute({cs.node()...}, strategy);
+    return compute({cs.node()...}, strategy);
 }
 
 } // namespace mpr

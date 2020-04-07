@@ -245,8 +245,9 @@ void mpr::print_graph(std::ostream& stream, const node_set_t& node_set)
 
 
 //=============================================================================
-static void compute_threaded(const node_set_t& node_set, unsigned num_threads)
+static execution_monitor_t compute_threaded(const node_set_t& node_set, unsigned num_threads)
 {
+    auto start       = std::chrono::high_resolution_clock::now();
     auto thread_pool = mara::ThreadPool(num_threads ? num_threads : std::thread::hardware_concurrency());
     auto scheduler   = async_invoke_t(thread_pool.scheduler());
     auto eligible    = collect(node_set, [] (auto n) { return n->eligible(); });
@@ -288,15 +289,20 @@ static void compute_threaded(const node_set_t& node_set, unsigned num_threads)
 
         completed.clear();
     }
+
+    auto monitor = execution_monitor_t();
+    monitor.total_time = (std::chrono::high_resolution_clock::now() - start).count();
+    return monitor;
 }
 
 
 
 
 //=============================================================================
-static void compute_mpi(const node_set_t& node_set, execution_strategy_t strategy)
+static execution_monitor_t compute_mpi(const node_set_t& node_set, execution_strategy_t strategy)
 {
     using async_load_t = std::pair<computable_node_t*, std::future<std::any>>;
+    auto start_time = std::chrono::high_resolution_clock::now();
 
 
 
@@ -523,20 +529,26 @@ static void compute_mpi(const node_set_t& node_set, execution_strategy_t strateg
         }
     }
     mpi::comm_world().barrier();
+
+    auto monitor = execution_monitor_t();
+    monitor.total_time = (std::chrono::high_resolution_clock::now() - start_time).count();
+    monitor.dead_time  = eval_dead.count();
+    monitor.eval_time  = eval_tick.count();
+    return monitor;
 }
 
 
 
 
 //=============================================================================
-void mpr::compute(const node_set_t& node_set, execution_strategy_t strategy)
+execution_monitor_t mpr::compute(const node_set_t& node_set, execution_strategy_t strategy)
 {
     if (strategy.use_mpi)
     {
-        compute_mpi(node_set, strategy);
+        return compute_mpi(node_set, strategy);
     }
     else
     {
-        compute_threaded(node_set, strategy.num_threads);
+        return compute_threaded(node_set, strategy.num_threads);
     }
 }
