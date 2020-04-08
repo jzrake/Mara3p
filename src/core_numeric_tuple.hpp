@@ -114,6 +114,12 @@ auto& get(tuple_t<Ts...>& t)
     return std::get<I>(t.impl);
 }
 
+template<typename... Ts>
+auto as_tuple(tuple_t<Ts...> t)
+{
+    return t.impl;
+}
+
 template<typename... Ts, typename FunctionType>
 auto map(tuple_t<Ts...> t, FunctionType f)
 {

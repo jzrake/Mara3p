@@ -94,6 +94,18 @@ inline auto period(orbital_elements_t el)
     return 2 * M_PI / omega(el);
 }
 
+inline auto angular_momentum(orbital_elements_t el)
+{
+    auto a = semimajor_axis(el);
+    auto M = total_mass(el);
+    auto q = mass_ratio(el);
+    auto e = eccentricity(el);
+    auto mu = 1.0 / (1.0 + q);
+    auto M1 = M * (1.0 - mu);
+    auto M2 = M * mu;
+    return M1 * M2 / M * sqrt(G * M * a * (1.0 - e * e));
+}
+
 inline auto eccentric_anomaly(orbital_elements_t el, unit_time t)
 {
     auto solve_newton_rapheson = [] (auto f, auto g, double x)
@@ -176,6 +188,15 @@ inline auto kinetic_energy(point_mass_t p)
     return 0.5 * p.mass * (vx * vx + vy * vy);
 }
 
+inline auto angular_momentum(point_mass_t p)
+{
+    auto x  = p.position_x;
+    auto y  = p.position_y;
+    auto vx = p.velocity_x;
+    auto vy = p.velocity_y;
+    return p.mass * (x * vy - y * vx);
+}
+
 inline auto potential(point_mass_t p, unit_length x, unit_length y, unit_length softening_length)
 {
     auto dx = x - p.position_x;
@@ -243,6 +264,11 @@ inline auto separation(orbital_state_t s)
 inline auto kinetic_energy(orbital_state_t s)
 {
     return kinetic_energy(s.first) + kinetic_energy(s.second);
+}
+
+inline auto angular_momentum(orbital_state_t s)
+{
+    return angular_momentum(s.first) + angular_momentum(s.second);
 }
 
 inline auto potential(orbital_state_t s, unit_length x, unit_length y, unit_length softening_length)
