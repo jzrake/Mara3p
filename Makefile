@@ -34,6 +34,9 @@ ALL_TARGETS = mara \
 	problems/minidisk
 TARGETS = $(ALL_TARGETS)
 
+# Conditional compilation macros
+MARA_COMPILE_EULER1D = 1
+MARA_COMPILE_EULER2D = 1
 
 # If a Makefile.in exists in this directory, then use it
 -include Makefile.in
@@ -100,11 +103,16 @@ problems/minidisk: problems/minidisk.o problems/minidisk_io.o problems/minidisk_
 clean:
 	$(RM) $(OBJ) $(DEP) $(ALL_TARGETS)
 
-src/mara.hpp:
+Makefile.in:
+	@touch $@
+
+src/mara.hpp: Makefile.in
 	@$(RM) $(MARA_H_TMP)
-	@echo "#define MARA_GIT_COMMIT \"$(GIT_COMMIT)\""   >> $(MARA_H_TMP)
-	@echo "#define MARA_INSTALL_PATH \"$(PWD)\""  >> $(MARA_H_TMP)
-	@cmp -s $(MARA_H_TMP) $@ || (echo "[mara.hpp updated]"; cat $(MARA_H_TMP)>$@)
+	@echo "#define MARA_GIT_COMMIT \"$(GIT_COMMIT)\""            >> $(MARA_H_TMP)
+	@echo "#define MARA_INSTALL_PATH \"$(PWD)\""                 >> $(MARA_H_TMP)
+	@echo "#define MARA_COMPILE_EULER1D $(MARA_COMPILE_EULER1D)" >> $(MARA_H_TMP)
+	@echo "#define MARA_COMPILE_EULER2D $(MARA_COMPILE_EULER2D)" >> $(MARA_H_TMP)
+	@cmp -s $(MARA_H_TMP) $@ || (echo "[mara.hpp updated]"; cat $(MARA_H_TMP) > $@)
 	@$(RM) $(MARA_H_TMP)
 
 $(OBJ): src/mara.hpp

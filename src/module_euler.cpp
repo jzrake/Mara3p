@@ -31,6 +31,7 @@
 #include "app_serial_std_tuple.hpp"
 #include "core_memoize.hpp"
 #include "core_ndarray_ops.hpp"
+#include "mara.hpp"
 #include "module_euler.hpp"
 #include "mesh_amr.hpp"
 #include "scheme_plm_gradient.hpp"
@@ -42,6 +43,10 @@ using namespace std::placeholders;
 using namespace modules;
 
 
+
+
+
+#if MARA_COMPILE_EULER1D // <--------------------------------------------------
 
 
 //=============================================================================
@@ -192,31 +197,12 @@ euler1d::solution_t euler1d::weighted_sum(solution_t s, solution_t t, rational::
     };
 }
 
+#endif // MARA_COMPILE_EULER1D
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+#if MARA_COMPILE_EULER2D // <--------------------------------------------------
 
 
 //=============================================================================
@@ -372,3 +358,5 @@ euler2d::solution_t euler2d::weighted_sum(solution_t s, solution_t t, rational::
         amr::weighted_sum_tree(s.conserved, t.conserved, b),
     };
 }
+
+#endif // MARA_COMPILE_EULER2D

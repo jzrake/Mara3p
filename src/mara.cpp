@@ -95,6 +95,9 @@ inline auto config_template()
 
 
 
+#if MARA_COMPILE_EULER1D // <--------------------------------------------------
+
+
 //=============================================================================
 static auto create_mesh_geometry_1d(const mara::config_t& cfg)
 {
@@ -158,7 +161,12 @@ static auto outflow_boundary_condition()
     };
 }
 
+#endif // MARA_COMPILE_EULER1D
 
+
+
+
+#if MARA_COMPILE_EULER2D // <--------------------------------------------------
 
 
 //=============================================================================
@@ -210,6 +218,8 @@ static auto initial_solution_2d(const mara::config_t& cfg)
 
     return modules::euler2d::solution_t{0, 0.0, u};
 }
+
+#endif // MARA_COMPILE_EULER2D
 
 
 
@@ -292,6 +302,9 @@ private:
 //=============================================================================
 static void run_euler1d(int argc, const char* argv[])
 {
+#if MARA_COMPILE_EULER1D // <--------------------------------------------------
+
+
     using namespace modules;
     using namespace std::placeholders;
 
@@ -327,6 +340,9 @@ static void run_euler1d(int argc, const char* argv[])
         monitor = mpr::compute_all(solution.conserved, strategy);
         problem.side_effects(cfg, schedule, solution, monitor);
     }
+#else
+    mpi::master_cout() << "[mara] program not available: recompile with MARA_COMPILE_EULER1D = 1" << std::endl;
+#endif
 }
 
 
@@ -335,6 +351,9 @@ static void run_euler1d(int argc, const char* argv[])
 //=============================================================================
 static void run_euler2d(int argc, const char* argv[])
 {
+#if MARA_COMPILE_EULER2D // <--------------------------------------------------
+
+
     using namespace modules;
     using namespace std::placeholders;
 
@@ -369,6 +388,9 @@ static void run_euler2d(int argc, const char* argv[])
         monitor = mpr::compute_all(solution.conserved, strategy);
         problem.side_effects(cfg, schedule, solution, monitor);
     }
+#else
+    mpi::master_cout() << "[mara] program not available: recompile with MARA_COMPILE_EULER2D = 1" << std::endl;
+#endif
 }
 
 

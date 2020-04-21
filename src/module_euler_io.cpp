@@ -26,6 +26,8 @@
 
 
 
+#include "mara.hpp"
+#if MARA_COMPILE_EULER1D || MARA_COMPILE_EULER2D
 #include "app_hdf5_dimensional.hpp"
 #include "app_hdf5_ndarray.hpp"
 #include "app_hdf5_ndarray_dimensional.hpp"
@@ -34,8 +36,12 @@
 #include "core_bqo_tree.hpp"
 #include "core_util.hpp"
 #include "module_euler.hpp"
+#endif
 
 
+
+
+#if MARA_COMPILE_EULER1D // <--------------------------------------------------
 
 
 //=============================================================================
@@ -95,7 +101,12 @@ void h5::write(const Group& group, std::string name, const modules::euler1d::sol
     write(sgroup, "conserved", solution.conserved);
 }
 
+#endif // MARA_COMPILE_EULER1D
 
+
+
+
+#if MARA_COMPILE_EULER2D // <--------------------------------------------------
 
 
 //=============================================================================
@@ -154,3 +165,5 @@ void h5::write(const Group& group, std::string name, const modules::euler2d::sol
     write(sgroup, "time", solution.time);
     write(sgroup, "conserved", solution.conserved);
 }
+
+#endif // MARA_COMPILE_EULER2D
