@@ -30,6 +30,7 @@
 #include <cstring>
 #include <functional>
 #include <numeric>
+#include <ostream>
 #include <vector>
 #include <mpi.h>
 
@@ -107,6 +108,26 @@ public:
         MPI_Finalize();
     }
     Session(const Session& other) = delete;
+};
+
+
+
+
+//=============================================================================
+struct filtered_ostream_t : std::streambuf, std::ostream
+{
+    filtered_ostream_t(std::ostream& stream, bool should_output) : std::ostream(this), stream(stream), should_output(should_output)
+    {
+    }
+
+    int overflow(int c) override
+    {
+        stream.put(c);
+        return 0;
+    }
+
+    std::ostream& stream;
+    bool should_output = true;
 };
 
 

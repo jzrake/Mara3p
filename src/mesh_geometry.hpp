@@ -50,9 +50,8 @@ using coords_t = dimensional::unit_length;
 
 
 //=============================================================================
-class geometry_t
+struct geometry_t
 {
-public:
     geometry_t() {}
     geometry_t(dimensional::unit_length domain_size, int block_size);
 
@@ -65,7 +64,6 @@ public:
     std::size_t cells_per_block() const;
     std::tuple<dimensional::unit_length, int> as_tuple() const;
 
-private:
     dimensional::unit_length domain_size = 1.0;
     int block_size = 64;
 };
@@ -84,9 +82,8 @@ using coords_t = numeric::array_t<dimensional::unit_length, 2>;
 
 
 //=============================================================================
-class geometry_t
+struct geometry_t
 {
-public:
     geometry_t() {}
     geometry_t(dimensional::unit_length domain_size, int block_size);
 
@@ -99,7 +96,6 @@ public:
     std::size_t cells_per_block() const;
     std::tuple<dimensional::unit_length, int> as_tuple() const;
 
-private:
     dimensional::unit_length domain_size = 1.0;
     int block_size = 64;
 };

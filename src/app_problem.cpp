@@ -42,7 +42,10 @@
 //=============================================================================
 void mara::problem_base_t::side_effects(const mara::config_t& cfg, schedule_t& schedule, std::any solution, mpr::execution_monitor_t monitor) const
 {
-    print_iteration_message(cfg, schedule, solution, monitor);
+    if (long(get_iteration_from_solution(solution)) > 0)
+    {
+         print_iteration_message(cfg, schedule, solution, monitor);
+    }
     if (get_time_from_solution(solution) >= schedule.checkpoint.next_due)
     {
         write_checkpoint(cfg, schedule, solution);
@@ -82,7 +85,7 @@ void mara::problem_base_t::print_iteration_message(const mara::config_t& run_con
         auto time = get_time_from_solution(solution);
         auto kz = get_zone_count(solution) * 1e-3;
         auto ns = monitor.total_time;
-        std::printf("[%06ld] t=%.4lf kzps=%.2lf\n", iter, time.value, kz / (ns * 1e-9));
+        std::printf("[%06ld] t=%.6lf kzps=%.2lf\n", iter, time.value, kz / (ns * 1e-9));
     }
 }
 

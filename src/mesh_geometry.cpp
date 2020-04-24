@@ -128,7 +128,7 @@ nd::shared_array<mesh::cartesian_2d::coords_t, 2> mesh::cartesian_2d::geometry_t
     {
         return std::apply([] (auto... args) { return geometry_t(args...); }, self)
         . vert_coordinates(block)
-        | nd::adjacent_mean(axis)
+        | nd::adjacent_mean(1 - axis)
         | nd::to_shared();
     }, as_tuple(), block, axis);
 }

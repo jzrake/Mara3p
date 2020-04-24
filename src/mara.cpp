@@ -42,26 +42,6 @@
 
 
 //=============================================================================
-struct filtered_ostream_t : std::streambuf, std::ostream
-{
-    filtered_ostream_t(std::ostream& stream, bool should_output) : std::ostream(this), stream(stream), should_output(should_output)
-    {
-    }
-
-    int overflow(int c) override
-    {
-        stream.put(c);
-        return 0;
-    }
-
-    std::ostream& stream;
-    bool should_output = true;
-};
-
-
-
-
-//=============================================================================
 namespace mpi
 {
     inline filtered_ostream_t& master_cout()
@@ -106,7 +86,6 @@ static auto create_mesh_geometry_1d(const mara::config_t& cfg)
 
 static auto create_mesh_topology_1d(const mara::config_t& cfg)
 {
-    // auto geom      = create_mesh_geometry_1d(cfg);
     auto mesh_type = cfg.get_string("mesh_type");
     auto depth     = cfg.get_int("depth");
 
@@ -250,12 +229,12 @@ public:
 
     rational::number_t get_iteration_from_solution(std::any solution) const override
     {
-        return std::any_cast<SolutionType>(solution).iteration;
+        return std::any_cast<solution_t>(solution).iteration;
     }
 
     mpr::node_set_t get_computable_nodes(std::any solution) const override
     {
-        auto sequence = std::any_cast<SolutionType>(solution).conserved;
+        auto sequence = std::any_cast<solution_t>(solution).conserved;
         auto state = start(sequence);
         auto nodes = mpr::node_set_t();
 
@@ -304,7 +283,6 @@ static void run_euler1d(int argc, const char* argv[])
 {
 #if MARA_COMPILE_EULER1D // <--------------------------------------------------
 
-
     using namespace modules;
     using namespace std::placeholders;
 
@@ -322,7 +300,7 @@ static void run_euler1d(int argc, const char* argv[])
     auto zones            = euler1d::total_zones(mesh, geom);
     auto problem          = euler1d_demo_problem_t(zones);
     auto solution         = mara::initial_solution(problem, cfg, initial_solution_1d(cfg));
-    auto vm               = dimensional::unit_velocity(5.0);
+    auto vm               = dimensional::unit_velocity(5.09012);
     auto strategy         = mpr::mpi_multi_threaded_execution(cfg.get_int("threads"));
     auto monitor          = mpr::execution_monitor_t();
     auto dt               = dx / vm;
@@ -341,7 +319,7 @@ static void run_euler1d(int argc, const char* argv[])
         problem.side_effects(cfg, schedule, solution, monitor);
     }
 #else
-    mpi::master_cout() << "[mara] program not available: recompile with MARA_COMPILE_EULER1D = 1" << std::endl;
+    mpi::master_cout() << "[mara] program not available: recompile with MARA_COMPILE_EULER1IS = 1" << std::endl;
 #endif
 }
 
@@ -352,7 +330,6 @@ static void run_euler1d(int argc, const char* argv[])
 static void run_euler2d(int argc, const char* argv[])
 {
 #if MARA_COMPILE_EULER2D // <--------------------------------------------------
-
 
     using namespace modules;
     using namespace std::placeholders;
@@ -402,6 +379,7 @@ int test_core();
 int test_mesh();
 int test_model();
 int test_physics();
+void run_minidisk(int argc, const char* argv[]);
 
 
 
@@ -434,9 +412,10 @@ int main(int argc, const char* argv[])
     auto command = std::string(argv[1]);
 
     if (false) {}
-    else if (command == "test")    run_all_tests(argc - 1, argv + 1);
-    else if (command == "euler1d") run_euler1d(argc - 1, argv + 1);
-    else if (command == "euler2d") run_euler2d(argc - 1, argv + 1);
+    else if (command == "test")     run_all_tests(argc - 1, argv + 1);
+    else if (command == "euler1d")  run_euler1d  (argc - 1, argv + 1);
+    else if (command == "euler2d")  run_euler2d  (argc - 1, argv + 1);
+    else if (command == "minidisk") run_minidisk (argc - 1, argv + 1);
     else std::printf("unknown command: %s\n", command.data());
 
     return 0;

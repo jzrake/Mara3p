@@ -37,6 +37,7 @@ TARGETS = $(ALL_TARGETS)
 # Conditional compilation macros
 MARA_COMPILE_EULER1D = 1
 MARA_COMPILE_EULER2D = 1
+MARA_COMPILE_LOCALLY_ISOTHERMAL = 1
 
 # If a Makefile.in exists in this directory, then use it
 -include Makefile.in
@@ -48,11 +49,12 @@ SRC := $(wildcard src/*.cpp) $(wildcard examples/*.cpp) $(wildcard problems/*.cp
 OBJ := $(SRC:%.cpp=%.o)
 DEP := $(SRC:%.cpp=%.d)
 
-OBJ_APP    := $(filter src/app_%.o,   $(OBJ))
-OBJ_CORE   := $(filter src/core_%.o,   $(OBJ))
-OBJ_MESH   := $(filter src/mesh_%.o,   $(OBJ))
-OBJ_MODULE := $(filter src/module_%.o, $(OBJ))
-OBJ_TEST   := $(filter src/test_%.o,   $(OBJ))
+OBJ_APP     := $(filter src/app_%.o,     $(OBJ))
+OBJ_CORE    := $(filter src/core_%.o,    $(OBJ))
+OBJ_MESH    := $(filter src/mesh_%.o,    $(OBJ))
+OBJ_MODULE  := $(filter src/module_%.o,  $(OBJ))
+OBJ_PROBLEM := $(filter src/problem_%.o, $(OBJ))
+OBJ_TEST    := $(filter src/test_%.o,    $(OBJ))
 
 
 # Build config
@@ -67,7 +69,7 @@ default: $(TARGETS)
 
 all: $(ALL_TARGETS)
 
-mara: src/mara.o src/parallel_computable.o $(OBJ_APP) $(OBJ_CORE) $(OBJ_MESH) $(OBJ_MODULE) $(OBJ_TEST)
+mara: src/mara.o src/parallel_computable.o $(OBJ_APP) $(OBJ_CORE) $(OBJ_MESH) $(OBJ_MODULE) $(OBJ_PROBLEM) $(OBJ_TEST)
 	$(CXX) -o $@ $^ $(LDFLAGS)
 
 examples/euler1d: examples/euler1d.o
@@ -108,10 +110,12 @@ Makefile.in:
 
 src/mara.hpp: Makefile.in
 	@$(RM) $(MARA_H_TMP)
-	@echo "#define MARA_GIT_COMMIT \"$(GIT_COMMIT)\""            >> $(MARA_H_TMP)
-	@echo "#define MARA_INSTALL_PATH \"$(PWD)\""                 >> $(MARA_H_TMP)
-	@echo "#define MARA_COMPILE_EULER1D $(MARA_COMPILE_EULER1D)" >> $(MARA_H_TMP)
-	@echo "#define MARA_COMPILE_EULER2D $(MARA_COMPILE_EULER2D)" >> $(MARA_H_TMP)
+	@echo "#pragma once"                                                               >> $(MARA_H_TMP)
+	@echo "#define MARA_GIT_COMMIT \"$(GIT_COMMIT)\""                                  >> $(MARA_H_TMP)
+	@echo "#define MARA_INSTALL_PATH \"$(PWD)\""                                       >> $(MARA_H_TMP)
+	@echo "#define MARA_COMPILE_EULER1D $(MARA_COMPILE_EULER1D)"                       >> $(MARA_H_TMP)
+	@echo "#define MARA_COMPILE_EULER2D $(MARA_COMPILE_EULER2D)"                       >> $(MARA_H_TMP)
+	@echo "#define MARA_COMPILE_LOCALLY_ISOTHERMAL $(MARA_COMPILE_LOCALLY_ISOTHERMAL)" >> $(MARA_H_TMP)
 	@cmp -s $(MARA_H_TMP) $@ || (echo "[mara.hpp updated]"; cat $(MARA_H_TMP) > $@)
 	@$(RM) $(MARA_H_TMP)
 
