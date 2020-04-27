@@ -230,30 +230,59 @@ solution_t add_inner_cell(const mara::config_t& run_config, solution_t solution)
     return solution;
 }
 
-solution_t remove_smallest_cell(const mara::config_t& run_config, solution_t solution)
+solution_t split_join_cells(const mara::config_t& run_config, solution_t solution)
 {
-    auto mindr = unit_length(run_config.get_double("mindr"));
-    auto dr    = spherical_mesh_geometry_t::cell_spacings(solution.vertices);
-    auto imin  = nd::argmin(dr)[0];
+    auto maxdr  = run_config.get_double("maxdr");
+    auto mindr  = run_config.get_double("mindr");
+    auto uc     = solution.conserved;
+    auto rf     = solution.vertices;
+    auto rc     = spherical_mesh_geometry_t::cell_centers(solution.vertices);
+    auto dr     = spherical_mesh_geometry_t::cell_spacings(solution.vertices);
+    auto aspect = dr / rc;
+    auto imin   = nd::argmin(aspect)[0];
+    auto imax   = nd::argmax(aspect)[0];
 
-    if (imin > 0 && imin < size(solution.conserved) && dr(imin) < mindr)
+    auto construct = [solution] (auto x1, auto u1) -> solution_t
     {
-        auto [x1, u1] = nd::remove_partition(solution.vertices, solution.conserved, imin);
-
         return {
             solution.iteration,
             solution.time,
             x1,
             u1,
         };
+    };
+
+    if (aspect(imax) > maxdr)
+    {
+        return std::apply(construct, nd::add_partition(rf, uc, imax));
+    }
+
+    if (aspect(imin) < mindr)
+    {
+        if (imin == 0)
+        {
+            return split_join_cells(run_config, std::apply(construct, nd::remove_partition(rf, uc, 1)));
+        }
+        if (imin + 1 == size(aspect))
+        {
+            return split_join_cells(run_config, std::apply(construct, nd::remove_partition(rf, uc, imin)));
+        }
+        if (aspect(imin - 1) <= aspect(imin + 1))
+        {
+            return split_join_cells(run_config, std::apply(construct, nd::remove_partition(rf, uc, imin)));
+        }
+        if (aspect(imin - 1) >= aspect(imin + 1))
+        {
+            return split_join_cells(run_config, std::apply(construct, nd::remove_partition(rf, uc, imin + 1)));
+        }
     }
     return solution;
 }
 
 solution_t remesh(const mara::config_t& run_config, solution_t solution)
 {
-    solution = add_inner_cell      (run_config, solution);
-    solution = remove_smallest_cell(run_config, solution);
+    solution = add_inner_cell  (run_config, solution);
+    solution = split_join_cells(run_config, solution);
     return solution;
 }
 
