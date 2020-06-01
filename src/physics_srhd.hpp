@@ -417,16 +417,17 @@ auto riemann_solver(primitive_t pl, primitive_t pr, geometric::unit_vector_t nha
     auto a = +fe_hll;
     auto b = -fm_hll - ue_hll;
     auto c = +um_hll;
-    auto as = (std::abs(a.value) > 1e-8 ? (-b - sqrt(b * b - 4.0 * a * c)) / (2.0 * a) : -c / b) * c2;
+    auto d = b * b - 4.0 * a * c;
+    auto as = (std::abs(a.value) > 1e-8 && d.value > 0.0 ? (-b - sqrt(d)) / (2.0 * a) : -c / b) * c2;
 
-    if (std::isnan(a.value))
+    if (std::isnan(as.value))
     {
         std::printf("pl = %lf %lf %lf\n", numeric::get<0>(pl).value, numeric::get<1>(pl).value, numeric::get<4>(pl).value);
         std::printf("pr = %lf %lf %lf\n", numeric::get<0>(pr).value, numeric::get<1>(pr).value, numeric::get<4>(pr).value);
 
         std::printf("a = %lf\n", a.value);
         std::printf("b = %lf\n", b.value);
-        std::printf("b^2 - 4 a c = %lf\n", (b * b - 4.0 * a * c).value);
+        std::printf("b^2 - 4 a c = %lf\n", d.value);
         throw std::invalid_argument("srhd::riemann_solver (nan contact speed)");
     }
     if constexpr (std::is_same_v<RiemannSolverMode, riemann_solver_mode_contact_speed_t>)
