@@ -432,11 +432,12 @@ sedov::radial_godunov_data_t outer_bc(
     sedov::primitive_function_t primitive_func,
     nd::shared_array<srhd::primitive_t, 1> pc)
 {
-    auto mode = srhd::riemann_solver_mode_hllc_fluxes_across_contact_t();
+    auto vel  = srhd::velocity_1(primitive_func(back(track.face_radii), cell_center_theta(track)));
+    auto mode = srhd::riemann_solver_mode_hllc_fluxes_moving_face_t{vel};
     auto nhat = geometric::unit_vector_on(1);
     auto pl = back(pc);
     auto pr = primitive_func(back(track.face_radii), cell_center_theta(track));
-    return srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode);
+    return std::pair(srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode), vel);
 }
 
 solution_t remesh(solution_t solution, unit_scalar max_aspect, unit_scalar min_aspect)

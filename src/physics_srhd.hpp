@@ -407,7 +407,7 @@ auto riemann_solver(primitive_t pl, primitive_t pr, geometric::unit_vector_t nha
 
     auto c2 = light_speed * light_speed;
 
-    // Mignone defines total energy as including the rest mass
+    // Mignone defines total energy to include rest mass
     auto ue_hll = conserved_energy_density(u_hll) + conserved_mass_density(u_hll) * c2;
     auto fe_hll = conserved_energy_density(f_hll) + conserved_mass_density(f_hll) * c2;
     auto um_hll = dot(momentum_density_vector(u_hll), nhat);
@@ -418,9 +418,9 @@ auto riemann_solver(primitive_t pl, primitive_t pr, geometric::unit_vector_t nha
     auto b = -fm_hll - ue_hll;
     auto c = +um_hll;
     auto d = b * b - 4.0 * a * c;
-    auto as = (std::abs(a.value) > 1e-8 && d.value > 0.0 ? (-b - sqrt(d)) / (2.0 * a) : -c / b) * c2;
+    auto as = d.value < 0.0 ? unit_velocity(0.0) : (std::abs(a.value) > 1e-8 ? (-b - sqrt(d)) / (2.0 * a) : -c / b) * c2;
 
-    if (std::isnan(as.value))
+    if (std::isnan(as.value) || as.value < -1e3 || as.value > 1e3)
     {
         std::printf("pl = %lf %lf %lf\n", numeric::get<0>(pl).value, numeric::get<1>(pl).value, numeric::get<4>(pl).value);
         std::printf("pr = %lf %lf %lf\n", numeric::get<0>(pr).value, numeric::get<1>(pr).value, numeric::get<4>(pr).value);
