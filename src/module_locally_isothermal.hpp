@@ -27,6 +27,8 @@
 
 
 #pragma once
+#include <string>
+#include <map>
 #include "core_bqo_tree.hpp"
 #include "core_bsp_tree.hpp"
 #include "core_ndarray.hpp"
@@ -59,6 +61,10 @@ using conserved_tree_t      = bsp::shared_tree<mpr::computable<conserved_array_t
 using primitive_tree_t      = bsp::shared_tree<mpr::computable<primitive_array_t>, 4>;
 using primitive_mapping_t   = std::function<iso2d::primitive_t(coords_t)>;
 using temperature_mapping_t = std::function<dimensional::unit_specific_energy(coords_t)>;
+using source_terms_t        = std::function<conserved_array_t(coords_t, unit_time, unit_time, conserved_array_t)>;
+using source_terms_map_t    = std::map<std::string, source_terms_t>;
+using source_totals_t       = std::map<std::string, iso2d::conserved_density_t>;
+// using source_totals_tree_t  = 
 using unit_viscosity        = dimensional::quantity_t<0, 2,-1>;
 
 
@@ -105,8 +111,9 @@ conserved_array_t updated_conserved(
     temperature_mapping_t temperature,
     double plm_theta);
 
-solution_t updated_solution(
-    solution_t solution,
+conserved_tree_t updated_conserved_tree(
+    conserved_tree_t conserved,
+    unit_time time,
     unit_time dt,
     mesh_geometry_t mesh_geometry,
     temperature_mapping_t temperature,

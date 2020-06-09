@@ -215,25 +215,26 @@ locally_isothermal::conserved_array_t locally_isothermal::updated_conserved(
 
 
 //=============================================================================
-locally_isothermal::solution_t locally_isothermal::updated_solution(
-    solution_t solution,
+locally_isothermal::conserved_tree_t locally_isothermal::updated_conserved_tree(
+    conserved_tree_t conserved,
+    unit_time time,
     unit_time dt,
     mesh_geometry_t mesh_geometry,
     temperature_mapping_t temperature,
     unit_viscosity kinematic_viscosity,
     double plm_theta)
 {
-    auto F = std::bind(updated_conserved, _1, _2, solution.time, dt, mesh_geometry, _3, kinematic_viscosity, temperature, plm_theta);
+    auto F = std::bind(updated_conserved, _1, _2, time, dt, mesh_geometry, _3, kinematic_viscosity, temperature, plm_theta);
     auto U = [F] (auto b) { return std::bind(F, _1, _2, b); };
 
-    auto mesh  = indexes(solution.conserved);
-    auto uc    = solution.conserved;
+    auto mesh  = indexes(conserved);
+    auto uc    = conserved;
     auto pc    = uc   | bsp::maps(mpr::map(recover_primitive_array, "P"));
     auto pc_at = memoize_not_thread_safe<mesh::block_index_t<2>>([pc] (auto block) { return amr::get_or_create_block(pc, block).name("Pc-g"); });
     auto pe    = mesh | bsp::maps([pc, pc_at] (auto b) { return amr::extend_block(pc_at, b).name("Pe"); });
     auto u1    = mesh | bsp::maps([uc, pe, U] (auto b) { return zip(value_at(uc, b), value_at(pe, b)) | mpr::mapv(U(b), "U"); });
 
-    return solution_t{solution.iteration + 1, solution.time + dt, u1};
+    return u1;
 }
 
 
