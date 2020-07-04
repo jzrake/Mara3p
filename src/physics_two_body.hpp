@@ -131,7 +131,7 @@ inline auto orbital_state_from_eccentric_anomaly(orbital_elements_t el, unit_sca
     auto q  = mass_ratio(el);
     auto e  = eccentricity(el);
     auto W  = omega(el);
-    auto mu = 1.0 / (1.0 + q);
+    auto mu = q / (1.0 + q);
     auto M1 = total_mass(el) * (1.0 - mu);
     auto M2 = total_mass(el) * mu;
     auto _E = eccentric_anomaly;
