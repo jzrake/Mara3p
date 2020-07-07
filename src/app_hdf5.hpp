@@ -507,7 +507,11 @@ public:
         if (H5Lexists(id, name.data(), H5P_DEFAULT))
         {
             H5O_info_t info;
-            H5Oget_info_by_name(id, name.data(), &info, H5P_DEFAULT);
+#if H5_VERS_MINOR >= 12
+            detail::check(H5Oget_info_by_name(id, name.data(), &info, 0, H5P_DEFAULT));
+#else
+            detail::check(H5Oget_info_by_name(id, name.data(), &info, H5P_DEFAULT));
+#endif
             return info.type == H5O_TYPE_GROUP;
         }
         return false;
@@ -528,7 +532,11 @@ public:
         if (H5Lexists(id, name.data(), H5P_DEFAULT))
         {
             H5O_info_t info;
+#if H5_VERS_MINOR >= 12
+            detail::check(H5Oget_info_by_name(id, name.data(), &info, 0, H5P_DEFAULT));
+#else
             detail::check(H5Oget_info_by_name(id, name.data(), &info, H5P_DEFAULT));
+#endif
             return info.type == H5O_TYPE_DATASET;
         }
         return false;
