@@ -507,7 +507,7 @@ public:
         if (H5Lexists(id, name.data(), H5P_DEFAULT))
         {
             H5O_info_t info;
-            H5Oget_info_by_name(id, name.data(), &info, H5P_DEFAULT);
+            detail::check(H5Oget_info_by_name2(id, name.data(), &info, H5P_DEFAULT, H5P_DEFAULT));
             return info.type == H5O_TYPE_GROUP;
         }
         return false;
@@ -528,7 +528,7 @@ public:
         if (H5Lexists(id, name.data(), H5P_DEFAULT))
         {
             H5O_info_t info;
-            detail::check(H5Oget_info_by_name(id, name.data(), &info, H5P_DEFAULT));
+            detail::check(H5Oget_info_by_name2(id, name.data(), &info, H5P_DEFAULT, H5P_DEFAULT));
             return info.type == H5O_TYPE_DATASET;
         }
         return false;
