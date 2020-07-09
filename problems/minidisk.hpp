@@ -147,12 +147,12 @@ inline auto make_solver_data(const mara::config_t& cfg)
 //=============================================================================
 unit_specific_energy sound_speed_squared(numeric::array_t<unit_length, 2> p, unit_length softening_length, unit_scalar mach_number);
 
-nd::shared_array<numeric::array_t<unit_length, 2>, 2> face_coordinates(int block_size, unit_length domain_radius, bsp::tree_index_t<2> block, bsp::uint axis);
-nd::shared_array<numeric::array_t<unit_length, 2>, 2> cell_coordinates(int block_size, unit_length domain_radius, bsp::tree_index_t<2> block);
+nd::shared_array<numeric::array_t<unit_length, 2>, 2> face_coordinates(int block_size, unit_length domain_radius, mesh::block_index_t<2> block, unsigned long axis);
+nd::shared_array<numeric::array_t<unit_length, 2>, 2> cell_coordinates(int block_size, unit_length domain_radius, mesh::block_index_t<2> block);
 
-nd::shared_array<unit_rate, 2>                             buffer_rate_field_array(solver_data_t solver_data, bsp::tree_index_t<2> block);
-nd::shared_array<numeric::array_t<unit_acceleration, 2>, 2> centrifugal_term_array(solver_data_t solver_data, bsp::tree_index_t<2> block);
-nd::shared_array<iso2d::conserved_density_t, 2>            initial_conserved_array(solver_data_t solver_data, bsp::tree_index_t<2> block);
+nd::shared_array<unit_rate, 2>                             buffer_rate_field_array(solver_data_t solver_data, mesh::block_index_t<2> block);
+nd::shared_array<numeric::array_t<unit_acceleration, 2>, 2> centrifugal_term_array(solver_data_t solver_data, mesh::block_index_t<2> block);
+nd::shared_array<iso2d::conserved_density_t, 2>            initial_conserved_array(solver_data_t solver_data, mesh::block_index_t<2> block);
 
 
 
@@ -160,13 +160,13 @@ nd::shared_array<iso2d::conserved_density_t, 2>            initial_conserved_arr
 //=============================================================================
 unit_length       smallest_cell_size(solver_data_t solver_data);
 primitive_array_t recover_primitive_array(conserved_array_t uc);
-primitive_array_t estimate_gradient(primitive_array_t pc, bsp::uint axis, double theta);
+primitive_array_t estimate_gradient(primitive_array_t pc, unsigned long axis, double theta);
 conserved_array_t updated_conserved(
     conserved_array_t uc,
     primitive_array_t pe,
     unit_time time,
     unit_time dt,
-    bsp::tree_index_t<2> block,
+    mesh::block_index_t<2> block,
     solver_data_t solver_data);
 
 } // namespace minidisk

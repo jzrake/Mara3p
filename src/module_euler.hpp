@@ -27,11 +27,12 @@
 
 
 #pragma once
-#include "core_bsp_tree.hpp"
 #include "core_bqo_tree.hpp"
+#include "core_bsp_tree.hpp"
 #include "core_ndarray.hpp"
-#include "physics_euler.hpp"
+#include "mesh_geometry.hpp"
 #include "parallel_computable.hpp"
+#include "physics_euler.hpp"
 
 
 
@@ -40,37 +41,28 @@
 namespace modules
 {
 
-namespace euler2d
+
+
+
+//=============================================================================
+namespace euler1d
 {
 
-
-
-
 using namespace dimensional;
-using coords_t            = numeric::array_t<unit_length, 2>;
-using mesh_topology_t     = bsp::shared_tree<bsp::tree_index_t<2>, 4>;
-using conserved_array_t   = nd::shared_array<euler::conserved_density_t, 2>;
-using primitive_array_t   = nd::shared_array<euler::primitive_t, 2>;
-using conserved_tree_t    = bsp::shared_tree<mpr::computable<conserved_array_t>, 4>;
-using primitive_tree_t    = bsp::shared_tree<mpr::computable<primitive_array_t>, 4>;
-using primitive_mapping_t = std::function<euler::primitive_t(coords_t)>;
+using coords_t             = mesh::cartesian_1d::coords_t;
+using mesh_geometry_t      = mesh::cartesian_1d::geometry_t;
+using mesh_topology_t      = bsp::shared_tree<mesh::block_index_t<1>, 2>;
+using conserved_array_t    = nd::shared_array<euler::conserved_density_t, 1>;
+using primitive_array_t    = nd::shared_array<euler::primitive_t, 1>;
+using conserved_tree_t     = bsp::shared_tree<mpr::computable<conserved_array_t>, 2>;
+using primitive_tree_t     = bsp::shared_tree<mpr::computable<primitive_array_t>, 2>;
+using primitive_mapping_t  = std::function<euler::primitive_t(coords_t)>;
+using boundary_condition_t = std::function<primitive_array_t(primitive_array_t, mesh::block_index_t<1>)>;
 
 
 
 
 //=============================================================================
-struct side_effect_t
-{
-    unit_time next_due = 0.0;
-    int count = 0;
-};
-
-struct schedule_t
-{
-    side_effect_t checkpoint;
-    side_effect_t time_series;
-};
-
 struct solution_t
 {
     rational::number_t iteration;
@@ -82,32 +74,9 @@ struct solution_t
 
 
 //=============================================================================
-class mesh_geometry_t
-{
-public:
-    mesh_geometry_t() {}
-    mesh_geometry_t(unit_length domain_size, int block_size);
-
-    nd::shared_array<coords_t, 2> vert_coordinates(bsp::tree_index_t<2> block) const;
-    nd::shared_array<coords_t, 2> face_coordinates(bsp::tree_index_t<2> block, bsp::uint axis) const;
-    nd::shared_array<coords_t, 2> cell_coordinates(bsp::tree_index_t<2> block) const;
-    std::pair<coords_t, coords_t> block_extent(bsp::tree_index_t<2> block) const;
-    coords_t block_centroid(bsp::tree_index_t<2> block) const;
-    unit_length cell_spacing(bsp::tree_index_t<2> block) const;
-    std::size_t cells_per_block() const;
-
-private:
-    unit_length domain_size = 1.0;
-    int block_size = 64;
-};
-
-
-
-
-//=============================================================================
 conserved_array_t initial_conserved_array(
     mesh_geometry_t mesh_geometry,
-    bsp::tree_index_t<2> block,
+    mesh::block_index_t<1> block,
     primitive_mapping_t initial,
     double gamma_law_index);
 
@@ -123,7 +92,7 @@ primitive_array_t recover_primitive_array(
 
 primitive_array_t estimate_gradient(
     primitive_array_t pc,
-    bsp::uint axis,
+    unsigned long axis,
     double plm_theta);
 
 conserved_array_t updated_conserved(
@@ -132,7 +101,91 @@ conserved_array_t updated_conserved(
     unit_time time,
     unit_time dt,
     mesh_geometry_t mesh_geometry,
-    bsp::tree_index_t<2> block,
+    boundary_condition_t boundary_condition,
+    mesh::block_index_t<1> block,
+    double plm_theta,
+    double gamma_law_index);
+
+solution_t updated_solution(
+    solution_t solution,
+    unit_time dt,
+    mesh_geometry_t mesh_geometry,
+    boundary_condition_t boundary_condition,
+    double plm_theta,
+    double gamma_law_index);
+
+unit_length smallest_cell_size(
+    mesh_topology_t mesh_topology,
+    mesh_geometry_t mesh_geometry);
+
+std::size_t total_zones(
+    mesh_topology_t mesh_topology,
+    mesh_geometry_t mesh_geometry);
+
+solution_t weighted_sum(solution_t s, solution_t t, rational::number_t b);
+
+} // namespace euler2d
+
+
+
+
+//=============================================================================
+namespace euler2d
+{
+
+using namespace dimensional;
+using coords_t            = mesh::cartesian_2d::coords_t;
+using mesh_geometry_t     = mesh::cartesian_2d::geometry_t;
+using mesh_topology_t     = bsp::shared_tree<mesh::block_index_t<2>, 4>;
+using conserved_array_t   = nd::shared_array<euler::conserved_density_t, 2>;
+using primitive_array_t   = nd::shared_array<euler::primitive_t, 2>;
+using conserved_tree_t    = bsp::shared_tree<mpr::computable<conserved_array_t>, 4>;
+using primitive_tree_t    = bsp::shared_tree<mpr::computable<primitive_array_t>, 4>;
+using primitive_mapping_t = std::function<euler::primitive_t(coords_t)>;
+
+
+
+
+//=============================================================================
+struct solution_t
+{
+    rational::number_t iteration;
+    unit_time          time;
+    conserved_tree_t   conserved;
+};
+
+
+
+
+//=============================================================================
+conserved_array_t initial_conserved_array(
+    mesh_geometry_t mesh_geometry,
+    mesh::block_index_t<2> block,
+    primitive_mapping_t initial,
+    double gamma_law_index);
+
+conserved_tree_t initial_conserved_tree(
+    mesh_topology_t mesh_topology,
+    mesh_geometry_t mesh_geometry,
+    primitive_mapping_t initial,
+    double gamma_law_index);
+
+primitive_array_t recover_primitive_array(
+    conserved_array_t uc,
+    double gamma_law_index);
+
+primitive_array_t estimate_gradient(
+    primitive_array_t pc,
+    unsigned long axis,
+    double plm_theta);
+
+conserved_array_t updated_conserved(
+    conserved_array_t uc,
+    primitive_array_t pe,
+    unit_time time,
+    unit_time dt,
+    mesh_geometry_t mesh_geometry,
+    mesh::block_index_t<2> block,
     double plm_theta,
     double gamma_law_index);
 
@@ -147,13 +200,11 @@ unit_length smallest_cell_size(
     mesh_topology_t mesh_topology,
     mesh_geometry_t mesh_geometry);
 
-std::size_t total_cells(
+std::size_t total_zones(
     mesh_topology_t mesh_topology,
     mesh_geometry_t mesh_geometry);
 
 solution_t weighted_sum(solution_t s, solution_t t, rational::number_t b);
-
-
 
 } // namespace euler2d
 
@@ -167,14 +218,14 @@ namespace h5 {
 
 class Group;
 
-void read(const Group& group, std::string name, modules::euler2d::conserved_tree_t& conserved);
-void read(const Group& group, std::string name, modules::euler2d::side_effect_t& side_effect);
-void read(const Group& group, std::string name, modules::euler2d::schedule_t& schedule);
-void read(const Group& group, std::string name, modules::euler2d::solution_t& solution);
+void read(const Group& group, std::string name, modules::euler1d::conserved_tree_t& conserved);
+void read(const Group& group, std::string name, modules::euler1d::solution_t& solution);
+void write(const Group& group, std::string name, const modules::euler1d::conserved_tree_t& conserved);
+void write(const Group& group, std::string name, const modules::euler1d::solution_t& solution);
 
+void read(const Group& group, std::string name, modules::euler2d::conserved_tree_t& conserved);
+void read(const Group& group, std::string name, modules::euler2d::solution_t& solution);
 void write(const Group& group, std::string name, const modules::euler2d::conserved_tree_t& conserved);
-void write(const Group& group, std::string name, const modules::euler2d::side_effect_t& side_effect);
-void write(const Group& group, std::string name, const modules::euler2d::schedule_t& schedule);
 void write(const Group& group, std::string name, const modules::euler2d::solution_t& solution);
 
 } // namespace h5

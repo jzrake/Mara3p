@@ -441,8 +441,24 @@ using computable = computable_t<T>;
 
 
 //=============================================================================
+template<typename... ValueType>
+struct zipped_computable_t
+{
+    std::tuple<computable<ValueType>...> tuple;
+};
+
+
+
+
+//=============================================================================
 template<typename ValueType, typename Function>
 auto operator|(computable<ValueType> c, Function f)
+{
+    return f(c);
+}
+
+template<typename... ValueType, typename Function>
+auto operator|(zipped_computable_t<ValueType...> c, Function f)
 {
     return f(c);
 }
@@ -463,27 +479,40 @@ auto from(Function f)
 template<typename... ValueType>
 auto zip(computable<ValueType>... c)
 {
-    using value_type = std::tuple<ValueType...>;
-    return computable<value_type>([c...] () { return std::tuple(c.value()...); }, {c.node()...}).immediate(true);
+    return zipped_computable_t<ValueType...>{std::tuple(c...)};
 }
 
 template<typename ValueType, typename Function>
 auto map(computable<ValueType> c, Function f, const char* name="")
 {
     using value_type = std::invoke_result_t<Function, ValueType>;
-    return computable<value_type>([c, f] () { return f(c.value()); }, {c.node()}).name(name);
+    return computable<value_type>([c, f] () { return std::invoke(f, c.value()); }, {c.node()}).name(name);
+}
+
+template<typename... ValueType, typename Function>
+auto map(zipped_computable_t<ValueType...> c, Function f, const char* name="")
+{
+    using value_type = std::invoke_result_t<Function, std::tuple<ValueType...>>;
+
+    return std::apply([name, f] (auto... t)
+    {
+        return computable<value_type>([f, t...] ()
+        {
+            return std::invoke(f, std::tuple(t.value()...));
+        }, {t.node()...}).name(name);
+    }, c.tuple);
 }
 
 template<typename Function>
 auto map(Function f, const char* name="")
 {
-    return [f, name] (auto c) { return map(c, f, name); };
+    return [f, name] (auto c) { return map(c, f).name(name); };
 }
 
 template<typename Function>
 auto mapv(Function f, const char* name="")
 {
-    return [f, name] (auto c) { return map(c, [f] (auto t) { return std::apply(f, t); }, name); };
+    return [f, name] (auto c) { return map(c, [f] (auto t) { return std::apply(f, t); }).name(name); };
 }
 
 
@@ -522,26 +551,6 @@ std::vector<node_set_t> topological_sort(const node_set_t& nodes);
 
 
 
-/**
- * @brief      Assign an execution group to a list of nodes. These nodes and
- *             their corresponding generation number must be the result of a
- *             call to topological_sort.
- *
- * @param[in]  nodes       The list of nodes (topologically sorted)
- * @param      generation  The list of node generations
- * @param[in]  num_groups  The number of execution groups
- *
- * @return     A list of execution group indexes corresponding to the list of
- *             nodes
- *
- * @note       The algorithm tries to maximize concurrency by assigning each
- *             execution group an equal number of tasks from each generation.
- */
-// std::vector<unsigned> divvy_tasks(const std::vector<computable_node_t*>& nodes, std::vector<unsigned>& generation, unsigned num_groups);
-
-
-
-
 //=============================================================================
 void print_graph(std::ostream& stream, const node_set_t& node_list);
 
@@ -571,71 +580,8 @@ void print_graph(std::ostream& stream, computable<ValueType>... cs)
 
 
 
-//=============================================================================
-void compute(const node_set_t& node_set, unsigned num_threads=0);
-
-
-
-
-/**
- * @brief      Compute a computable on a (possibly asynchronous) scheduler.
- *
- * @param[in]  cs         The computables to compute
- *
- * @tparam     ValueType    The computable value type
- */
-template<typename... ValueType>
-void compute(computable<ValueType>... cs)
-{
-    compute({cs.node()...});
-}
-
-
-
-
-/**
- * @brief      Compute a list of nodes, delegating the work to all ranks
- *             participating in mpi::comm_world. This function only guarantees
- *             that the computed value is available on at least one of the MPI
- *             ranks. It is the responsibility of the calling code to maintain
- *             ownership of all the computable_node_t pointers in the node_list
- *             argument. This is done automatically if the corresponding
- *             computable instances exist in some type of container where this
- *             function is invoked.
- *
- * @param[in]  node_list  The list of nodes to be computed
- *
- * @note       The MPI rank to which a node was delegated can be queried by
- *             calling its group() method. Even if a node A was not delegated to
- *             this MPI rank, it may still have a value. This occurs if any
- *             nodes just downstream A are delegated to this MPI rank. In that
- *             case, A will have received the computed value from its delegated
- *             rank.
- */
-void compute_mpi(const node_set_t& node_list, unsigned num_threads=0);
-
-
-
-
-/**
- * @brief      Convenience function to invoke the compute_mpi above.
- *
- * @param[in]  cs         The computables to compute
- *
- * @tparam     ValueType  The computable value type
- */
-template<typename... ValueType>
-void compute_mpi(computable<ValueType>... cs)
-{
-    compute_mpi({cs.node()...}, 1);
-}
-
-
-
-
-//=============================================================================
-template<typename SequenceProtol>
-auto compute_all(SequenceProtol sequence, int num_threads=0)
+template<typename SequenceProtocol>
+void print_graph_all(std::ostream& stream, SequenceProtocol sequence)
 {
     auto state = start(sequence);
     auto nodes = node_set_t();
@@ -645,9 +591,149 @@ auto compute_all(SequenceProtol sequence, int num_threads=0)
         nodes.insert(obtain(sequence, state.value()).node());
         state = next(sequence, state.value());
     }
-    compute(nodes, num_threads);
+    print_graph(stream, nodes);
+}
 
-    return sequence;
+
+
+
+/**
+ * @brief      Struct to be filled out by the graph evaluation function
+ */
+struct execution_monitor_t
+{
+    double total_time = 0.0;
+    double dead_time  = 0.0;
+    double eval_time  = 0.0;
+};
+
+
+
+
+/**
+ * @brief      Struct describing an execution strategy to compute a list of
+ *             nodes. MPI execution delegates the work to all ranks
+ *             participating in mpi::comm_world. This only guarantees that the
+ *             computed value is available on at least one of the MPI ranks. It
+ *             is the responsibility of the calling code to maintain ownership
+ *             of all the computable_node_t pointers in the node_list argument.
+ *             This is done automatically if the corresponding computable
+ *             instances exist in some type of container when the compute
+ *             function is invoked.
+ *
+ * @note       The MPI rank to which a node was delegated can be queried by
+ *             calling its group() method. Even if a node A was not delegated to
+ *             this MPI rank, it may still have a value. This occurs if any
+ *             nodes just downstream A are delegated to this MPI rank. In that
+ *             case, A will have received the computed value from its delegated
+ *             rank.
+ */
+struct execution_strategy_t
+{
+    bool use_mpi         = false; // use the MPI execution strategy
+    bool async_serialize = false; // serialize data products on a background thread
+    bool async_load      = false; // deserialize data products on a background thread
+    unsigned num_threads = 1;     // size of the thread pool (use zero for hardware concurrency)
+};
+
+
+
+
+/**
+ * @brief      Factory functions for common execution strategies
+ *
+ * @param[in]  num_threads  The number threads
+ *
+ * @return     The execution strategy.
+ */
+inline execution_strategy_t multi_threaded_execution(unsigned num_threads)
+{
+    return {false, false, false, num_threads};
+}
+
+inline execution_strategy_t mpi_single_threaded_execution()
+{
+    return {true, false, false, 1};
+}
+
+inline execution_strategy_t mpi_multi_threaded_execution(unsigned num_threads)
+{
+    return {true, false, false, num_threads};
+}
+
+
+
+
+/**
+ * @brief      Compute all the nodes in a node set using a given strategy.
+ *
+ * @param[in]  node_set  The node set to copmute
+ * @param[in]  strategy  The strategy to use
+ *
+ * @return     The execution monitor
+ */
+execution_monitor_t compute(const node_set_t& node_set, execution_strategy_t strategy);
+
+
+
+
+/**
+ * @brief      Extract all computable nodes from a container of computables
+ *             satisfying the sequence protocol, and compute them.
+ *
+ * @param[in]  sequence          The sequence of computables
+ * @param[in]  strategy          The execution strategy
+ *
+ * @tparam     SequenceProtocol  A container of computables
+ *
+ * @return     The execution monitor
+ */
+template<typename SequenceProtocol>
+execution_monitor_t compute_all(SequenceProtocol sequence, execution_strategy_t strategy)
+{
+    auto state = start(sequence);
+    auto nodes = node_set_t();
+
+    while (state.has_value())
+    {
+        nodes.insert(obtain(sequence, state.value()).node());
+        state = next(sequence, state.value());
+    }
+    return compute(nodes, strategy);
+}
+
+
+
+
+/**
+ * @brief      Compute a set of computables on using the default hardware
+ *             concurrency and no MPI.
+ *
+ * @param[in]  cs         The computables to compute
+ *
+ * @tparam     ValueType  The computable value type
+ */
+template<typename... ValueType>
+execution_monitor_t compute(computable<ValueType>... cs)
+{
+    return compute({cs.node()...}, multi_threaded_execution(0));
+}
+
+
+
+
+/**
+ * @brief      { function_description }
+ *
+ * @param[in]  strategy   The strategy
+ * @param[in]  cs         The create struct
+ *
+ * @tparam     ValueType  { description }
+ */
+template<typename... ValueType>
+execution_monitor_t compute(execution_strategy_t strategy, computable<ValueType>... cs)
+{
+    return compute({cs.node()...}, strategy);
 }
 
 } // namespace mpr

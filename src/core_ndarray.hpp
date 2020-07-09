@@ -365,7 +365,7 @@ auto make_unique_array(uivec_t<Rank> shape)
 }
 
 template<typename ValueType, uint Rank>
-auto make_shared_array(unique_array<ValueType, Rank>&& array)
+auto make_shared_array(unique_array<ValueType, Rank> array)
 {
     return nd::make_array(std::move(array.provider).shared(), array.shape);
 }
@@ -787,6 +787,7 @@ inline auto freeze    (uint a, uint i)         { return [=] (auto array) { retur
 inline auto new_axis  (uint a)                 { return [=] (auto array) { return new_axis   (array, a); }; }
 inline auto select    (uint a, long s, long f) { return [=] (auto array) { return select     (array, a, s, f); }; }
 inline auto select    (uint a, long s)         { return [=] (auto array) { return select     (array, a, s); }; }
+inline auto repeat    (uint a, long c)         { return [=] (auto array) { return repeat     (array, a, c); }; }
 inline auto to_shared ()                       { return [ ] (auto array) { return to_shared  (array); }; }
 inline auto to_dynamic()                       { return [ ] (auto array) { return to_dynamic (array); }; }
 

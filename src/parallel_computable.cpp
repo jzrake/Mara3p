@@ -127,6 +127,32 @@ std::vector<node_set_t> mpr::topological_sort(const node_set_t& nodes)
 
 
 //=============================================================================
+static int closest_upstream_group(computable_node_t* node, const node_map_t& delegations)
+{
+    auto group_count = std::map<int, unsigned>();
+
+    for (auto i : node->incoming_nodes())
+    {
+        group_count[delegations.at(i)] += 1;
+    }
+
+    auto max_count = 0;
+    auto max_group = 0;
+
+    for (auto [group, count] : group_count)
+    {
+        if (count > max_count)
+        {
+            max_group = group;
+        }
+    }
+    return max_group;
+}
+
+
+
+
+//=============================================================================
 static node_map_t delegate_tasks(const std::vector<node_set_t>& generations)
 {
     auto delegations = node_map_t();
@@ -134,11 +160,23 @@ static node_map_t delegate_tasks(const std::vector<node_set_t>& generations)
 
     for (const auto& generation : generations)
     {
-        auto j = unsigned(0);
+        // Treat this generation as having a fixed number of tasks per block.
 
-        for (auto node : generation)
+        if (generation.size() % generations.front().size() == 0)
         {
-            delegations.emplace(node, j++ * num_groups / generation.size());
+            auto j = unsigned(0);
+
+            for (auto node : generation)
+            {
+                delegations.emplace(node, j++ * num_groups / generation.size());
+            }
+        }
+        else // Delegate this generation based on proximity to upstream tasks.
+        {
+            for (auto node : generation)
+            {
+                delegations.emplace(node, closest_upstream_group(node, delegations));
+            }
         }
     }
     return delegations;
@@ -152,7 +190,6 @@ void mpr::print_graph(std::ostream& stream, const node_set_t& node_set)
 {
     auto generations = topological_sort(node_set);
     auto delegations = delegate_tasks(generations);
-
     stream << "digraph {\n";
     stream << "    ranksep=2;\n";
 
@@ -208,8 +245,9 @@ void mpr::print_graph(std::ostream& stream, const node_set_t& node_set)
 
 
 //=============================================================================
-void mpr::compute(const node_set_t& node_set, unsigned num_threads)
+static execution_monitor_t compute_threaded(const node_set_t& node_set, unsigned num_threads)
 {
+    auto start       = std::chrono::high_resolution_clock::now();
     auto thread_pool = mara::ThreadPool(num_threads ? num_threads : std::thread::hardware_concurrency());
     auto scheduler   = async_invoke_t(thread_pool.scheduler());
     auto eligible    = collect(node_set, [] (auto n) { return n->eligible(); });
@@ -251,15 +289,20 @@ void mpr::compute(const node_set_t& node_set, unsigned num_threads)
 
         completed.clear();
     }
+
+    auto monitor = execution_monitor_t();
+    monitor.total_time = (std::chrono::high_resolution_clock::now() - start).count();
+    return monitor;
 }
 
 
 
 
 //=============================================================================
-void mpr::compute_mpi(const node_set_t& node_set, unsigned num_threads)
+static execution_monitor_t compute_mpi(const node_set_t& node_set, execution_strategy_t strategy)
 {
     using async_load_t = std::pair<computable_node_t*, std::future<std::any>>;
+    auto start_time = std::chrono::high_resolution_clock::now();
 
 
 
@@ -285,7 +328,7 @@ void mpr::compute_mpi(const node_set_t& node_set, unsigned num_threads)
 
     auto this_group    = mpi::comm_world().rank();
     auto message_queue = mara::MessageQueue();
-    auto thread_pool   = mara::ThreadPool(num_threads ? num_threads : std::thread::hardware_concurrency());
+    auto thread_pool   = mara::ThreadPool(strategy.num_threads ? strategy.num_threads : std::thread::hardware_concurrency());
     auto eligible      = collect(node_set, [this_group] (auto n) { return n->group() == this_group && n->eligible(); });
     auto delegated     = collect(node_set, [this_group] (auto n) { return n->group() == this_group; });
     auto completed     = collect(node_set, [          ] (auto n) { return n->has_value(); });
@@ -339,8 +382,6 @@ void mpr::compute_mpi(const node_set_t& node_set, unsigned num_threads)
 
 
 
-    auto async_serialize = false;
-    auto async_load      = false;
     auto iteration = 0;
     auto eval_tick = std::chrono::high_resolution_clock::duration::zero();
     auto eval_dead = std::chrono::high_resolution_clock::duration::zero();
@@ -399,7 +440,7 @@ void mpr::compute_mpi(const node_set_t& node_set, unsigned num_threads)
 
             if (auto recipients = unique_recipients(node); ! recipients.empty())
             {
-                if (async_serialize)
+                if (strategy.async_serialize)
                 {
                     message_queue.push(thread_pool.enqueue(priority(node), [node] () { return node->serialize(); }), recipients, node->id());
                 }
@@ -424,7 +465,7 @@ void mpr::compute_mpi(const node_set_t& node_set, unsigned num_threads)
         {
             auto node = node_lookup.at(id);
 
-            if (async_load)
+            if (strategy.async_load)
             {
                 auto load = thread_pool.enqueue(priority(node), [node] (auto&& b) { return node->get_serializer().deserialize(b); }, std::move(bytes));
                 loading.emplace_back(node, std::move(load));
@@ -443,7 +484,7 @@ void mpr::compute_mpi(const node_set_t& node_set, unsigned num_threads)
         // Get any values that have finished deserializing, set that value to
         // the corresponding nodes, and enqueue any newly eligible nodes.
         // --------------------------------------------------------------------
-        if (async_load)
+        if (strategy.async_load)
         {
             for (auto& [node, future_value] : loading)
             {
@@ -488,4 +529,26 @@ void mpr::compute_mpi(const node_set_t& node_set, unsigned num_threads)
         }
     }
     mpi::comm_world().barrier();
+
+    auto monitor = execution_monitor_t();
+    monitor.total_time = (std::chrono::high_resolution_clock::now() - start_time).count();
+    monitor.dead_time  = eval_dead.count();
+    monitor.eval_time  = eval_tick.count();
+    return monitor;
+}
+
+
+
+
+//=============================================================================
+execution_monitor_t mpr::compute(const node_set_t& node_set, execution_strategy_t strategy)
+{
+    if (strategy.use_mpi)
+    {
+        return compute_mpi(node_set, strategy);
+    }
+    else
+    {
+        return compute_threaded(node_set, strategy.num_threads);
+    }
 }

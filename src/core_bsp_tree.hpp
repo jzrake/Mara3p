@@ -35,13 +35,13 @@
 
 
 
-// bsp := Binary Space Partitioning (kd-tree, quad-tree, oct-tree)
+// bsp := Binary Space Partitioning (facilitates kd-tree, quad-tree, oct-tree, etc.)
 namespace bsp {
 
 
-using uint = unsigned long;
 
 
+//=============================================================================
 namespace detail {
 
 template<typename FunctionType, typename... Ts>
@@ -67,7 +67,7 @@ auto sum(FunctionType&& f)
 
 
 //=============================================================================
-template<typename ValueType, typename ChildrenType, uint Ratio>
+template<typename ValueType, typename ChildrenType, unsigned long Ratio>
 struct tree_t
 {
     std::variant<ValueType, ChildrenType> provider;
@@ -77,15 +77,15 @@ struct tree_t
 
 
 //=============================================================================
-template<typename ValueType, uint Ratio>
+template<typename ValueType, unsigned long Ratio>
 struct shared_children_t
 {
-    static constexpr uint ratio = Ratio;
+    static constexpr unsigned long ratio = Ratio;
     using value_type = ValueType;
 
     auto operator()(std::size_t i) const
     {
-       return ptr->operator[](i);
+        return ptr->operator[](i);
     }
     std::shared_ptr<numeric::array_t<tree_t<value_type, shared_children_t, ratio>, ratio>> ptr;
 };
@@ -115,16 +115,16 @@ struct zipped_children_t
 
 
 //=============================================================================
-template<typename ValueType, uint Ratio>
+template<typename ValueType, unsigned long Ratio>
 using shared_tree = tree_t<ValueType, shared_children_t<ValueType, Ratio>, Ratio>;
 
-template<uint Ratio, typename ValueType>
+template<unsigned long Ratio, typename ValueType>
 auto just(ValueType value)
 {
     return shared_tree<ValueType, Ratio>{value};
 }
 
-template<typename ValueType, uint Ratio>
+template<typename ValueType, unsigned long Ratio>
 auto shared_trees(numeric::array_t<shared_tree<ValueType, Ratio>, Ratio> child_trees)
 {
     return shared_children_t<ValueType, Ratio>{
@@ -132,7 +132,7 @@ auto shared_trees(numeric::array_t<shared_tree<ValueType, Ratio>, Ratio> child_t
     };
 }
 
-template<typename ValueType, uint Ratio>
+template<typename ValueType, unsigned long Ratio>
 auto shared_values(numeric::array_t<ValueType, Ratio> child_values)
 {
     return shared_trees(map(child_values, [] (auto v) { return just<Ratio>(v); }));
@@ -161,7 +161,7 @@ auto from(numeric::array_t<ValueType, Ratio> values)
 
 
 //=============================================================================
-template<typename ValueType, uint Ratio, typename FunctionType>
+template<typename ValueType, unsigned long Ratio, typename FunctionType>
 auto map(shared_children_t<ValueType, Ratio> children, FunctionType function)
 {
     return shared_children_t<ValueType, Ratio>{
@@ -184,7 +184,7 @@ auto map(shared_children_t<ValueType, Ratio> children, FunctionType function)
  *
  * @return     True if has value, False otherwise.
  */
-template<typename ValueType, typename ChildrenType, uint Ratio>
+template<typename ValueType, typename ChildrenType, unsigned long Ratio>
 bool has_value(tree_t<ValueType, ChildrenType, Ratio> tree)
 {
     return std::holds_alternative<ValueType>(tree.provider);
@@ -205,7 +205,7 @@ bool has_value(tree_t<ValueType, ChildrenType, Ratio> tree)
  *
  * @return     The value
  */
-template<typename ValueType, typename ChildrenType, uint Ratio>
+template<typename ValueType, typename ChildrenType, unsigned long Ratio>
 auto value(tree_t<ValueType, ChildrenType, Ratio> tree)
 {
     return std::get<ValueType>(tree.provider);
@@ -226,7 +226,7 @@ auto value(tree_t<ValueType, ChildrenType, Ratio> tree)
  *
  * @return     The children
  */
-template<typename ValueType, typename ChildrenType, uint Ratio>
+template<typename ValueType, typename ChildrenType, unsigned long Ratio>
 auto children(tree_t<ValueType, ChildrenType, Ratio> tree)
 {
     if (has_value(tree))
@@ -251,7 +251,7 @@ auto children(tree_t<ValueType, ChildrenType, Ratio> tree)
  *
  * @return     Another tree node
  */
-template<typename ValueType, typename ChildrenType, uint Ratio>
+template<typename ValueType, typename ChildrenType, unsigned long Ratio>
 auto child_at(const tree_t<ValueType, ChildrenType, Ratio>& tree, std::size_t i)
 {
     if (i >= Ratio)
@@ -279,7 +279,7 @@ auto child_at(const tree_t<ValueType, ChildrenType, Ratio>& tree, std::size_t i)
  *
  * @return     Another tree node
  */
-template<typename ValueType, typename ChildrenType, uint Ratio, typename AttachType>
+template<typename ValueType, typename ChildrenType, unsigned long Ratio, typename AttachType>
 auto attach(tree_t<ValueType, ChildrenType, Ratio> tree, AttachType attach_function)
 {
     static_assert(std::is_same_v<std::invoke_result_t<AttachType, ValueType>, ChildrenType>,
@@ -315,7 +315,7 @@ auto attach(tree_t<ValueType, ChildrenType, Ratio> tree, AttachType attach_funct
  *
  * @return     Another tree node
  */
-template<typename ValueType, typename ChildrenType, uint Ratio, typename AttachType, typename PredicateType>
+template<typename ValueType, typename ChildrenType, unsigned long Ratio, typename AttachType, typename PredicateType>
 auto attach_if(tree_t<ValueType, ChildrenType, Ratio> tree, AttachType attach_function, PredicateType predicate)
 {
     static_assert(std::is_same_v<std::invoke_result_t<PredicateType, ValueType>, bool>,
@@ -351,7 +351,7 @@ auto attach_if(tree_t<ValueType, ChildrenType, Ratio> tree, AttachType attach_fu
  *
  * @note       This function only works on shared trees.
  */
-template<typename ValueType, uint Ratio, typename BranchType>
+template<typename ValueType, unsigned long Ratio, typename BranchType>
 auto branch(shared_tree<ValueType, Ratio> tree, BranchType branch_function)
 {
     return attach(tree, [f=branch_function] (auto u) { return shared_values(f(u)); });
@@ -371,16 +371,17 @@ auto branch(shared_tree<ValueType, Ratio> tree, BranchType branch_function)
  * @tparam     Ratio            The tree ratio
  * @tparam     BranchType       The type of the branch function
  * @tparam     PredicateType    The predicate function type
- * @tparam     <unnamed>        std::enable_if
  *
  * @return     Another tree node
  *
  * @note       This function only works on shared trees.
  */
-template<typename ValueType, uint Ratio, typename BranchType, typename PredicateType,
-typename = std::enable_if_t<std::is_same_v<std::invoke_result_t<BranchType, ValueType>, numeric::array_t<ValueType, Ratio>>>>
+template<typename ValueType, unsigned long Ratio, typename BranchType, typename PredicateType>
 auto branch_if(shared_tree<ValueType, Ratio> tree, BranchType branch_function, PredicateType predicate)
 {
+    static_assert(std::is_same_v<std::invoke_result_t<BranchType, ValueType>, numeric::array_t<ValueType, Ratio>>,
+        "the branch function must be ValueType -> numeric::array_t<ValueType, Ratio>");
+
     return attach_if(tree, [f=branch_function] (auto u) { return shared_values(f(u)); }, predicate); 
 }
 
@@ -396,17 +397,59 @@ auto branch_if(shared_tree<ValueType, Ratio> tree, BranchType branch_function, P
  * @tparam     ValueType        The tree value type
  * @tparam     Ratio            The tree ratio
  * @tparam     BranchType       The type of the branch function
- * @tparam     <unnamed>        std::enable_if
  *
  * @return     Another tree node
  *
  * @note       This function only works on shared trees.
  */
-template<typename ValueType, uint Ratio, typename BranchType,
-typename = std::enable_if_t<std::is_same_v<std::invoke_result_t<BranchType, ValueType>, numeric::array_t<ValueType, Ratio>>>>
+template<typename ValueType, unsigned long Ratio, typename BranchType>
 auto branch_all(shared_tree<ValueType, Ratio> tree, BranchType branch_function)
 {
     return branch_if(tree, branch_function, [] (auto) { return true; });
+}
+
+
+
+
+/**
+ * @brief      Collapse a non-leaf node to a value by recursively mapping a
+ *             collapsing function over its descendents.
+ *
+ * @param[in]  tree              The tree to collapse entirely
+ * @param[in]  f                 The collapse function:
+ *                               numeric::array_t<ValueType, Ratio> -> ValueType
+ *
+ * @tparam     ValueType         The tree value type
+ * @tparam     ChildrenType      The tree provider type
+ * @tparam     Ratio             The tree ratio
+ * @tparam     CollapseFunction  The type of the collapse function
+ *
+ * @return     A value
+ *
+ * @note       This function differs from reduce in that the function maps an
+ *             array of values to a value.
+ */
+template<typename ValueType, typename ChildrenType, unsigned long Ratio, typename CollapseFunction>
+auto collapse(tree_t<ValueType, ChildrenType, Ratio> tree, CollapseFunction f) -> ValueType
+{
+    static_assert(std::is_same_v<std::invoke_result_t<CollapseFunction, numeric::array_t<ValueType, Ratio>>, ValueType>,
+       "the collapse function must be numeric::array_t<ValueType, Ratio> -> ValueType");
+
+    if (has_value(tree))
+    {
+        throw std::invalid_argument("bsp::collapse_all (cannot collapse a leaf node)");
+    }
+    return f(map(numeric::range<Ratio>(), [tree, f] (auto i)
+    {
+        if (auto child = child_at(tree, i); has_value(child))
+        {
+            return value(child);
+        }
+        else
+        {
+            return collapse(child, f);
+        }
+    }));
 }
 
 
@@ -426,7 +469,7 @@ auto branch_all(shared_tree<ValueType, Ratio> tree, BranchType branch_function)
  *
  * @return     Another tree node
  */
-template<typename ValueType, typename ChildrenType, uint Ratio, typename FunctionType>
+template<typename ValueType, typename ChildrenType, unsigned long Ratio, typename FunctionType>
 auto map(tree_t<ValueType, ChildrenType, Ratio> tree, FunctionType function)
 {
     using result_value_type    = std::invoke_result_t<FunctionType, ValueType>;
@@ -456,7 +499,7 @@ auto map(tree_t<ValueType, ChildrenType, Ratio> tree, FunctionType function)
  *
  * @return     A tree of tuples.
  */
-template<typename... ValueType, typename... ChildrenType, uint Ratio>
+template<typename... ValueType, typename... ChildrenType, unsigned long Ratio>
 auto zip(tree_t<ValueType, ChildrenType, Ratio>... trees)
 {
     using result_value_type    = std::tuple<ValueType...>;
@@ -486,10 +529,35 @@ auto zip(tree_t<ValueType, ChildrenType, Ratio>... trees)
  *
  * @return     The size of the tree
  */
-template<typename ValueType, typename ChildrenType, uint Ratio>
+template<typename ValueType, typename ChildrenType, unsigned long Ratio>
 std::size_t size(tree_t<ValueType, ChildrenType, Ratio> tree)
 {
     return has_value(tree) ? 1 : detail::sum<Ratio>([&] (auto i) { return size(child_at(tree, i)); });
+}
+
+
+
+
+/**
+ * @brief      Return the tree's maximum depth below this node.
+ *
+ * @param[in]  tree          The tree whose depth is needed
+ * @param[in]  d             Starting depth (mainly for internal use)
+ *
+ * @tparam     ValueType     The tree value type
+ * @tparam     ChildrenType  The tree provider type
+ * @tparam     Ratio         The tree ratio
+ *
+ * @return     The tree's depth
+ */
+template<typename ValueType, typename ChildrenType, unsigned long Ratio>
+std::size_t depth(tree_t<ValueType, ChildrenType, Ratio> tree, std::size_t d=0)
+{
+    if (has_value(tree))
+    {
+        return d;
+    }
+    return max(map(numeric::range<Ratio>(), [tree, d] (auto i) { return depth(child_at(tree, i), d + 1); }));
 }
 
 
@@ -511,7 +579,7 @@ std::size_t size(tree_t<ValueType, ChildrenType, Ratio> tree)
  *
  * @return     The reduced value
  */
-template<typename ValueType, typename ChildrenType, uint Ratio, typename Reducer, typename SeedType>
+template<typename ValueType, typename ChildrenType, unsigned long Ratio, typename Reducer, typename SeedType>
 SeedType reduce(tree_t<ValueType, ChildrenType, Ratio> tree, Reducer reducer, SeedType seed)
 {
     static_assert(std::is_same_v<SeedType, std::invoke_result_t<Reducer, SeedType, ValueType>>,
@@ -542,7 +610,7 @@ SeedType reduce(tree_t<ValueType, ChildrenType, Ratio> tree, Reducer reducer, Se
  * @tparam     Ratio         The tree ratio
  * @tparam     FunctionType  The function type
  */
-template<typename ValueType, typename ChildrenType, uint Ratio, typename FunctionType>
+template<typename ValueType, typename ChildrenType, unsigned long Ratio, typename FunctionType>
 void sink(tree_t<ValueType, ChildrenType, Ratio> tree, FunctionType function)
 {
     if (has_value(tree))
@@ -566,7 +634,7 @@ void sink(tree_t<ValueType, ChildrenType, Ratio> tree, FunctionType function)
  *
  * @return     A shared tree
  */
-template<typename ValueType, typename ChildrenType, uint Ratio>
+template<typename ValueType, typename ChildrenType, unsigned long Ratio>
 auto to_shared(tree_t<ValueType, ChildrenType, Ratio> tree)
 {
     static_assert(! std::is_same_v<ChildrenType, shared_children_t<ValueType, Ratio>>,
@@ -589,7 +657,7 @@ auto to_shared(tree_t<ValueType, ChildrenType, Ratio> tree)
 
 
 //=============================================================================
-template<typename V, typename C, uint R, typename F> auto operator|(tree_t<V, C, R> t, F f) { return f(t); }
+template<typename V, typename C, unsigned long R, typename F> auto operator|(tree_t<V, C, R> t, F f) { return f(t); }
 template<typename F> auto map  (F f) { return [f] (auto tree) { return map(tree, f); }; }
 template<typename F> auto maps (F f) { return [f] (auto tree) { return to_shared(map(tree, f)); }; }
 template<typename F> auto mapv (F f) { return [f] (auto tree) { return map(tree, [f] (auto t) { return std::apply(f, t); }); }; }

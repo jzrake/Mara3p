@@ -84,20 +84,8 @@ static const auto binary_period = unit_time(2 * M_PI);
 
 
 //=============================================================================
-template<typename T, std::size_t Ratio>
-mpr::node_set_t computable_tree_nodes(bsp::shared_tree<T, Ratio> tree)
-{
-    auto nodes = mpr::node_set_t();
-    sink(tree, [&nodes] (auto c) { nodes.insert(c.node()); });
-    return nodes;
-}
-
-
-
-
-//=============================================================================
 template<typename ArrayType>
-auto extend(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, bsp::tree_index_t<2> block)
+auto extend(bsp::shared_tree<mpr::computable<ArrayType>, 4> tree, mesh::block_index_t<2> block)
 {
     auto c11 = value_at(tree, block);
     auto c00 = value_at(tree, prev_on(prev_on(block, 0), 1));
@@ -145,7 +133,7 @@ static auto initial_solution(const mara::config_t& cfg)
         return result;
     }
     auto sd = make_solver_data(cfg);
-    auto mesh = bsp::uniform_quadtree(sd.depth);
+    auto mesh = bsp::uniform_mesh_tree<2>(sd.depth);
 
     return solution_t{
         0,
@@ -206,7 +194,8 @@ static auto encode_substep(solution_t solution, unit_time dt, solver_data_t solv
 //=============================================================================
 static auto compute(solution_t solution, unsigned threads=0)
 {
-    mpr::compute_mpi(computable_tree_nodes(solution.conserved), threads);
+    auto strategy = mpr::mpi_multi_threaded_execution(threads);
+    mpr::compute_all(solution.conserved, strategy);
     return solution;
 }
 
@@ -233,14 +222,13 @@ static void print_graph(const mara::config_t& cfg, solution_t solution, solver_d
     auto outdir = cfg.get_string("outdir");
     auto fname  = util::format("%s/task_graph.dot", outdir.data());
     auto next   = encode_step(solution, solver_data, nfold);
-    auto nodes  = computable_tree_nodes(next.conserved);
 
     if (mpi::comm_world().rank() == 0)
     {
         std::printf("write %s\n", fname.data());
         mara::filesystem::require_dir(outdir);
         auto outf = std::ofstream(fname);
-        mpr::print_graph(outf, nodes);        
+        mpr::print_graph_all(outf, next.conserved);        
     }
 }
 

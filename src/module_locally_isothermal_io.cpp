@@ -27,7 +27,7 @@
 
 
 #include "mara.hpp"
-#if MARA_COMPILE_EULER1D || MARA_COMPILE_EULER2D
+#if MARA_COMPILE_LOCALLY_ISOTHERMAL
 #include "app_hdf5_dimensional.hpp"
 #include "app_hdf5_ndarray.hpp"
 #include "app_hdf5_ndarray_dimensional.hpp"
@@ -35,82 +35,17 @@
 #include "app_hdf5_rational.hpp"
 #include "core_bqo_tree.hpp"
 #include "core_util.hpp"
-#include "module_euler.hpp"
+#include "module_locally_isothermal.hpp"
 #endif
 
 
 
 
-#if MARA_COMPILE_EULER1D // <--------------------------------------------------
+#if MARA_COMPILE_LOCALLY_ISOTHERMAL // <--------------------------------------------------
 
 
 //=============================================================================
-void h5::read(const Group& group, std::string name,  modules::euler1d::conserved_tree_t& conserved)
-{
-    auto mesh = bsp::just<2>(mesh::block_index_t<1>());
-
-    for (auto block_name : group)
-    {
-        auto block = mesh::read_block_index<1>(block_name);
-        mesh = insert(mesh, block, block);
-    }
-
-    conserved = mesh | bsp::maps([&group] (auto block)
-    {
-        return mpr::from([block, &group] ()
-        {
-            return read<modules::euler1d::conserved_array_t>(group, mesh::format_block_index(block));
-        });
-    });
-}
-
-void h5::read(const Group& group, std::string name, modules::euler1d::solution_t& solution)
-{
-    auto sgroup = group.open_group(name);
-    auto ugroup = sgroup.open_group("conserved");
-
-    read(sgroup, "iteration", solution.iteration);
-    read(sgroup, "time", solution.time);
-    read(sgroup, "conserved", solution.conserved);
-}
-
-
-
-
-//=============================================================================
-void h5::write(const Group& group, std::string name, const modules::euler1d::conserved_tree_t& conserved)
-{
-    auto ugroup = group.require_group(name);
-
-    sink(indexify(conserved), util::apply_to([&ugroup] (auto index, auto value)
-    {
-        if (value.has_value())
-        {
-            write(ugroup, mesh::format_block_index(index), value.value());
-        }
-    }));
-}
-
-void h5::write(const Group& group, std::string name, const modules::euler1d::solution_t& solution)
-{
-    auto sgroup = group.require_group(name);
-    auto ugroup = sgroup.require_group("conserved");
-
-    write(sgroup, "iteration", solution.iteration);
-    write(sgroup, "time", solution.time);
-    write(sgroup, "conserved", solution.conserved);
-}
-
-#endif // MARA_COMPILE_EULER1D
-
-
-
-
-#if MARA_COMPILE_EULER2D // <--------------------------------------------------
-
-
-//=============================================================================
-void h5::read(const Group& group, std::string name,  modules::euler2d::conserved_tree_t& conserved)
+void h5::read(const Group& group, std::string name,  modules::locally_isothermal::conserved_tree_t& conserved)
 {
     auto mesh = bsp::just<4>(mesh::block_index_t<2>());
 
@@ -124,12 +59,12 @@ void h5::read(const Group& group, std::string name,  modules::euler2d::conserved
     {
         return mpr::from([block, &group] ()
         {
-            return read<modules::euler2d::conserved_array_t>(group, mesh::format_block_index(block));
+            return read<modules::locally_isothermal::conserved_array_t>(group, mesh::format_block_index(block));
         });
     });
 }
 
-void h5::read(const Group& group, std::string name, modules::euler2d::solution_t& solution)
+void h5::read(const Group& group, std::string name, modules::locally_isothermal::solution_t& solution)
 {
     auto sgroup = group.open_group(name);
     auto ugroup = sgroup.open_group("conserved");
@@ -143,7 +78,7 @@ void h5::read(const Group& group, std::string name, modules::euler2d::solution_t
 
 
 //=============================================================================
-void h5::write(const Group& group, std::string name, const modules::euler2d::conserved_tree_t& conserved)
+void h5::write(const Group& group, std::string name, const modules::locally_isothermal::conserved_tree_t& conserved)
 {
     auto ugroup = group.require_group(name);
 
@@ -156,7 +91,7 @@ void h5::write(const Group& group, std::string name, const modules::euler2d::con
     }));
 }
 
-void h5::write(const Group& group, std::string name, const modules::euler2d::solution_t& solution)
+void h5::write(const Group& group, std::string name, const modules::locally_isothermal::solution_t& solution)
 {
     auto sgroup = group.require_group(name);
     auto ugroup = sgroup.require_group("conserved");
@@ -166,4 +101,4 @@ void h5::write(const Group& group, std::string name, const modules::euler2d::sol
     write(sgroup, "conserved", solution.conserved);
 }
 
-#endif // MARA_COMPILE_EULER2D
+#endif // MARA_COMPILE_LOCALLY_ISOTHERMAL
