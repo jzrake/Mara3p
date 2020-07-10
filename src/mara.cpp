@@ -26,6 +26,7 @@
 
 
 
+#include <iostream>
 #include "app_config.hpp"
 #include "app_control.hpp"
 #include "app_filesystem.hpp"

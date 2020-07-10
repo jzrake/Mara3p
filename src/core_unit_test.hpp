@@ -27,24 +27,24 @@
 
 
 #pragma once
-#include <iostream>
+#include <cstdio>
 
 
 
 
 //=============================================================================
-#define White          "[0m"
-#define Red            "[0;31m"
-#define Green          "[0;32m"
-#define Blue           "[0;34m"
-#define Cyan           "[0;36m"
-#define Yellow         "[0;33m"
-#define Grey           "[1;30m"
-#define LightGrey      "[0;37m"
-#define BrightRed      "[1;31m"
-#define BrightGreen    "[1;32m"
-#define BrightWhite    "[1;37m"
-#define BrightYellow   "[1;33m"
+#define White          "\033[0m"
+#define Red            "\033[0;31m"
+#define Green          "\033[0;32m"
+#define Blue           "\033[0;34m"
+#define Cyan           "\033[0;36m"
+#define Yellow         "\033[0;33m"
+#define Grey           "\033[1;30m"
+#define LightGrey      "\033[0;37m"
+#define BrightRed      "\033[1;31m"
+#define BrightGreen    "\033[1;32m"
+#define BrightWhite    "\033[1;37m"
+#define BrightYellow   "\033[1;33m"
 
 
 
@@ -62,11 +62,11 @@ void increment_fail_count();
 #define require(expr) \
 do { \
     if ((expr)) { \
-        /* std::cout << '\033' << Green     << "Test passed ... [" << __FILE__ << "] " << #expr << std::endl; */ \
+        std::printf("%sTest passed ... [%s:%d] %s%s\n", Green, __FILE__, __LINE__, #expr, White); \
         increment_pass_count(); \
     } \
     else { \
-        std::cout << '\033' << BrightRed << "Test failed ... " << #expr << " [" << __FILE__ << " on line " << __LINE__ << "]" << std::endl; \
+        std::printf("%sTest failed ... [%s:%d] %s%s\n", BrightRed, __FILE__, __LINE__, #expr, White); \
         increment_fail_count(); \
     } \
 } while (false)
@@ -76,10 +76,10 @@ do { \
     try { \
         expr; \
         increment_fail_count(); \
-        std::cout << '\033' << BrightRed << "Test failed ... " << #expr << " " << __FILE__ << " on line " << __LINE__ << " [did not throw]" << std::endl; \
+        std::printf("%sTest failed ... [%s:%d] %s%s [did not throw] \n", BrightRed, __FILE__, __LINE__, #expr, White); \
     } \
     catch (...) { \
         increment_pass_count(); \
-        /* std::cout << '\033' << Green     << "Test passed ... [" << __FILE__ << "] " << #expr << " [threw]" << std::endl; */ \
+        std::printf("%sTest passed ... [%s:%d] %s%s [threw] \n", Green, __FILE__, __LINE__, #expr, White); \
     } \
 } while (false)

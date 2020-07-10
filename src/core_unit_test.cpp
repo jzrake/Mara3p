@@ -26,6 +26,7 @@
 
 
 
+#include <cstdio>
 #include "core_unit_test.hpp"
 
 
@@ -46,11 +47,16 @@ void start_unit_tests()
 
 void report_test_results()
 {
-    std::cout << '\033' << Blue << "===============================================================================" << std::endl;
-    std::cout << '\033' << BrightGreen << NumPassed << " passed" << std::endl;
+	std::printf("%s===============================================================================%s\n", Blue, White);
 
+	if (NumPassed)
+	{
+		std::printf("%spassed: %d%s\n", BrightGreen, NumPassed, White);
+	}
     if (NumFailed)
-        std::cout << '\033' << BrightRed << NumFailed << " failed" << std::endl;        
+    {
+		std::printf("%sfailed: %d%s\n", BrightRed, NumFailed, White);
+    }
 }
 
 void increment_pass_count()
