@@ -508,7 +508,7 @@ public:
         {
             H5O_info_t info;
 #if H5_VERS_MINOR >= 12
-            detail::check(H5Oget_info_by_name(id, name.data(), &info, 0, H5P_DEFAULT));
+            detail::check(H5Oget_info_by_name(id, name.data(), &info, 1, H5P_DEFAULT));
 #else
             detail::check(H5Oget_info_by_name(id, name.data(), &info, H5P_DEFAULT));
 #endif
@@ -533,7 +533,7 @@ public:
         {
             H5O_info_t info;
 #if H5_VERS_MINOR >= 12
-            detail::check(H5Oget_info_by_name(id, name.data(), &info, 0, H5P_DEFAULT));
+            detail::check(H5Oget_info_by_name(id, name.data(), &info, 1, H5P_DEFAULT));
 #else
             detail::check(H5Oget_info_by_name(id, name.data(), &info, H5P_DEFAULT));
 #endif
