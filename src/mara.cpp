@@ -27,6 +27,7 @@
 
 
 #include <iostream>
+#include <map>
 #include "app_config.hpp"
 #include "app_control.hpp"
 #include "app_filesystem.hpp"
@@ -45,7 +46,7 @@
 //=============================================================================
 namespace mpi
 {
-    inline filtered_ostream_t& master_cout()
+    static filtered_ostream_t& master_cout()
     {
         static auto os = filtered_ostream_t(std::cout, mpi::comm_world().rank() == 0);
         return os;
@@ -56,7 +57,7 @@ namespace mpi
 
 
 //=============================================================================
-inline auto config_template()
+static auto config_template()
 {
     return mara::config_template()
     .item("block_size",            64, "number of zones per side")
@@ -320,7 +321,7 @@ static void run_euler1d(int argc, const char* argv[])
         problem.side_effects(cfg, schedule, solution, monitor);
     }
 #else
-    mpi::master_cout() << "[mara] program not available: recompile with MARA_COMPILE_EULER1IS = 1" << std::endl;
+    mpi::master_cout() << "[mara] program not available: recompile with MARA_COMPILE_EULER1D = 1" << std::endl;
 #endif
 }
 
@@ -403,21 +404,40 @@ static void run_all_tests(int argc, const char* argv[])
 //=============================================================================
 int main(int argc, const char* argv[])
 {
+    auto mpi_session     = mpi::Session();
+    auto commands        = std::map<std::string, std::function<void(int, const char*[])>>();
+    commands["test"]     = run_all_tests;
+    commands["euler1d"]  = run_euler1d;
+    commands["euler2d"]  = run_euler2d;
+    commands["minidisk"] = run_minidisk;
+
+    auto print_keys = [&commands] (std::ostream& out)
+    {
+        for (auto [k, v] : commands)
+        {
+            out << '\t' << k << '\n';
+        }
+    };
+
     if (argc == 1)
     {
-        std::printf("usage: mara [command] <key-val parameters>\n");
-        return 0;
+        mpi::master_cout() << "usage: mara [command] <key-val parameters>\n\n";
+        mpi::master_cout() << "available commands:\n";
+        print_keys(mpi::master_cout());
     }
+    else
+    {
+        auto command = std::string(argv[1]);
 
-    auto mpi_session = mpi::Session();
-    auto command = std::string(argv[1]);
-
-    if (false) {}
-    else if (command == "test")     run_all_tests(argc - 1, argv + 1);
-    else if (command == "euler1d")  run_euler1d  (argc - 1, argv + 1);
-    else if (command == "euler2d")  run_euler2d  (argc - 1, argv + 1);
-    else if (command == "minidisk") run_minidisk (argc - 1, argv + 1);
-    else std::printf("unknown command: %s\n", command.data());
-
+        if (! commands.count(command))
+        {
+            mpi::master_cout() << "unknown command" << std::endl;
+            print_keys(mpi::master_cout());
+        }
+        else
+        {
+            commands.at(command)(argc - 1, argv + 1);        
+        }
+    }
     return 0;
 }

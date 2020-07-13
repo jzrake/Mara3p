@@ -33,19 +33,25 @@ def run_module(module_name):
 	if module_name == b'euler1d':
 		from .modules import euler1d
 		euler1d.main()
-	if module_name == b'euler2d':
+	elif module_name == b'euler2d':
 		from .modules import euler2d
 		euler2d.main()
+	elif module_name == b'locally_isothermal':
+		from .modules import locally_isothermal
+		locally_isothermal.main()
+	else:
+		print('ploting support is not available for module', module_name)
+
 
 
 
 module_names = set([h5py.File(f, 'r')['module'][()] for f in sys.argv if f.endswith('.h5')])
 
 if not module_names:
-	print('no input files given, could not infer module')
+	print('[mara.plot] no input files given')
 
 elif len(module_names) > 1:
-	print('input files are from different modules:', module_names)
+	print('[mara.plot] input files are from different modules:', module_names)
 
 else:
 	run_module([*module_names][0])

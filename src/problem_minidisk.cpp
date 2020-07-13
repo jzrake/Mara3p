@@ -27,6 +27,8 @@
 
 
 #include <iostream>
+#include "app_hdf5_rational.hpp"
+#include "app_hdf5_dimensional.hpp"
 #include "mara.hpp"
 #include "parallel_mpi.hpp"
 
@@ -36,7 +38,7 @@
 //=============================================================================
 namespace mpi
 {
-    inline filtered_ostream_t& master_cout()
+    static filtered_ostream_t& master_cout()
     {
         static auto os = filtered_ostream_t(std::cout, mpi::comm_world().rank() == 0);
         return os;
@@ -62,11 +64,12 @@ namespace mpi
 
 
 //=============================================================================
-inline auto config_template()
+static auto config_template()
 {
     return mara::config_template()
     .item("block_size",            64, "number of zones per side")
     .item("depth",                  1, "number of levels in the mesh")
+    .item("domain_radius",       24.0, "length of (half) the square domain")
     .item("mesh_type",      "uniform", "mesh type: [uniform]")
     .item("tfinal",               0.1, "time to stop the simulation")
     .item("cfl",                  0.3, "CFL number [0.0, 1.0]")
@@ -83,10 +86,43 @@ inline auto config_template()
 
 
 //=============================================================================
+struct solution_t
+{
+    rational::number_t                              iteration;
+    dimensional::unit_time                          time;
+    modules::locally_isothermal::conserved_tree_t   conserved;
+};
+
+
+
+
+//=============================================================================
+namespace h5 {
+    void read(const Group& group, std::string name, solution_t& solution)
+    {
+        auto sgroup = group.open_group(name);
+        auto ugroup = sgroup.open_group("conserved");
+        read(sgroup, "iteration", solution.iteration);
+        read(sgroup, "time", solution.time);
+        read(sgroup, "conserved", solution.conserved);
+    }
+    void write(const Group& group, std::string name, const solution_t& solution)
+    {
+        auto sgroup = group.require_group(name);
+        auto ugroup = sgroup.require_group("conserved");
+        write(sgroup, "iteration", solution.iteration);
+        write(sgroup, "time", solution.time);
+        write(sgroup, "conserved", solution.conserved);
+    }
+}
+
+
+
+
+//=============================================================================
 class locally_isothermal_problem_t : public mara::problem_base_t
 {
 public:
-    using solution_t = modules::locally_isothermal::solution_t;
 
     dimensional::unit_time get_time_from_solution(std::any solution) const override
     {
@@ -129,11 +165,12 @@ public:
 
 
 //=============================================================================
-class minidisk_problem_t : public locally_isothermal_problem_t {
+class minidisk_problem_t : public locally_isothermal_problem_t
+{
 public:
     minidisk_problem_t(unsigned long zones) : zones(zones) {}
     unsigned long get_zone_count(std::any) const override { return zones; }
-    std::string get_module_name() const override { return "minidisk"; }
+    std::string get_module_name() const override { return "locally_isothermal"; }
 private:
     unsigned long zones = 0;
 };
@@ -142,45 +179,68 @@ private:
 
 
 //=============================================================================
-// static auto create_mesh_geometry(const mara::config_t& cfg)
-// {
-//     return modules::locally_isothermal::mesh_geometry_t(1.0, cfg.get_int("block_size"));
-// }
+static auto create_mesh_geometry(const mara::config_t& cfg)
+{
+    return modules::locally_isothermal::mesh_geometry_t(2.0 * cfg.get_double("domain_radius"), cfg.get_int("block_size"));
+}
 
-// static auto create_mesh_topology(const mara::config_t& cfg)
-// {
-//     auto mesh_type = cfg.get_string("mesh_type");
-//     auto depth     = cfg.get_int("depth");
+static auto create_mesh_topology(const mara::config_t& cfg)
+{
+    auto mesh_type = cfg.get_string("mesh_type");
+    auto depth     = cfg.get_int("depth");
 
-//     if (mesh_type == "uniform")
-//     {
-//         return bsp::uniform_mesh_tree<2>(depth);
-//     }
-//     throw std::runtime_error("create_mesh (invalid mesh type " + mesh_type + ")");
-// }
+    if (mesh_type == "uniform")
+    {
+        return bsp::uniform_mesh_tree<2>(depth);
+    }
+    throw std::runtime_error("create_mesh (invalid mesh type " + mesh_type + ")");
+}
 
-// static auto initial_solution(const mara::config_t& cfg)
-// {
-//     auto softening_length = dimensional::unit_length(0.01);
-//     auto omega_frame      = dimensional::unit_rate(0.0);
+static auto initial_solution(const mara::config_t& cfg)
+{
+    auto softening_length = dimensional::unit_length(0.01);
+    auto omega_frame      = dimensional::unit_rate(0.0);
 
-//     auto initial = [rs=softening_length, omega_frame] (numeric::array_t<dimensional::unit_length, 2> p)
-//     {
-//         auto [x, y] = as_tuple(p);
-//         auto ph = two_body::potential(two_body::point_mass_t(), x, y, rs);
-//         auto r0 = sqrt(x * x + y * y);
-//         auto vp = sqrt(-ph) - omega_frame * r0;
-//         auto vx = vp * (-y / r0);
-//         auto vy = vp * ( x / r0);
-//         return iso2d::primitive(1.0, vx, vy);
-//     };
+    auto initial = [rs=softening_length, omega_frame] (numeric::array_t<dimensional::unit_length, 2> p)
+    {
+        auto [x, y] = as_tuple(p);
+        auto ph = two_body::potential(two_body::point_mass_t(), x, y, rs);
+        auto rd = dimensional::unit_length(2.0);
+        auto r0 = sqrt(x * x + y * y);
+        auto vp = sqrt(-ph) - omega_frame * r0;
+        auto vx = vp * (-y / r0);
+        auto vy = vp * ( x / r0);
+        auto sigma = std::exp(-r0 / rd);
+        return iso2d::primitive(sigma, vx, vy);
+    };
 
-//     auto geom = create_mesh_geometry(cfg);
-//     auto mesh = create_mesh_topology(cfg);
-//     auto u    = modules::locally_isothermal::initial_conserved_tree(mesh, geom, initial);
+    auto geom = create_mesh_geometry(cfg);
+    auto mesh = create_mesh_topology(cfg);
+    auto u    = modules::locally_isothermal::initial_conserved_tree(mesh, geom, initial);
 
-//     return modules::locally_isothermal::solution_t{0, 0.0, u};
-// }
+    return solution_t{0, 0.0, u};
+}
+
+static auto updated_solution(solution_t solution, dimensional::unit_time dt, mesh::cartesian_2d::geometry_t geom, double plm_theta)
+{
+    auto temperature = [] (auto) { return dimensional::unit_specific_energy(1.0); };
+    auto viscosity   = modules::locally_isothermal::unit_viscosity(0.0);
+
+    auto u1 = modules::locally_isothermal::updated_conserved_tree(solution.conserved, solution.time, dt, geom, temperature, viscosity, plm_theta);
+    auto i1 = solution.iteration + 1;
+    auto t1 = solution.time + dt;
+
+    return solution_t{i1, t1, u1};
+}
+
+static auto weighted_sum(solution_t s, solution_t t, rational::number_t b)
+{
+    return solution_t{
+        s.iteration  *         b  + t.iteration *       (1 - b),
+        s.time       *  double(b) + t.time      * double(1 - b),
+        amr::weighted_sum_tree(s.conserved, t.conserved, b),
+    };
+}
 
 
 
@@ -191,39 +251,36 @@ void run_minidisk(int argc, const char* argv[])
     using namespace modules;
     using namespace std::placeholders;
 
-    // auto temperature = [] (auto) { return dimensional::unit_specific_energy(1.0); };
-    // auto viscosity   = modules::locally_isothermal::unit_viscosity(0.0);
+    auto args             = mara::argv_to_string_map(argc, argv);
+    auto cfg              = config_template().create().update(mara::restart_run_config(args)).update(args);
+    auto tfinal           = dimensional::unit_time(cfg.get_double("tfinal"));
+    auto rk_order         = cfg.get_int("rk");
+    auto plm_theta        = cfg.get_double("plm");
+    auto mesh             = create_mesh_topology(cfg);
+    auto geom             = create_mesh_geometry(cfg);
+    auto schedule         = mara::initial_schedule(cfg);
+    auto dx               = locally_isothermal::smallest_cell_size(mesh, geom);
+    auto zones            = locally_isothermal::total_zones(mesh, geom);
+    auto problem          = minidisk_problem_t(zones);
+    auto solution         = mara::initial_solution(problem, cfg, initial_solution(cfg));
+    auto vm               = dimensional::unit_velocity(5.0);
+    auto strategy         = mpr::mpi_multi_threaded_execution(cfg.get_int("threads"));
+    auto monitor          = mpr::execution_monitor_t();
+    auto dt               = dx / vm;
+    auto scheme           = std::bind(updated_solution, _1, dt, geom, plm_theta);
 
-    // auto args             = mara::argv_to_string_map(argc, argv);
-    // auto cfg              = config_template().create().update(mara::restart_run_config(args)).update(args);
-    // auto tfinal           = dimensional::unit_time(cfg.get_double("tfinal"));
-    // auto rk_order         = cfg.get_int("rk");
-    // auto plm_theta        = cfg.get_double("plm");
-    // auto mesh             = create_mesh_topology(cfg);
-    // auto geom             = create_mesh_geometry(cfg);
-    // auto schedule         = mara::initial_schedule(cfg);
-    // auto dx               = locally_isothermal::smallest_cell_size(mesh, geom);
-    // auto zones            = locally_isothermal::total_zones(mesh, geom);
-    // auto problem          = minidisk_problem_t(zones);
-    // auto solution         = mara::initial_solution(problem, cfg, initial_solution(cfg));
-    // auto vm               = dimensional::unit_velocity(5.0);
-    // auto strategy         = mpr::mpi_multi_threaded_execution(cfg.get_int("threads"));
-    // auto monitor          = mpr::execution_monitor_t();
-    // auto dt               = dx / vm;
-    // auto scheme           = std::bind(modules::locally_isothermal::updated_solution, _1, dt, geom, temperature, viscosity, plm_theta);
+    mpr::compute_all(solution.conserved, mpr::mpi_single_threaded_execution());
+    mara::pretty_print(mpi::master_cout(), "config", cfg);
 
-    // mpr::compute_all(solution.conserved, mpr::mpi_single_threaded_execution());
-    // mara::pretty_print(mpi::master_cout(), "config", cfg);
+    problem.print_task_graph(cfg, schedule, control::advance_runge_kutta(scheme, rk_order, solution));
+    problem.side_effects(cfg, schedule, solution, monitor);
 
-    // problem.print_task_graph(cfg, schedule, control::advance_runge_kutta(scheme, rk_order, solution));        
-    // problem.side_effects(cfg, schedule, solution, monitor);
-
-    // while (solution.time < tfinal)
-    // {
-    //     solution = control::advance_runge_kutta(scheme, rk_order, solution);
-    //     monitor = mpr::compute_all(solution.conserved, strategy);
-    //     problem.side_effects(cfg, schedule, solution, monitor);
-    // }
+    while (solution.time < tfinal)
+    {
+        solution = control::advance_runge_kutta(scheme, rk_order, solution);
+        monitor = mpr::compute_all(solution.conserved, strategy);
+        problem.side_effects(cfg, schedule, solution, monitor);
+    }
 }
 
 #else

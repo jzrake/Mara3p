@@ -262,17 +262,4 @@ std::size_t locally_isothermal::total_zones(
     return size(mesh_topology) * mesh_geometry.cells_per_block();
 }
 
-
-
-
-//=============================================================================
-locally_isothermal::solution_t locally_isothermal::weighted_sum(solution_t s, solution_t t, rational::number_t b)
-{
-    return {
-        s.iteration  *         b  + t.iteration *       (1 - b),
-        s.time       *  double(b) + t.time      * double(1 - b),
-        amr::weighted_sum_tree(s.conserved, t.conserved, b),
-    };
-}
-
 #endif // MARA_COMPILE_LOCALLY_ISOTHERMAL

@@ -62,10 +62,10 @@ def block_extent_2d(level, i, j, domain_size=1.0):
 
 
 
-def block_edges_1d(block_list):
+def block_edges_1d(block_list, domain_size=1.0):
     edges = set()
     for block in block_list:
-        x0, x1 = block_extent_1d(*block)
+        x0, x1 = block_extent_1d(*block, domain_size=domain_size)
         edges.add(x0)
         edges.add(x1)
     return edges
@@ -73,10 +73,10 @@ def block_edges_1d(block_list):
 
 
 
-def block_edges_2d(block_list):
+def block_edges_2d(block_list, domain_size=1.0):
     edges = set()
     for block in block_list:
-        x0, x1, y0, y1 = block_extent_2d(*block)
+        x0, x1, y0, y1 = block_extent_2d(*block, domain_size=domain_size)
         edges.add((x0, y0, x0, y1))
         edges.add((x0, y0, x1, y0))
         edges.add((x1, y0, x1, y1))
@@ -86,14 +86,14 @@ def block_edges_2d(block_list):
 
 
 
-def read_block_edges_1d(filename):
-    return block_edges_1d([block_index_from_string(block) for block in h5py.File(filename, 'r')['solution']['conserved']])
+def read_block_edges_1d(filename, domain_size=1.0):
+    return block_edges_1d([block_index_from_string(block) for block in h5py.File(filename, 'r')['solution']['conserved']], domain_size=domain_size)
 
 
 
 
-def read_block_edges_2d(filename):
-    return block_edges_2d([block_index_from_string(block) for block in h5py.File(filename, 'r')['solution']['conserved']])
+def read_block_edges_2d(filename, domain_size=1.0):
+    return block_edges_2d([block_index_from_string(block) for block in h5py.File(filename, 'r')['solution']['conserved']], domain_size=domain_size)
 
 
 

@@ -64,19 +64,7 @@ using temperature_mapping_t = std::function<dimensional::unit_specific_energy(co
 using source_terms_t        = std::function<conserved_array_t(coords_t, unit_time, unit_time, conserved_array_t)>;
 using source_terms_map_t    = std::map<std::string, source_terms_t>;
 using source_totals_t       = std::map<std::string, iso2d::conserved_density_t>;
-// using source_totals_tree_t  = 
 using unit_viscosity        = dimensional::quantity_t<0, 2,-1>;
-
-
-
-
-//=============================================================================
-struct solution_t
-{
-    rational::number_t iteration;
-    unit_time          time;
-    conserved_tree_t   conserved;
-};
 
 
 
@@ -128,8 +116,6 @@ std::size_t total_zones(
     mesh_topology_t mesh_topology,
     mesh_geometry_t mesh_geometry);
 
-solution_t weighted_sum(solution_t s, solution_t t, rational::number_t b);
-
 } // namespace locally_isothermal
 
 } // namespace modules
@@ -143,8 +129,6 @@ namespace h5 {
 class Group;
 
 void read(const Group& group, std::string name, modules::locally_isothermal::conserved_tree_t& conserved);
-void read(const Group& group, std::string name, modules::locally_isothermal::solution_t& solution);
 void write(const Group& group, std::string name, const modules::locally_isothermal::conserved_tree_t& conserved);
-void write(const Group& group, std::string name, const modules::locally_isothermal::solution_t& solution);
 
 } // namespace h5

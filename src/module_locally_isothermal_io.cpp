@@ -32,7 +32,6 @@
 #include "app_hdf5_ndarray.hpp"
 #include "app_hdf5_ndarray_dimensional.hpp"
 #include "app_hdf5_numeric_array.hpp"
-#include "app_hdf5_rational.hpp"
 #include "core_bqo_tree.hpp"
 #include "core_util.hpp"
 #include "module_locally_isothermal.hpp"
@@ -41,7 +40,7 @@
 
 
 
-#if MARA_COMPILE_LOCALLY_ISOTHERMAL // <--------------------------------------------------
+#if MARA_COMPILE_LOCALLY_ISOTHERMAL // <---------------------------------------
 
 
 //=============================================================================
@@ -64,16 +63,6 @@ void h5::read(const Group& group, std::string name,  modules::locally_isothermal
     });
 }
 
-void h5::read(const Group& group, std::string name, modules::locally_isothermal::solution_t& solution)
-{
-    auto sgroup = group.open_group(name);
-    auto ugroup = sgroup.open_group("conserved");
-
-    read(sgroup, "iteration", solution.iteration);
-    read(sgroup, "time", solution.time);
-    read(sgroup, "conserved", solution.conserved);
-}
-
 
 
 
@@ -89,16 +78,6 @@ void h5::write(const Group& group, std::string name, const modules::locally_isot
             write(ugroup, mesh::format_block_index(index), value.value());
         }
     }));
-}
-
-void h5::write(const Group& group, std::string name, const modules::locally_isothermal::solution_t& solution)
-{
-    auto sgroup = group.require_group(name);
-    auto ugroup = sgroup.require_group("conserved");
-
-    write(sgroup, "iteration", solution.iteration);
-    write(sgroup, "time", solution.time);
-    write(sgroup, "conserved", solution.conserved);
 }
 
 #endif // MARA_COMPILE_LOCALLY_ISOTHERMAL
