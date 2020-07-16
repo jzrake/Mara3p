@@ -281,7 +281,7 @@ inline auto total_energy(orbital_state_t s)
     return kinetic_energy(s) - G * s.first.mass * s.second.mass / separation(s);
 }
 
-inline auto recover_orbital_elements(orbital_state_t state, unit_time t)
+inline auto recover_orbital_elements(orbital_state_t state, unit_time t) -> orbital_parameters_t
 {
     auto [c1, c2] = state;
 
@@ -378,7 +378,21 @@ inline auto recover_orbital_elements(orbital_state_t state, unit_time t)
     return orbital_parameters_t{{elements, orientation}};
 }
 
-inline auto transform(orbital_state_t state, orbital_orientation_t o)
+
+
+
+/**
+ * @brief      Transform an orbital state vector so that it has the new
+ *             orientation. This function rotates the position and velocity
+ *             vectors according to the argument of periapse, and translates
+ *             them according to the center-of-mass position and velocity.
+ *
+ * @param[in]  state  The state vector to transform
+ * @param[in]  o      The orbital orientation to transform to
+ *
+ * @return     A new orbital state vector
+ */
+inline auto transform(orbital_state_t state, orbital_orientation_t o) -> orbital_state_t
 {
     auto M1  = state.first.mass;
     auto x1  = state.first.position_x;
@@ -409,38 +423,40 @@ inline auto transform(orbital_state_t state, orbital_orientation_t o)
     return orbital_state_t{c1, c2};
 }
 
-inline auto rotate(orbital_state_t state, unit_scalar angle)
+
+
+
+/**
+ * @brief      Rotate an orbital state vector by the given angle: positive angle
+ *             means that the argument of periapse moves counter-clockwise, in
+ *             other words this function rotates the binary, not the
+ *             coordinates.
+ *
+ * @param[in]  state  The state to rotate
+ * @param[in]  angle  The angle to rotate by
+ *
+ * @return     A rotated orbital state vector
+ */
+inline auto rotate(orbital_state_t state, unit_scalar angle) -> orbital_state_t
 {
-    auto M1  = state.first.mass;
-    auto x1  = state.first.position_x;
-    auto y1  = state.first.position_y;
-    auto vx1 = state.first.velocity_x;
-    auto vy1 = state.first.velocity_y;
-    auto M2  = state.second.mass;
-    auto x2  = state.second.position_x;
-    auto y2  = state.second.position_y;
-    auto vx2 = state.second.velocity_x;
-    auto vy2 = state.second.velocity_y;
-
-    auto c = std::cos(angle);
-    auto s = std::sin(angle);
-
-    auto x1p  = +x1  * c + y1  * s;
-    auto y1p  = -x1  * s + y1  * c;
-    auto x2p  = +x2  * c + y2  * s;
-    auto y2p  = -x2  * s + y2  * c;
-    auto vx1p = +vx1 * c + vy1 * s;
-    auto vy1p = -vx1 * s + vy1 * c;
-    auto vx2p = +vx2 * c + vy2 * s;
-    auto vy2p = -vx2 * s + vy2 * c;
-
-    auto c1 = point_mass_t{M1, x1p, y1p, vx1p, vy1p};
-    auto c2 = point_mass_t{M2, x2p, y2p, vx2p, vy2p};
-
-    return orbital_state_t{c1, c2};
+    auto orientation = orbital_orientation_t{{0.0, 0.0, 0.0, 0.0, angle, 0.0}};
+    return transform(state, orientation);
 }
 
-inline auto orbital_state(orbital_elements_t el, orbital_orientation_t o, unit_time t)
+
+
+
+/**
+ * @brief      Generate the orbital state vector for the given orbital elements
+ *             and orientation.
+ *
+ * @param[in]  el    The orbital elements
+ * @param[in]  o     The orbital orientation
+ * @param[in]  t     The time
+ *
+ * @return     The orbital state vector
+ */
+inline auto orbital_state(orbital_elements_t el, orbital_orientation_t o, unit_time t) -> orbital_state_t
 {
     return transform(orbital_state(el, t - periapse_time(o)), o);
 }
@@ -462,12 +478,15 @@ inline void test_two_body()
 {
     using namespace two_body;
 
-    auto t        = dimensional::unit_time(0.5);
-    auto elements = orbital_elements(1.0, 1.0, 1.0, 0.5);
-    auto state    = orbital_state(elements, t);
+    auto t           = dimensional::unit_time(0.0);
+    auto elements    = orbital_elements(1.0, 1.0, 1.0, 0.5);
+    auto orientation = orbital_orientation_t{{0.0, 0.0, 0.0, 0.0, 0.1, 0.0}};
+    auto state       = orbital_state(elements, t);
 
     require(abs(eccentricity  (numeric::get<0>(recover_orbital_elements(state, t))) - eccentricity  (elements)) < unit_scalar(1e-10));
     require(abs(semimajor_axis(numeric::get<0>(recover_orbital_elements(state, t))) - semimajor_axis(elements)) < unit_length(1e-10));
+    require(std::get<0>(rotate(state, 0.01)).position_y > unit_length(0.0));
+    require(std::get<0>(rotate(state, 0.01)).velocity_x < unit_velocity(0.0));
 }
 
 #endif // DO_UNIT_TESTS

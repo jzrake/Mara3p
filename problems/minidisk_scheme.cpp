@@ -332,7 +332,7 @@ conserved_array_t minidisk::updated_conserved(
     auto e = solver_data.eccentricity;
     auto elements = two_body::orbital_elements(a, M, q, e);
     auto inertial = two_body::orbital_state(elements, time);
-    auto state    = two_body::rotate(inertial, solver_data.omega_frame * time);
+    auto state    = two_body::rotate(inertial, -solver_data.omega_frame * time);
 
     auto ag1 = xc | nd::map(gravitational_acceleration(state.first));
     auto ag2 = xc | nd::map(gravitational_acceleration(state.second));

@@ -230,7 +230,20 @@ static auto updated_solution(solution_t solution, dimensional::unit_time dt, mes
     auto i1 = solution.iteration + 1;
     auto t1 = solution.time + dt;
 
-    return solution_t{i1, t1, u1};
+
+    auto a = dimensional::unit_length(1.0);
+    auto M = dimensional::unit_mass(1.0);
+    auto q = dimensional::unit_scalar(1.0);
+    auto e = dimensional::unit_scalar(0.0);
+    auto omega_frame = dimensional::unit_rate(0.0);
+    auto elements = two_body::orbital_elements(a, M, q, e);
+    auto inertial = two_body::orbital_state(elements, solution.time);
+    auto state    = two_body::rotate(inertial, -omega_frame * solution.time);
+
+    auto u2 = u1 | bsp::maps(mpr::map([] (auto u) { return nd::to_shared(u); }));
+
+
+    return solution_t{i1, t1, u2};
 }
 
 static auto weighted_sum(solution_t s, solution_t t, rational::number_t b)
