@@ -159,7 +159,6 @@ void write_checkpoint(const mara::config_t& cfg, solution_t solution)
     auto fname     = util::format("%s/chkpt.%04d.h5", outdir.data(), count);
     auto file      = h5::File(fname, "w");
     auto tracks    = h5::Group(file).require_group("tracks");
-    auto conserved = h5::Group(file).require_group("conserved");
 
     std::printf("output %s\n", fname.data());
 
