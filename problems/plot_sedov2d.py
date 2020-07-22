@@ -146,7 +146,7 @@ def get_max_radius(fname):
 
 
 
-def plot_field(ax, fname, field, triangulation=None, cmap='jet', transform=None, draw_edges=False):
+def plot_field(ax, fname, field, triangulation=None, transform=None, draw_edges=False, **kwargs):
     ax.set_aspect('equal')
 
     if draw_edges:
@@ -157,7 +157,7 @@ def plot_field(ax, fname, field, triangulation=None, cmap='jet', transform=None,
 
     t = triangulation or cell_triangulation(fname)
     z = get_primitive_for_triangles(fname, field)
-    return ax.tripcolor(t, transform(z) if transform else z, cmap=cmap)
+    return ax.tripcolor(t, transform(z) if transform else z, **kwargs)
 
 
 
@@ -166,10 +166,17 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('filename')
     parser.add_argument('--width', type=float, default=10.0)
+    parser.add_argument('-c', '--print-run-config', action='store_true')
 
     args = parser.parse_args()
 
     fname = args.filename
+    h5f = h5py.File(fname, 'r')
+
+    if args.print_run_config:
+        for key, val in h5f['run_config'].items():
+            print(f'{key} = {val[()]}')
+
     width = 12
     fig = plt.figure(figsize=[width, width * 8 / 7])
     spec = fig.add_gridspec(2, 2, height_ratios=[29, 1])
@@ -187,5 +194,6 @@ if __name__ == '__main__':
     ax1.set_xticklabels([])
     ax2.set_xticklabels([])
     ax2.set_yticklabels([])
+    fig.suptitle(r'$t = {:0.2f}$'.format(h5f['time'][()]))
     fig.tight_layout()
     plt.show()

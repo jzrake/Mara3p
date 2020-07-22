@@ -366,7 +366,8 @@ std::pair<sedov::radial_track_t, nd::shared_array<srhd::conserved_t, 1>> sedov::
     radial_track_t track,
     nd::shared_array<srhd::conserved_t, 1> uc,
     dimensional::unit_scalar maximum_cell_aspect_ratio,
-    dimensional::unit_scalar minimum_cell_aspect_ratio)
+    dimensional::unit_scalar minimum_cell_aspect_ratio,
+    dimensional::unit_length inner_boundary_radius)
 {
     auto rf = track.face_radii;
     auto rc = rf | nd::adjacent_mean();
@@ -376,9 +377,9 @@ std::pair<sedov::radial_track_t, nd::shared_array<srhd::conserved_t, 1>> sedov::
     auto imin = nd::argmin(aspect)[0];
     auto imax = nd::argmax(aspect)[0];
 
-    auto make_track = [track, minimum_cell_aspect_ratio, maximum_cell_aspect_ratio] (auto rf, auto uc)
+    auto make_track = [track, minimum_cell_aspect_ratio, maximum_cell_aspect_ratio, inner_boundary_radius] (auto rf, auto uc)
     {
-        return remesh({rf, track.theta0, track.theta1}, uc, minimum_cell_aspect_ratio, maximum_cell_aspect_ratio);
+        return remesh({rf, track.theta0, track.theta1}, uc, minimum_cell_aspect_ratio, maximum_cell_aspect_ratio, inner_boundary_radius);
     };
 
     auto make_track_and_return = [track] (auto rf, auto uc)
@@ -386,7 +387,7 @@ std::pair<sedov::radial_track_t, nd::shared_array<srhd::conserved_t, 1>> sedov::
         return std::make_pair(radial_track_t{rf, track.theta0, track.theta1}, uc);
     };
 
-    if (front(rf) < dimensional::unit_length(1.0))
+    if (front(rf) < inner_boundary_radius)
     {
         return make_track(rf | nd::select(0, 1) | nd::to_shared(), uc | nd::select(0, 1) | nd::to_shared());
     }

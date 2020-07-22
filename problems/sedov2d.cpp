@@ -56,27 +56,28 @@ static mara::ThreadPool thread_pool;
 auto config_template()
 {
     return mara::config_template()
-    .item("nt",                   100, "number of radial tracks")
+    .item("nt",                   128, "number of radial tracks")
     .item("rk",                     1, "Runge-Kutta order (1, 2, or 3)")
-    .item("max_aspect",           4.0, "aspect ratio of the longest cell allowed")
-    .item("min_aspect",           0.0, "aspect ratio of the widest cell allowed")
-    .item("focus",                0.5, "amount by which to increase resolution near the poles [0, 1)")
-    .item("tfinal",            1000.0, "time to stop the simulation")
+    .item("max_aspect",           2.0, "aspect ratio of the longest cell allowed")
+    .item("min_aspect",           0.5, "aspect ratio of the widest cell allowed")
+    .item("inner_velocity",       0.0, "the velocity with which to move the inner boundary radius")
+    .item("focus",                0.0, "amount by which to increase resolution near the poles [0, 1)")
+    .item("tfinal",               1e3, "time to stop the simulation")
     .item("cpi",                 5000, "number of iterations between checkpoints")
-    .item("vtk",                  500, "number of iterations between VTK outputs")
+    .item("vtk",                    0, "number of iterations between VTK outputs")
     .item("cfl",                  0.5, "courant number")
-    .item("router",               5.0, "outer boundary radius")
-    .item("envelop_end_time",   100.0, "time at which the relativistic envelope switches to a wind")
+    .item("router",               1e2, "outer boundary radius")
+    .item("envelop_end_time",     1e9, "time at which the relativistic envelope switches to a wind (default: never)")
     .item("envelop_mdot_index",   4.0, "alpha in envelop mdot(t) = (t / t0)^alpha")
     .item("envelop_u_index",     0.22, "psi in envelop u(m) = u1 (m / m1)^(-psi)")
-    .item("envelop_u",          10.00, "maximum gamma-beta in outer envelop")
+    .item("envelop_u",            1e1, "maximum gamma-beta in outer envelop")
     .item("engine_mdot",          1e3, "engine mass rate")
-    .item("engine_onset",       200.0, "the engine onset time [inner boundary light-crossing time]")
-    .item("engine_duration",    500.0, "the engine duration   [inner boundary light-crossing time]")
-    .item("engine_u",            50.0, "the engine gamma-beta")
+    .item("engine_onset",         1e2, "the engine onset time [inner boundary light-crossing time]")
+    .item("engine_duration",      1e3, "the engine duration   [inner boundary light-crossing time]")
+    .item("engine_u",             1e2, "the engine gamma-beta")
     .item("engine_theta",         0.3, "the engine opening angle")
-    .item("engine_index",         2.0, "shape parameter n of nozzle ~ exp(-(q / qj)^n)")
     .item("threads",                1, "the number of concurrent threads to execute on")
+    .item("medium",         "envelop", "[envelop | uniform]")
     .item("restart",               "", "a checkpoint file to restart from")
     .item("outdir",               ".", "the directory where output files are written");
 }
@@ -290,22 +291,19 @@ public:
     jet_wind_nozzle_prescription_t(const mara::config_t& cfg)
     {
         alpha            = cfg.get_double("envelop_mdot_index");
+        envelop_end_time = cfg.get_double("envelop_end_time");
+        envelop_u        = cfg.get_double("envelop_u");
+        psi              = cfg.get_double("envelop_u_index");
         engine_duration  = cfg.get_double("engine_duration");
-        engine_index     = cfg.get_double("engine_index");
         engine_mdot      = cfg.get_double("engine_mdot");
         engine_onset     = cfg.get_double("engine_onset");
         engine_theta     = cfg.get_double("engine_theta");
         engine_u         = cfg.get_double("engine_u");
-        envelop_end_time = cfg.get_double("envelop_end_time");
-        envelop_u        = cfg.get_double("envelop_u");
-        psi              = cfg.get_double("envelop_u_index");
     }
 
-    double angular_profile(unit_scalar q) const
+    bool in_nozzle(unit_scalar q) const
     {
-        auto p = unit_scalar(M_PI) - q;
-        auto n = engine_index;
-        return std::exp(-std::pow(q / engine_theta, n)) + std::exp(-std::pow(p / engine_theta, n));
+        return q < engine_theta || q > unit_scalar(M_PI) - engine_theta;
     }
 
     double temporal_profile(unit_time t) const
@@ -333,12 +331,12 @@ public:
 
     unit_mass_rate mdot(unit_scalar q, unit_time t) const
     {
-        return t < engine_onset ? ambient_mdot(t) : engine_mdot;
+        return t > engine_onset ? engine_mdot : ambient_mdot(t);
     }
 
     unit_scalar gamma_beta(unit_scalar q, unit_time t) const
     {
-        return t < engine_onset ? ambient_gamma_beta(t) : engine_u * angular_profile(q) * temporal_profile(t);
+        return t > engine_onset && in_nozzle(q) ? engine_u * temporal_profile(t) : ambient_gamma_beta(t);
     }
 
     auto mdot_function(unit_scalar q) const
@@ -358,7 +356,6 @@ private:
     unit_mass_rate md = 1.0;
     unit_mass_rate engine_mdot;
     unit_scalar    alpha;
-    unit_scalar    engine_index;
     unit_scalar    engine_theta;
     unit_scalar    engine_u;
     unit_scalar    envelop_u;
@@ -368,8 +365,9 @@ private:
     unit_time      envelop_end_time;
 };
 
-auto wind_profile(const jet_wind_nozzle_prescription_t& nozzle, unit_length r, unit_scalar q, unit_time t)
+auto wind_profile(const mara::config_t& cfg, unit_length r, unit_scalar q, unit_time t)
 {
+    auto nozzle = jet_wind_nozzle_prescription_t(cfg);
     return mara::cold_relativistic_wind_t()
     .with_mass_loss_rate(nozzle.mdot_function(q))
     .with_gamma_beta    (nozzle.gamma_beta_function(q))
@@ -402,7 +400,7 @@ solution_t initial_solution(const mara::config_t& cfg)
     auto tr = nd::linspace(0.0, 1.0, nt + 1)
     | nd::map(tween)
     | nd::adjacent_zip()
-    | nd::map(util::apply_to(std::bind(sedov::generate_radial_track, r0, r1, _1, _2, aspect)));
+    | nd::mapv(std::bind(sedov::generate_radial_track, r0, r1, _1, _2, aspect));
     auto u0 = tr | nd::map(std::bind(sedov::generate_conserved, _1, p0));
 
     return {
@@ -439,14 +437,12 @@ sedov::radial_godunov_data_t outer_bc(
     return std::pair(srhd::riemann_solver(pl, pr, nhat, 4. / 3, mode), vel);
 }
 
-solution_t remesh(solution_t solution, unit_scalar max_aspect, unit_scalar min_aspect)
+solution_t remesh(solution_t solution, unit_scalar max_aspect, unit_scalar min_aspect, unit_length inner_boundary_radius)
 {
     auto eval = evaluate_on(thread_pool);
     auto t0 = solution.tracks;
     auto uc = solution.conserved;
-
-    auto [t1, u1] = nd::unzip(nd::zip(t0, uc)
-    | nd::map(util::apply_to(std::bind(sedov::remesh, _1, _2, max_aspect, min_aspect))));
+    auto [t1, u1] = nd::unzip(nd::zip(t0, uc) | nd::mapv(std::bind(sedov::remesh, _1, _2, max_aspect, min_aspect, inner_boundary_radius)));
 
     return {
         solution.iteration,
@@ -472,11 +468,11 @@ solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt,
 
     auto t0 = solution.tracks;
     auto uc = solution.conserved;
-    auto pc = nd::zip(t0, uc)             | nd::map(util::apply_to(sedov::recover_primitive))       | eval;
-    auto fi = nd::zip(t0, pc)             | nd::map(util::apply_to(ibc))                            | nd::to_shared();
-    auto fo = nd::zip(t0, pc)             | nd::map(util::apply_to(obc))                            | nd::to_shared();
-    auto dc = nd::zip(t0, pc)             | nd::map(util::apply_to(radial_gradient))                | eval;
-    auto ff = nd::zip(t0, pc, dc, fi, fo) | nd::map(util::apply_to(sedov::radial_godunov_data))     | eval;
+    auto pc = nd::zip(t0, uc)             | nd::mapv(sedov::recover_primitive)       | eval;
+    auto fi = nd::zip(t0, pc)             | nd::mapv(ibc)                            | nd::to_shared();
+    auto fo = nd::zip(t0, pc)             | nd::mapv(obc)                            | nd::to_shared();
+    auto dc = nd::zip(t0, pc)             | nd::mapv(radial_gradient)                | eval;
+    auto ff = nd::zip(t0, pc, dc, fi, fo) | nd::mapv(sedov::radial_godunov_data)     | eval;
     auto dr = ff                          | nd::map(std::bind(sedov::delta_face_positions, _1, dt)) | eval;
 
     auto gf = nd::zip(t0, pc, dc)
@@ -530,6 +526,7 @@ int main(int argc, const char* argv[])
 
     auto tfinal      = unit_time  (cfg.get_double("tfinal"));
     auto cfl         = unit_scalar(cfg.get_double("cfl"));
+    auto inner_vel   = unit_velocity(cfg.get_double("inner_velocity"));
     auto max_aspect  = cfg.get_double("max_aspect");
     auto min_aspect  = cfg.get_double("min_aspect");
     auto vtk         = cfg.get_int("vtk");
@@ -540,23 +537,25 @@ int main(int argc, const char* argv[])
     auto backup      = solution_t{};
     auto safety      = false;
     auto failed_iter = rational::number_t();
-
     mara::pretty_print(std::cout, "config", cfg);
     mara::filesystem::require_dir(outdir);
-    write_vtk(cfg, solution);
-    write_checkpoint(cfg, solution);        
+
+    if (vtk > 0) write_vtk(cfg, solution);
+    if (cpi > 0) write_checkpoint(cfg, solution);        
 
     while (solution.time < tfinal)
     {
-        auto dt         = cfl * (safety ? 1e-3 : 1.0) * nd::min(solution.tracks | nd::map(sedov::minimum_spacing)) / srhd::light_speed;
+        auto cfl_factor = solution.time < unit_time(cfg.get_double("engine_onset")) ? 1.0 : 4.0;
+        auto dt         = cfl * (safety ? 1e-3 : 1.0) * nd::min(solution.tracks | nd::map(sedov::minimum_spacing)) / srhd::light_speed * cfl_factor;
         auto num_cells  = nd::sum(solution.tracks | nd::map([] (auto t) { return size(t.face_radii); }));
         auto start      = std::chrono::high_resolution_clock::now();
         auto advance_rk = control::advance_runge_kutta(std::bind(advance, cfg, _1, dt, ! safety), rk);
+        auto inner_boundary_radius = solution.time * inner_vel;
 
         try {
             auto pre_step = solution;
 
-            solution = remesh(advance_rk(solution), max_aspect, min_aspect);
+            solution = remesh(advance_rk(solution), max_aspect, min_aspect, inner_boundary_radius);
             backup   = pre_step;
             safety   = false;
 
@@ -589,11 +588,11 @@ int main(int argc, const char* argv[])
                 long(solution.iteration + 1));
         }
 
-        if (long(solution.iteration) % vtk == 0)
+        if (vtk > 0 && long(solution.iteration) % vtk == 0)
         {
             write_vtk(cfg, solution);
         }
-        if (long(solution.iteration) % cpi == 0)
+        if (cpi > 0 && long(solution.iteration) % cpi == 0)
         {
             write_checkpoint(cfg, solution);
         }

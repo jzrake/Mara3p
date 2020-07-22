@@ -262,9 +262,11 @@ srhd::primitive_t sample(track_data_t track_data, dimensional::unit_length r, nd
  * @brief      Extend a radial track and its primitive quantities by one zone in
  *             the radial direction.
  *
- * @param[in]  track                      The track
- * @param[in]  uc                         { parameter_description }
+ * @param[in]  track                      The track to remesh
+ * @param[in]  uc                         The conserved array for the track
  * @param[in]  maximum_cell_aspect_ratio  The maximum cell aspect ratio
+ * @param[in]  minimum_cell_aspect_ratio  The minimum cell aspect ratio
+ * @param[in]  inner_boundary_radius      The inner boundary radius
  *
  * @return     A pair of extended track and conserved data
  */
@@ -272,7 +274,9 @@ std::pair<radial_track_t, nd::shared_array<srhd::conserved_t, 1>> remesh(
     radial_track_t track,
     nd::shared_array<srhd::conserved_t, 1> uc,
     dimensional::unit_scalar maximum_cell_aspect_ratio,
-    dimensional::unit_scalar minimum_cell_aspect_ratio);
+    dimensional::unit_scalar minimum_cell_aspect_ratio,
+    dimensional::unit_length inner_boundary_radius);
+
 
 
 

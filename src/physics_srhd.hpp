@@ -422,8 +422,8 @@ auto riemann_solver(primitive_t pl, primitive_t pr, geometric::unit_vector_t nha
 
     if (std::isnan(as.value) || as.value < -1e3 || as.value > 1e3)
     {
-        std::printf("pl = %lf %lf %lf\n", numeric::get<0>(pl).value, numeric::get<1>(pl).value, numeric::get<4>(pl).value);
-        std::printf("pr = %lf %lf %lf\n", numeric::get<0>(pr).value, numeric::get<1>(pr).value, numeric::get<4>(pr).value);
+        std::printf("pl = %e %e %e\n", numeric::get<0>(pl).value, numeric::get<1>(pl).value, numeric::get<4>(pl).value);
+        std::printf("pr = %e %e %e\n", numeric::get<0>(pr).value, numeric::get<1>(pr).value, numeric::get<4>(pr).value);
 
         std::printf("a = %lf\n", a.value);
         std::printf("b = %lf\n", b.value);
