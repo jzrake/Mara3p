@@ -100,7 +100,7 @@ inline auto angular_momentum(orbital_elements_t el)
     auto M = total_mass(el);
     auto q = mass_ratio(el);
     auto e = eccentricity(el);
-    auto mu = 1.0 / (1.0 + q);
+    auto mu = q / (1.0 + q);
     auto M1 = M * (1.0 - mu);
     auto M2 = M * mu;
     return M1 * M2 / M * sqrt(G * M * a * (1.0 - e * e));
