@@ -167,6 +167,7 @@ if __name__ == '__main__':
     parser.add_argument('filename')
     parser.add_argument('--width', type=float, default=10.0)
     parser.add_argument('-c', '--print-run-config', action='store_true')
+    parser.add_argument('-e', '--draw-edges', action='store_true')
 
     args = parser.parse_args()
 
@@ -185,8 +186,8 @@ if __name__ == '__main__':
     cax1 = fig.add_subplot(spec[1, 0])
     cax2 = fig.add_subplot(spec[1, 1])
     triangulation = cell_triangulation(fname)
-    cbar1 = plot_field(ax1, fname, 'rho', triangulation, cmap='inferno', transform=np.log10)
-    cbar2 = plot_field(ax2, fname, 'ur',  triangulation, cmap='viridis')
+    cbar1 = plot_field(ax1, fname, 'rho', triangulation, draw_edges=args.draw_edges, cmap='inferno', transform=np.log10)
+    cbar2 = plot_field(ax2, fname, 'ur',  triangulation, draw_edges=args.draw_edges, cmap='viridis')#, vmin=0, vmax=10)
     plt.colorbar(cbar1, cax=cax1, orientation='horizontal')
     plt.colorbar(cbar2, cax=cax2, orientation='horizontal')
     ax1.set_title(r'$\log_{10} \rho$')

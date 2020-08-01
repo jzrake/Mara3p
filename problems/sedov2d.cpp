@@ -60,26 +60,26 @@ auto config_template()
     .item("rk",                     1, "Runge-Kutta order (1, 2, or 3)")
     .item("max_aspect",           2.0, "aspect ratio of the longest cell allowed")
     .item("min_aspect",           0.5, "aspect ratio of the widest cell allowed")
-    .item("inner_velocity",       0.0, "the velocity with which to move the inner boundary radius")
+    .item("inner_velocity",       0.0, "the velocity with which to move the inner boundary")
+    .item("outer_velocity",       0.9, "the boundary boundary velocity (also determines the outer radius)")
     .item("focus",                0.0, "amount by which to increase resolution near the poles [0, 1)")
     .item("tfinal",               1e3, "time to stop the simulation")
+    .item("tstart",               2.0, "time (following the merger) when the simulation begins")
     .item("cpi",                 5000, "number of iterations between checkpoints")
     .item("vtk",                    0, "number of iterations between VTK outputs")
     .item("cfl",                  0.5, "courant number")
-    .item("router",               1e2, "outer boundary radius")
-    .item("envelop_end_time",     1e9, "time at which the relativistic envelope switches to a wind (default: never)")
-    .item("envelop_mdot_index",   4.0, "alpha in envelop mdot(t) = (t / t0)^alpha")
-    .item("envelop_u_index",     0.22, "psi in envelop u(m) = u1 (m / m1)^(-psi)")
-    .item("envelop_u",            1e1, "maximum gamma-beta in outer envelop")
-    .item("engine_mdot",          1e3, "engine mass rate")
-    .item("engine_onset",         1e2, "the engine onset time [inner boundary light-crossing time]")
-    .item("engine_duration",      1e3, "the engine duration   [inner boundary light-crossing time]")
-    .item("engine_u",             1e2, "the engine gamma-beta")
-    .item("engine_theta",         0.3, "the engine opening angle")
     .item("threads",                1, "the number of concurrent threads to execute on")
-    .item("medium",         "envelop", "[envelop | uniform]")
     .item("restart",               "", "a checkpoint file to restart from")
-    .item("outdir",               ".", "the directory where output files are written");
+    .item("outdir",               ".", "the directory where output files are written")
+    .item("envelop_mass"   , 1e-3, "mass of the relativistic envelop (solar mass)")
+    .item("cloud_mass"     , 1e-2, "mass of the merger ejecta cloud (solar mass)")
+    .item("psi"            , 0.22, "index psi in u(m) ~ m^-psi")
+    .item("u_min"          , 0.05, "four-velocity of the slowest envelop shell")
+    .item("engine_delay"   , 1e3,  "time following the cloud onset when the jet begins")
+    .item("engine_duration", 1e3,  "duration of the engine")
+    .item("engine_theta"   , 0.10, "engine opening angle")
+    .item("engine_u"       , 10.0, "engine four-velocity")
+    .item("engine_strength", 0.01, "E / M c^2: M = cloud mass, E = isotropic-equivalent jet energy");
 }
 
 
@@ -288,90 +288,237 @@ class jet_wind_nozzle_prescription_t
 {
 public:
 
+
     jet_wind_nozzle_prescription_t(const mara::config_t& cfg)
     {
-        alpha            = cfg.get_double("envelop_mdot_index");
-        envelop_end_time = cfg.get_double("envelop_end_time");
-        envelop_u        = cfg.get_double("envelop_u");
-        psi              = cfg.get_double("envelop_u_index");
-        engine_duration  = cfg.get_double("engine_duration");
-        engine_mdot      = cfg.get_double("engine_mdot");
-        engine_onset     = cfg.get_double("engine_onset");
-        engine_theta     = cfg.get_double("engine_theta");
-        engine_u         = cfg.get_double("engine_u");
+        envelop_mass    = cfg.get_double("envelop_mass");  
+        cloud_mass      = cfg.get_double("cloud_mass");
+        psi             = cfg.get_double("psi");
+        u_min           = cfg.get_double("u_min");
+        engine_delay    = cfg.get_double("engine_delay");
+        engine_duration = cfg.get_double("engine_duration");
+        engine_theta    = cfg.get_double("engine_theta");
+        engine_u        = cfg.get_double("engine_u");
+        engine_strength = cfg.get_double("engine_strength");
     }
 
+
+    void print(std::ostream& out) const
+    {
+        out << "nozzle description:\n\n";
+        out << "\tt1 = " << get_t1().value << '\n';
+        out << "\tt2 = " << get_t2().value << '\n';
+        out << "\tt3 = " << get_t3().value << '\n';
+        out << std::endl;
+    }
+
+
+    /**
+     * @brief      The time when the slowest envelop shell comes through r =
+     *             1.0.
+     *
+     * @return     A time
+     */
+    unit_time get_t1() const
+    {
+        auto v_min = c * u_min / sqrt(1.0 + u_min * u_min);
+        return r_in / v_min;
+    }
+
+
+    /**
+     * @brief      The time when the jet turns on.
+     *
+     * @return     A time
+     */
+    unit_time get_t2() const
+    {
+        return get_t1() + engine_delay;
+    }
+
+
+    /**
+     * @brief      The time when the jet turns off.
+     *
+     * @return     A time
+     */
+    unit_time get_t3() const
+    {
+        return get_t2() + engine_duration;
+    }
+
+
+    /**
+     * @brief      Return the mass flux, per sterian, in the jet
+     *
+     * @return     The mass flux
+     */
+    unit_mass_rate get_engine_mass_flux() const
+    {
+        auto engine_gamma = sqrt(1.0 + engine_u * engine_u);
+        auto E = engine_strength * cloud_mass;
+        auto L = E / (4.0 * M_PI * engine_duration);
+        auto Mdot = L / engine_gamma;
+        return Mdot;
+    }
+
+
+    /**
+     * @brief      Return true of a polar angle is within theta_jet of either
+     *             pole
+     *
+     * @param[in]  q     The polar angle theta
+     *
+     * @return     True or false
+     */
     bool in_nozzle(unit_scalar q) const
     {
         return q < engine_theta || q > unit_scalar(M_PI) - engine_theta;
     }
 
-    double temporal_profile(unit_time t) const
+
+    /**
+     * @brief      Determine the zone of the ambient medium for a given radius
+     *             and time.
+     *
+     * @param[in]  r     The radius
+     * @param[in]  t     The time
+     *
+     * @return     An integer
+     */
+    int get_zone(unit_length r, unit_time t) const
     {
-        auto x = (t - engine_onset) / engine_duration;
-        return x < 0.0 ? 0.0 : std::sqrt(2.0 * x) * std::exp(0.5 - x);
+        auto v_min = c * u_min / sqrt(1 + u_min * u_min);
+
+        if (t <= r / v_min)
+        {
+            return 1;
+        }
+        else if (t <= r / v_min + engine_delay)
+        {
+            return 2;
+        }
+        else if (t <= r / v_min + engine_delay + engine_duration)
+        {
+            return 3;
+        }
+        else
+        {
+            return 4;            
+        }
     }
 
-    unit_mass integrated_envelop_mdot(unit_time t) const
+
+    /**
+     * @brief      Return the radial four-velocity (gamma-beta).
+     *
+     * @param[in]  r     The radius
+     * @param[in]  q     The polar angle theta
+     * @param[in]  t     The time
+     *
+     * @return     Gamma-beta
+     */
+    unit_scalar gamma_beta(unit_length r, unit_scalar q, unit_time t) const
     {
-        auto tt = std::min(t, envelop_end_time);
-        return m0 + md * t0 * (std::pow(tt / t0, 1 + alpha) - 1) / (1 + alpha);
+        if (get_zone(r, t) == 1)
+        {
+            auto v = r / t;
+            auto b = v / c;
+            auto u = b / sqrt(1 - b * b);
+            return u;
+        }
+        else if (get_zone(r, t) == 2)
+        {
+            return u_min;
+        }
+        else if (get_zone(r, t) == 3 && in_nozzle(q))
+        {
+            return engine_u;
+        }
+        else
+        {
+            return u_min;
+        }
     }
 
-    unit_mass_rate ambient_mdot(unit_time t) const
+
+    /**
+     * @brief      Return the mass flux per solid angle.
+     *
+     * @param[in]  r     The radius
+     * @param[in]  q     The polar angle theta
+     * @param[in]  t     The time
+     *
+     * @return     The mass flux per steradian
+     */
+    unit_mass_rate mass_flux(unit_length r, unit_scalar q, unit_time t) const
     {
-        auto tt = std::min(t, envelop_end_time);
-        return md * std::pow(tt / t0, alpha);
+        auto m0 = envelop_mass;
+        auto mc = cloud_mass;
+
+        if (get_zone(r, t) == 1)
+        {
+            auto s = r / c / t;
+            auto f = std::pow(s / u_min, -1.0 / psi) * std::pow(1 - s * s, 0.5 / psi - 1.0);
+            return m0 / (4.0 * M_PI * psi * t) * f;
+        }
+        else if (get_zone(r, t) == 2)
+        {
+            return mc / (engine_delay * 4.0 * M_PI);
+        }
+        else if (get_zone(r, t) == 3 && in_nozzle(q))
+        {
+            return get_engine_mass_flux();
+        }
+        else
+        {
+            return mc / (engine_delay * 4.0 * M_PI);
+        }
     }
 
-    unit_scalar ambient_gamma_beta(unit_time t) const
+
+    /**
+     * @brief      Return the primitive variable state, valid in zones 1 or 2 or
+     *             at the inner boundary.
+     *
+     * @param[in]  r     The radius
+     * @param[in]  q     The polar angle theta
+     * @param[in]  t     The time
+     *
+     * @return     The primitive variable state
+     */
+    srhd::primitive_t primitive_state(unit_length r, unit_scalar q, unit_time t) const
     {
-        return envelop_u * std::pow(integrated_envelop_mdot(t) / m0, -psi);
+        auto mdot = mass_flux(r, q, t);
+        auto u = gamma_beta(r, q, t);
+        auto d = mdot / (r * r * u * c);
+        auto s = 1e-6; // p / rho^(4/3)
+        auto p = s * std::pow(d.value, 4. / 3);
+        return srhd::primitive(d, u, 0.0, 0.0, p);
     }
 
-    unit_mass_rate mdot(unit_scalar q, unit_time t) const
-    {
-        return t > engine_onset ? engine_mdot : ambient_mdot(t);
-    }
-
-    unit_scalar gamma_beta(unit_scalar q, unit_time t) const
-    {
-        return t > engine_onset && in_nozzle(q) ? engine_u * temporal_profile(t) : ambient_gamma_beta(t);
-    }
-
-    auto mdot_function(unit_scalar q) const
-    {
-        return [this, q] (unit_time t) { return mdot(q, t); };
-    }
-
-    auto gamma_beta_function(unit_scalar q) const
-    {
-        return [this, q] (unit_time t) { return gamma_beta(q, t); };
-    }
 
 private:
-    unit_specific_energy c2 = srhd::light_speed * srhd::light_speed;
-    unit_time      t0 = 1.0;
-    unit_mass      m0 = 1.0;
-    unit_mass_rate md = 1.0;
-    unit_mass_rate engine_mdot;
-    unit_scalar    alpha;
-    unit_scalar    engine_theta;
-    unit_scalar    engine_u;
-    unit_scalar    envelop_u;
-    unit_scalar    psi;
-    unit_time      engine_duration;
-    unit_time      engine_onset;
-    unit_time      envelop_end_time;
+    unit_velocity  c               = srhd::light_speed;
+    unit_length    r_in            = 1.0;  // inner boundary radius
+    unit_mass      envelop_mass    = 1e-3; // mass of the relativistic envelop (solar mass)
+    unit_mass      cloud_mass      = 1e-2; // mass of the merger ejecta cloud (solar mass)
+    unit_scalar    psi             = 0.22; // index psi in u(m) ~ m^-psi
+    unit_scalar    u_min           = 0.05; // four-velocity of the slowest envelop shell
+    unit_time      engine_delay    = 1e3;  // time following the cloud onset when the jet begins
+    unit_time      engine_duration = 1e3;  // duration of the engine
+    unit_scalar    engine_theta    = 0.10; // engine opening angle
+    unit_scalar    engine_u        = 10.0; // engine four-velocity
+    unit_scalar    engine_strength = 0.01; // E / M c^2: M = cloud mass, E = isotropic-equivalent jet energy
 };
 
+
+
+
+//=============================================================================
 auto wind_profile(const mara::config_t& cfg, unit_length r, unit_scalar q, unit_time t)
 {
-    auto nozzle = jet_wind_nozzle_prescription_t(cfg);
-    return mara::cold_relativistic_wind_t()
-    .with_mass_loss_rate(nozzle.mdot_function(q))
-    .with_gamma_beta    (nozzle.gamma_beta_function(q))
-    .primitive(r, t, 1e-6);
+    return jet_wind_nozzle_prescription_t(cfg).primitive_state(r, q, t);
 }
 
 
@@ -386,9 +533,11 @@ solution_t initial_solution(const mara::config_t& cfg)
     }
 
     auto eval = evaluate_on(thread_pool);
+    auto ts = unit_time(cfg.get_double("tstart"));
+    auto vo = unit_velocity(cfg.get_double("outer_velocity"));
     auto r0 = unit_length(1.0);
-    auto r1 = r0 * cfg.get_double("router");
-    auto p0 = [cfg] (unit_length r, unit_scalar q) { return wind_profile(cfg, r, q, 1.0); };
+    auto r1 = ts * vo;
+    auto p0 = [cfg, ts] (unit_length r, unit_scalar q) { return wind_profile(cfg, r, q, ts); };
     auto nt = cfg.get_int("nt");
     auto aspect = cfg.get_double("max_aspect");
 
@@ -405,7 +554,7 @@ solution_t initial_solution(const mara::config_t& cfg)
 
     return {
         0,
-        1.0,
+        ts,
         eval(tr),
         eval(u0),
     };
@@ -459,10 +608,9 @@ solution_t remesh(solution_t solution, unit_scalar max_aspect, unit_scalar min_a
 solution_t advance(const mara::config_t& cfg, solution_t solution, unit_time dt, bool use_plm)
 {
     auto eval = evaluate_on(thread_pool);
-    auto windi = std::bind(wind_profile, cfg, _1, _2, solution.time);
-    auto windo = std::bind(wind_profile, cfg, _1, _2, unit_time(1.0));
-    auto ibc = std::bind(inner_bc, _1, sedov::primitive_function_t{windi}, _2);
-    auto obc = std::bind(outer_bc, _1, sedov::primitive_function_t{windo}, _2);
+    auto wind = std::bind(wind_profile, cfg, _1, _2, solution.time);
+    auto ibc = std::bind(inner_bc, _1, sedov::primitive_function_t{wind}, _2);
+    auto obc = std::bind(outer_bc, _1, sedov::primitive_function_t{wind}, _2);
     auto radial_gradient = std::bind(sedov::radial_gradient, _1, _2, use_plm);
     auto polar_godunov   = std::bind(sedov::polar_godunov_data, _1, _2, _3, _4, use_plm);
 
@@ -524,33 +672,36 @@ int main(int argc, const char* argv[])
 
     thread_pool.reset(cfg.get_int("threads"));
 
-    auto tfinal      = unit_time  (cfg.get_double("tfinal"));
-    auto cfl         = unit_scalar(cfg.get_double("cfl"));
-    auto inner_vel   = unit_velocity(cfg.get_double("inner_velocity"));
-    auto max_aspect  = cfg.get_double("max_aspect");
-    auto min_aspect  = cfg.get_double("min_aspect");
-    auto vtk         = cfg.get_int("vtk");
-    auto cpi         = cfg.get_int("cpi");
-    auto rk          = cfg.get_int("rk");
-    auto outdir      = cfg.get_string("outdir");
-    auto solution    = initial_solution(cfg);
-    auto backup      = solution_t{};
-    auto safety      = false;
-    auto failed_iter = rational::number_t();
+    auto tfinal       = unit_time  (cfg.get_double("tfinal"));
+    // auto engine_onset = unit_time  (cfg.get_double("engine_onset"));
+    auto cfl          = unit_scalar(cfg.get_double("cfl"));
+    // auto inner_vel    = unit_velocity(cfg.get_double("inner_velocity"));
+    auto max_aspect   = cfg.get_double("max_aspect");
+    auto min_aspect   = cfg.get_double("min_aspect");
+    auto vtk          = cfg.get_int("vtk");
+    auto cpi          = cfg.get_int("cpi");
+    auto rk           = cfg.get_int("rk");
+    auto outdir       = cfg.get_string("outdir");
+    auto solution     = initial_solution(cfg);
+    auto backup       = solution_t{};
+    auto safety       = false;
+    auto failed_iter  = rational::number_t();
+
     mara::pretty_print(std::cout, "config", cfg);
     mara::filesystem::require_dir(outdir);
+    jet_wind_nozzle_prescription_t(cfg).print(std::cout);
 
     if (vtk > 0) write_vtk(cfg, solution);
     if (cpi > 0) write_checkpoint(cfg, solution);        
 
     while (solution.time < tfinal)
     {
-        auto cfl_factor = solution.time < unit_time(cfg.get_double("engine_onset")) ? 1.0 : 4.0;
+        auto cfl_factor = 1.0;//solution.time < unit_time(cfg.get_double("engine_onset")) ? 1.0 : 4.0;
         auto dt         = cfl * (safety ? 1e-3 : 1.0) * nd::min(solution.tracks | nd::map(sedov::minimum_spacing)) / srhd::light_speed * cfl_factor;
         auto num_cells  = nd::sum(solution.tracks | nd::map([] (auto t) { return size(t.face_radii); }));
         auto start      = std::chrono::high_resolution_clock::now();
         auto advance_rk = control::advance_runge_kutta(std::bind(advance, cfg, _1, dt, ! safety), rk);
-        auto inner_boundary_radius = solution.time * inner_vel;
+        auto inner_boundary_radius = unit_length(1.0); // std::max(unit_time(1.0), solution.time - engine_onset) * inner_vel;
 
         try {
             auto pre_step = solution;
