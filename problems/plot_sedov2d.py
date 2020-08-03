@@ -18,16 +18,16 @@ def field_names():
 
 
 
-def cell_triangulation(fname):
+def cell_triangulation(fname, outer_radius=None):
     h5f = h5py.File(fname, 'r')
     track_triangles_x = []
     track_triangles_y = []
     num_triangles = 0
     for track in h5f['tracks']:
-        primitive  = h5f['tracks'][track]['primitive'][()]
-        face_radii = h5f['tracks'][track]['face_radii'][()]
         theta0     = h5f['tracks'][track]['theta0'][()]
         theta1     = h5f['tracks'][track]['theta1'][()]
+        face_radii = h5f['tracks'][track]['face_radii'][()]
+        face_radii = face_radii[face_radii < (outer_radius or np.inf)]
         x00 = np.sin(theta0) * face_radii[:-1]
         y00 = np.cos(theta0) * face_radii[:-1]
         x01 = np.sin(theta1) * face_radii[:-1]
@@ -71,13 +71,15 @@ def get_cell_patches(fname):
 
 
 
-def get_primitive_for_triangles(fname, field):
+def get_primitive_for_triangles(fname, field, outer_radius=None):
     h5f = h5py.File(fname, 'r')
     result = []
     num_triangles = 0
     i = field_names().index(field)
     for track in h5f['tracks']:
-        primitive  = h5f['tracks'][track]['primitive'][()]
+        face_radii = h5f['tracks'][track]['face_radii'][()]
+        imax = None if outer_radius is None else np.where(face_radii < outer_radius)[0][-1]
+        primitive = h5f['tracks'][track]['primitive'][:imax]
         s = primitive[:,i].tolist()
         result += s
         result += s
@@ -98,14 +100,15 @@ def get_primitive_for_quads(fname, field):
 
 
 
-def get_track_edges(fname):
+def get_track_edges(fname, outer_radius=None):
     edges = []
     h5f = h5py.File(fname, 'r')
     tracks = list(h5f['tracks'])
     for track in tracks:
-        face_radii = h5f['tracks'][track]['face_radii'][()]
         theta0     = h5f['tracks'][track]['theta0'][()]
         theta1     = h5f['tracks'][track]['theta1'][()]
+        face_radii = h5f['tracks'][track]['face_radii'][()]
+        face_radii = face_radii[face_radii < (outer_radius or np.inf)]
         x0 = np.sin(theta0) * face_radii[0]
         y0 = np.cos(theta0) * face_radii[0]
         x1 = np.sin(theta0) * face_radii[-1]
@@ -122,19 +125,73 @@ def get_track_edges(fname):
 
 
 
-def get_radial_faces(fname):
+def get_radial_faces(fname, outer_radius=None):
     h5f = h5py.File(fname, 'r')
     faces = []
     for track in h5f['tracks']:
-        face_radii = h5f['tracks'][track]['face_radii'][()]
         theta0     = h5f['tracks'][track]['theta0'][()]
         theta1     = h5f['tracks'][track]['theta1'][()]
+        face_radii = h5f['tracks'][track]['face_radii'][()]
+        face_radii = face_radii[face_radii < (outer_radius or np.inf)]
         x0 = np.sin(theta0) * face_radii
         y0 = np.cos(theta0) * face_radii
         x1 = np.sin(theta1) * face_radii
         y1 = np.cos(theta1) * face_radii
         faces += np.array([[x0, x1], [y0, y1]]).T.tolist()
     return np.array(faces)
+
+
+
+
+def resample_field(fname, field, radius_range=(None, None), radial_points=None, transform=None):
+    """
+    Return X, Y, Z appropriate for use in pcolormesh by resampling the track
+    data to a uniform grid. The shape of the coordinate arrays X, Y are
+    (num_radial, num_theta) are the same as the primitive field array, so the
+    result should be used with 'nearest' or 'gouraud'.
+    
+    :param      fname:          The HDF5 filename
+    :type       fname:          str
+    :param      field:          The primitive variable field
+    :type       field:          str
+    :param      radius_range:   The inner and outer radii (either may be None)
+    :type       radius_range:   tuple
+    :param      radial_points:  The number of resampled radial points (may be None)
+    :type       radial_points:  int
+    :param      transform:      The transform to apply to the primitive field
+    :type       transform:      function
+    
+    :returns:   Arrays for use by pcolormesh
+    :rtype:     tuple
+    """
+    import scipy.interpolate
+    h5f = h5py.File(fname, 'r')
+    def min_max_radii(track):
+        face_radii = h5f['tracks'][track]['face_radii']
+        return face_radii[1], face_radii[-3]
+    def resample(track):
+        primitive  = h5f['tracks'][track]['primitive']
+        face_radii = h5f['tracks'][track]['face_radii']
+        theta0 = h5f['tracks'][track]['theta0'][()]
+        theta1 = h5f['tracks'][track]['theta1'][()]
+        r = face_radii[:-1]
+        p = primitive[...][:,field_index]
+        if transform:
+            p = transform(p)
+        f = scipy.interpolate.interp1d(r, p)
+        return 0.5 * (theta0 + theta1), f(r_resampled)
+    radial_extent = [min_max_radii(t) for t in h5f['tracks']]
+    radial_points = radial_points or len(h5f['tracks'])
+    inner_radius = radius_range[0] or max([r[0] for r in radial_extent])
+    outer_radius = radius_range[1] or min([r[1] for r in radial_extent])
+    field_index = field_names().index(field)
+    r_resampled = np.logspace(np.log10(inner_radius), np.log10(outer_radius), radial_points)
+    resampled_tracks = sorted([resample(t) for t in h5f['tracks']], key=lambda t: t[0])
+    q = np.array([t[0] for t in resampled_tracks])
+    Z = np.array([t[1] for t in resampled_tracks])
+    X = r_resampled[None,:] * np.sin(q[:,None])
+    Y = r_resampled[None,:] * np.cos(q[:,None])
+    return X, Y, Z
 
 
 
@@ -146,18 +203,23 @@ def get_max_radius(fname):
 
 
 
-def plot_field(ax, fname, field, triangulation=None, transform=None, draw_edges=False, **kwargs):
+def plot_field(ax, fname, field, triangulation=None, radius_range=(None, None), transform=None, draw_edges=False, resample=True, **kwargs):
     ax.set_aspect('equal')
 
-    if draw_edges:
-        track_edges  = LineCollection(get_track_edges(fname), linewidth=0.5)
-        radial_faces = LineCollection(get_radial_faces(fname), linewidth=0.5)
-        ax.add_collection(track_edges)
-        ax.add_collection(radial_faces)
-
-    t = triangulation or cell_triangulation(fname)
-    z = get_primitive_for_triangles(fname, field)
-    return ax.tripcolor(t, transform(z) if transform else z, **kwargs)
+    if resample:
+        if draw_edges:
+            print('Warning: plot_field (option draw_edges=True is ignored when resample=True)')
+        X, Y, Z = resample_field(fname, field, radius_range=radius_range, transform=transform)
+        return ax.pcolormesh(X, Y, Z, shading='nearest', edgecolor='none', **kwargs)
+    else:
+        if draw_edges:
+            track_edges  = LineCollection(get_track_edges(fname, outer_radius=radius_range[1]), linewidth=0.5)
+            radial_faces = LineCollection(get_radial_faces(fname, outer_radius=radius_range[1]), linewidth=0.5)
+            ax.add_collection(track_edges)
+            ax.add_collection(radial_faces)
+        t = triangulation or cell_triangulation(fname, outer_radius=radius_range[1])
+        z = get_primitive_for_triangles(fname, field, outer_radius=radius_range[1])
+        return ax.tripcolor(t, transform(z) if transform else z, **kwargs)
 
 
 
@@ -165,9 +227,12 @@ def plot_field(ax, fname, field, triangulation=None, transform=None, draw_edges=
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('filename')
-    parser.add_argument('--width', type=float, default=10.0)
+    parser.add_argument('--width', type=float, default=12.0)
+    parser.add_argument('-r0', '--inner-radius', type=float, default=None)
+    parser.add_argument('-r1', '--outer-radius', type=float, default=None)
     parser.add_argument('-c', '--print-run-config', action='store_true')
     parser.add_argument('-e', '--draw-edges', action='store_true')
+    parser.add_argument('-t', '--triangulate-cells', action='store_true', help='Use tripcolor rather than pcolormesh: slower but more accurate')
 
     args = parser.parse_args()
 
@@ -178,16 +243,15 @@ if __name__ == '__main__':
         for key, val in h5f['run_config'].items():
             print(f'{key} = {val[()]}')
 
-    width = 12
-    fig = plt.figure(figsize=[width, width * 8 / 7])
+    fig = plt.figure(figsize=[args.width, args.width * 8 / 7])
     spec = fig.add_gridspec(2, 2, height_ratios=[29, 1])
     ax1  = fig.add_subplot(spec[0, 0])
     ax2  = fig.add_subplot(spec[0, 1])
     cax1 = fig.add_subplot(spec[1, 0])
     cax2 = fig.add_subplot(spec[1, 1])
-    triangulation = cell_triangulation(fname)
-    cbar1 = plot_field(ax1, fname, 'rho', triangulation, draw_edges=args.draw_edges, cmap='inferno', transform=np.log10)
-    cbar2 = plot_field(ax2, fname, 'ur',  triangulation, draw_edges=args.draw_edges, cmap='viridis')#, vmin=0, vmax=10)
+    triangulation = cell_triangulation(fname, outer_radius=args.outer_radius)
+    cbar1 = plot_field(ax1, fname, 'rho', triangulation, radius_range=(args.inner_radius, args.outer_radius), draw_edges=args.draw_edges, resample=not args.triangulate_cells, cmap='inferno', transform=np.log10)
+    cbar2 = plot_field(ax2, fname, 'ur',  triangulation, radius_range=(args.inner_radius, args.outer_radius), draw_edges=args.draw_edges, resample=not args.triangulate_cells, cmap='viridis')
     plt.colorbar(cbar1, cax=cax1, orientation='horizontal')
     plt.colorbar(cbar2, cax=cax2, orientation='horizontal')
     ax1.set_title(r'$\log_{10} \rho$')
